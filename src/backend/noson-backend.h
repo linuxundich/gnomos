@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include <giomm/dbusconnection.h>
 #include <glibmm/dispatcher.h>
 #include <sigc++/sigc++.h>
 
@@ -318,6 +319,17 @@ private:
                                              const std::string& key, const std::string& token,
                                              const std::string& username);
 
+  // Subscribes to logind's PrepareForSleep signal (system bus) so a
+  // suspend/resume cycle doesn't leave the app showing stale state for
+  // however long libnoson's own subscription-renewal timers would
+  // otherwise take to notice — see the .cpp for what "resume" does.
+  // Best-effort: if the system bus or logind aren't reachable (e.g. no
+  // systemd), this silently does nothing rather than failing startup.
+  void SubscribeToSleepSignal();
+  void OnPrepareForSleep(const Glib::RefPtr<Gio::DBus::Connection>& connection, const Glib::ustring& sender_name,
+                          const Glib::ustring& object_path, const Glib::ustring& interface_name,
+                          const Glib::ustring& signal_name, const Glib::VariantContainerBase& parameters);
+
   // --- Destruction order matters here and is NOT the declaration order an
   // unrelated reader would expect. Members are destroyed bottom-to-top, and
   // we need, in this exact order:
@@ -359,6 +371,14 @@ private:
   sigc::signal<void()> signal_sound_settings_changed_;
   sigc::signal<void(std::string)> signal_error_;
   sigc::signal<void()> signal_position_changed_;
+
+  // Independent of libnoson entirely, and explicitly unsubscribed at the
+  // very top of ~NosonBackend()'s body (before any member starts being
+  // destroyed) rather than relying on declaration order — see the
+  // destructor for why that's simpler to reason about here than fitting
+  // this into the ordering rules below.
+  Glib::RefPtr<Gio::DBus::Connection> system_bus_connection_;
+  guint sleep_signal_subscription_id_ = 0;
 
   mutable std::mutex state_mutex_;
   std::map<std::string, NSROOT::ZonePtr> zones_by_uuid_;

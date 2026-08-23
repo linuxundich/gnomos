@@ -70,6 +70,43 @@ See the destruction-order comment in `noson-backend.h` for how this affects
 member ordering in that class — it's the one place a "reasonable-looking"
 reordering would introduce a use-after-free.
 
+### Backend reliability
+
+- **Pagination.** `NSROOT::ContentBrowser`'s constructor only fetches a
+  single page (its own `BROWSE_COUNT` default is 100; the call sites in
+  `noson-backend.cpp` pass a larger but still fixed count). A queue,
+  playlist, or library folder bigger than that silently lost its tail end
+  without further work — `ExhaustBrowser()` (an internal helper in
+  `noson-backend.cpp`) grows the browser's window to the real reported
+  total in a bounded loop. `SMAPI::GetMetadata()`/`Search()` have the same
+  single-page limitation but a different shape (each call *replaces* the
+  out-param rather than a browser accumulating internally), so
+  `BrowseActiveServiceLocked()`/`SearchActiveServiceAsync()` page through
+  them by hand, accumulating into their own `entries`/`raw` vectors. All of
+  this is capped at `kMaxBrowseItems` (5000) so a pathological folder can't
+  make a refresh hang or eat unbounded memory.
+- **False "failed to load" on an empty container.** `ContentBrowser`'s
+  public API can't tell "the fetch genuinely failed" apart from "the fetch
+  succeeded and the container is just empty" — browsing index 0 of a
+  totally empty container looks identical to an out-of-range/failed
+  browse. `RefreshQueueAsync()` already worked around this (see bug #7
+  below); the same fix — trusting the constructor's own fetch instead of a
+  redundant `Browse()` call that would return `false` for an empty result
+  — was also applied to `RefreshFavoritesAsync()`, `BrowseLibraryAsync()`,
+  and `SearchLocalLibraryAsync()`, which had the identical bug (a
+  household with zero favorites, or browsing into an empty library level,
+  showed a spurious error toast).
+- **Suspend/resume.** libnoston's own UPnP-eventing subscriptions already
+  self-renew on their own timers (see `subscription.cpp`'s background
+  thread), but that can leave the app showing stale state for however long
+  is left on the current renewal cycle after a laptop wakes from suspend.
+  `NosonBackend` subscribes to logind's `PrepareForSleep` D-Bus signal
+  (system bus) and, on resume, calls `System::RenewSubscriptions()` plus
+  the same `DiscoverAsync()` path startup itself uses — including its
+  existing "restore the previously selected room" handling. Best-effort:
+  if the system bus or logind aren't reachable, this silently does
+  nothing rather than failing startup.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

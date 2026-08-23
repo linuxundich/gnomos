@@ -65,6 +65,30 @@ void EnsureServiceDesc(NSROOT::System& system, const NSROOT::DigitalItemPtr& ite
   item->SetProperty(desc);
 }
 
+// ContentBrowser's constructor only fetches a single page (its own
+// BROWSE_COUNT default is 100; call sites here pass a larger but still
+// fixed count) — a queue, playlist, or library folder bigger than that
+// silently lost its tail end without this. Browse(0, total()) asks the
+// browser to grow its window to the *full* reported total in one more
+// SOAP call; looped defensively in case the device caps a single response
+// below what was asked for. Capped at kMaxBrowseItems so a pathological
+// folder (tens of thousands of tracks) can't make a refresh hang or eat
+// unbounded memory — matches this app's general "the local library isn't
+// a substitute for a real client's crate-digging tools" scope.
+constexpr unsigned kMaxBrowseItems = 5000;
+void ExhaustBrowser(NSROOT::ContentBrowser& browser)
+{
+  unsigned target = std::min(browser.total(), kMaxBrowseItems);
+  while (browser.count() < target)
+  {
+    unsigned before = browser.count();
+    if (!browser.Browse(0, target))
+      break;
+    if (browser.count() <= before)
+      break;  // no progress — avoid spinning on an unexpected response
+  }
+}
+
 }  // namespace
 
 NosonBackend::NosonBackend()
@@ -99,9 +123,64 @@ NosonBackend::NosonBackend()
   // reload whatever was linked in a previous run so GetEnabledServices()
   // (and hence the library root categories) already includes it.
   LoadLinkedServices();
+
+  SubscribeToSleepSignal();
 }
 
-NosonBackend::~NosonBackend() = default;
+NosonBackend::~NosonBackend()
+{
+  // Explicitly unsubscribed here, before any member starts being
+  // destroyed (including tasks_/system_ below) — OnPrepareForSleep()
+  // calls DiscoverAsync() (pushes onto tasks_) and
+  // system_->RenewSubscriptions(), so it must never fire once those are
+  // mid-teardown or gone.
+  if (system_bus_connection_ && sleep_signal_subscription_id_ != 0)
+    system_bus_connection_->signal_unsubscribe(sleep_signal_subscription_id_);
+}
+
+void NosonBackend::SubscribeToSleepSignal()
+{
+  try
+  {
+    system_bus_connection_ = Gio::DBus::Connection::get_sync(Gio::DBus::BusType::SYSTEM);
+    sleep_signal_subscription_id_ = system_bus_connection_->signal_subscribe(
+        sigc::mem_fun(*this, &NosonBackend::OnPrepareForSleep), "org.freedesktop.login1",
+        "org.freedesktop.login1.Manager", "PrepareForSleep", "/org/freedesktop/login1");
+  }
+  catch (const Glib::Error&)
+  {
+    // No system bus, or no logind (e.g. a non-systemd system) — fine,
+    // this is a best-effort resilience improvement, not a requirement.
+    system_bus_connection_.reset();
+  }
+}
+
+void NosonBackend::OnPrepareForSleep(const Glib::RefPtr<Gio::DBus::Connection>&, const Glib::ustring&,
+                                      const Glib::ustring&, const Glib::ustring&, const Glib::ustring&,
+                                      const Glib::VariantContainerBase& parameters)
+{
+  // PrepareForSleep(b sleeping) fires twice per cycle: once with true right
+  // before the system actually suspends, once with false right after it
+  // resumes — only the latter is interesting here. UPnP eventing
+  // subscriptions and the underlying TCP connections don't survive a
+  // suspend, and while libnoson's own subscription threads do already
+  // self-renew on their own timers (see subscription.cpp), that can leave
+  // the app showing stale now-playing/volume/topology state for however
+  // long is left on the previous renewal cycle. Forcing a renewal plus a
+  // fresh discovery immediately on resume — the same DiscoverAsync() path
+  // startup itself uses, including its existing "restore the previously
+  // selected room" handling — clears that gap instead of waiting it out.
+  if (parameters.get_n_children() < 1)
+    return;
+  Glib::Variant<bool> sleeping;
+  parameters.get_child(sleeping, 0);
+  if (sleeping.get())
+    return;
+
+  if (system_)
+    system_->RenewSubscriptions();
+  DiscoverAsync();
+}
 
 namespace
 {
@@ -844,6 +923,9 @@ void NosonBackend::RefreshQueueAsync()
     // risking a chronic false "failed to load" toast every time the queue
     // is empty.
     NSROOT::ContentBrowser browser(queueDirectory, NSROOT::ContentSearch(NSROOT::SearchQueue, ""), 200);
+    // Safe to call even for a genuinely empty queue (see the comment
+    // above): ExhaustBrowser() only touches Browse() when total() > 0.
+    ExhaustBrowser(browser);
 
     std::vector<QueueItem> items;
     items.reserve(browser.table().size());
@@ -996,14 +1078,15 @@ void NosonBackend::RefreshFavoritesAsync()
     // system_/GetHost()+GetPort() never change after construction, so this
     // needs no lock to read.
     NSROOT::ContentDirectory favoritesDirectory(system_->GetHost(), system_->GetPort());
+    // Not calling browser.Browse(0, 200) again here — same "index 0 of a
+    // genuinely empty container looks identical to a real failure" issue
+    // documented in RefreshQueueAsync() (this had the same false "Favoriten
+    // konnten nicht geladen werden" bug on a household with zero
+    // favorites, just never previously caught live). ExhaustBrowser()
+    // below only calls Browse() again when there's real additional data
+    // waiting (total() > count()), so it can't reintroduce this.
     NSROOT::ContentBrowser browser(favoritesDirectory, NSROOT::ContentSearch(NSROOT::SearchFavorite, ""), 200);
-    if (!browser.Browse(0, 200))
-    {
-      std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Favoriten konnten nicht geladen werden.";
-      error_dispatcher_.emit();
-      return;
-    }
+    ExhaustBrowser(browser);
 
     std::vector<FavoriteItem> items;
     std::vector<NSROOT::DigitalItemPtr> raw;
@@ -1286,14 +1369,13 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
     }
 
     NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    // Not calling browser.Browse(0, 200) again here — same false-failure-
+    // on-empty issue documented in RefreshQueueAsync() (an empty library
+    // level, e.g. a genre with no albums yet, showed a bogus "Bibliothek
+    // konnte nicht geladen werden"). ExhaustBrowser() only calls Browse()
+    // again when there's real additional data waiting.
     NSROOT::ContentBrowser browser(libraryDirectory, object_id, 200);
-    if (!browser.Browse(0, 200))
-    {
-      std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Bibliothek konnte nicht geladen werden.";
-      error_dispatcher_.emit();
-      return;
-    }
+    ExhaustBrowser(browser);
 
     std::vector<LibraryEntry> entries;
     std::vector<NSROOT::DigitalItemPtr> raw;
@@ -1344,31 +1426,56 @@ void NosonBackend::SearchActiveServiceAsync(const std::string& category, const s
   tasks_.Push([this, category, term] {
     if (!active_smapi_)
       return;
-    NSROOT::SMAPIMetadata meta;
-    if (!active_smapi_->Search(category, term, 0, 200, meta))
+
+    // Unlike ContentBrowser (which accumulates pages into its own internal
+    // table across repeated Browse() calls), SMAPI::Search()'s SMAPIMetadata
+    // out-param is *replaced* on every call — see SMAPIMetadata::Reset(),
+    // called fresh from inside Search() each time — so pagination here
+    // means accumulating into entries/raw ourselves across calls, capped at
+    // kMaxBrowseItems for the same reason ExhaustBrowser() caps local
+    // ContentDirectory browsing.
+    std::vector<LibraryEntry> entries;
+    std::vector<NSROOT::DigitalItemPtr> raw;
+    constexpr unsigned kPageSize = 200;
+    unsigned index = 0;
+    unsigned total = kPageSize;  // corrected to the real total after the first page
+    bool any_page_ok = false;
+    while (index < total && index < kMaxBrowseItems)
+    {
+      NSROOT::SMAPIMetadata meta;
+      if (!active_smapi_->Search(category, term, static_cast<int>(index), static_cast<int>(kPageSize), meta))
+        break;
+      any_page_ok = true;
+      total = std::min(meta.TotalCount(), kMaxBrowseItems);
+
+      for (const NSROOT::SMAPIItem& smapi_item : meta.GetItems())
+      {
+        if (!smapi_item.item)
+          continue;
+        LibraryEntry entry;
+        entry.object_id = smapi_item.item->GetObjectID();
+        entry.title = smapi_item.item->GetValue("dc:title");
+        entry.is_container = smapi_item.item->IsContainer();
+        if (!entry.is_container)
+          entry.subtitle = smapi_item.item->GetValue("dc:creator");
+        entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
+        entry.display_as_grid = smapi_item.displayType == NSROOT::SMAPIItem::Grid;
+        entries.push_back(std::move(entry));
+        raw.push_back(smapi_item.uriMetadata);
+      }
+
+      unsigned fetched = meta.ItemCount();
+      if (fetched == 0)
+        break;  // no progress — avoid spinning on an unexpected response
+      index += fetched;
+    }
+
+    if (!any_page_ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       pending_error_ = "Suche fehlgeschlagen.";
       error_dispatcher_.emit();
       return;
-    }
-
-    std::vector<LibraryEntry> entries;
-    std::vector<NSROOT::DigitalItemPtr> raw;
-    for (const NSROOT::SMAPIItem& smapi_item : meta.GetItems())
-    {
-      if (!smapi_item.item)
-        continue;
-      LibraryEntry entry;
-      entry.object_id = smapi_item.item->GetObjectID();
-      entry.title = smapi_item.item->GetValue("dc:title");
-      entry.is_container = smapi_item.item->IsContainer();
-      if (!entry.is_container)
-        entry.subtitle = smapi_item.item->GetValue("dc:creator");
-      entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
-      entry.display_as_grid = smapi_item.displayType == NSROOT::SMAPIItem::Grid;
-      entries.push_back(std::move(entry));
-      raw.push_back(smapi_item.uriMetadata);
     }
 
     {
@@ -1395,14 +1502,13 @@ void NosonBackend::SearchLocalLibraryAsync(const std::string& object_id, const s
 {
   tasks_.Push([this, object_id, term] {
     NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    // Not calling browser.Browse(0, 500) again here — same false-failure-
+    // on-empty issue documented in RefreshQueueAsync() (browsing an
+    // already-empty level to search within it showed a bogus "Suche
+    // fehlgeschlagen"). ExhaustBrowser() only calls Browse() again when
+    // there's real additional data waiting.
     NSROOT::ContentBrowser browser(libraryDirectory, object_id, 500);
-    if (!browser.Browse(0, 500))
-    {
-      std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Suche fehlgeschlagen.";
-      error_dispatcher_.emit();
-      return;
-    }
+    ExhaustBrowser(browser);
 
     std::string term_lower = term;
     std::transform(term_lower.begin(), term_lower.end(), term_lower.begin(),
@@ -1436,8 +1542,48 @@ void NosonBackend::SearchLocalLibraryAsync(const std::string& object_id, const s
 
 void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
 {
-  NSROOT::SMAPIMetadata meta;
-  if (!active_smapi_->GetMetadata(id, 0, 200, false, meta))
+  // Same per-call-replace vs. accumulate-ourselves pagination as
+  // SearchActiveServiceAsync() — see its comment for why.
+  std::vector<LibraryEntry> entries;
+  std::vector<NSROOT::DigitalItemPtr> raw;
+  constexpr unsigned kPageSize = 200;
+  unsigned index = 0;
+  unsigned total = kPageSize;
+  bool any_page_ok = false;
+  while (index < total && index < kMaxBrowseItems)
+  {
+    NSROOT::SMAPIMetadata meta;
+    if (!active_smapi_->GetMetadata(id, static_cast<int>(index), static_cast<int>(kPageSize), false, meta))
+      break;
+    any_page_ok = true;
+    total = std::min(meta.TotalCount(), kMaxBrowseItems);
+
+    for (const NSROOT::SMAPIItem& smapi_item : meta.GetItems())
+    {
+      if (!smapi_item.item)
+        continue;
+      LibraryEntry entry;
+      entry.object_id = smapi_item.item->GetObjectID();
+      entry.title = smapi_item.item->GetValue("dc:title");
+      entry.is_container = smapi_item.item->IsContainer();
+      if (!entry.is_container)
+        entry.subtitle = smapi_item.item->GetValue("dc:creator");
+      entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
+      entry.display_as_grid = smapi_item.displayType == NSROOT::SMAPIItem::Grid;
+      entries.push_back(std::move(entry));
+      // Containers have no uriMetadata (they're never played, only browsed
+      // into) — null is fine, PlayLibraryItem() only reaches this index for
+      // non-container entries.
+      raw.push_back(smapi_item.uriMetadata);
+    }
+
+    unsigned fetched = meta.ItemCount();
+    if (fetched == 0)
+      break;  // no progress — avoid spinning on an unexpected response
+    index += fetched;
+  }
+
+  if (!any_page_ok)
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     pending_error_ = active_smapi_->AuthTokenExpired()
@@ -1445,27 +1591,6 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
                           : "Dienst konnte nicht durchsucht werden.";
     error_dispatcher_.emit();
     return;
-  }
-
-  std::vector<LibraryEntry> entries;
-  std::vector<NSROOT::DigitalItemPtr> raw;
-  for (const NSROOT::SMAPIItem& smapi_item : meta.GetItems())
-  {
-    if (!smapi_item.item)
-      continue;
-    LibraryEntry entry;
-    entry.object_id = smapi_item.item->GetObjectID();
-    entry.title = smapi_item.item->GetValue("dc:title");
-    entry.is_container = smapi_item.item->IsContainer();
-    if (!entry.is_container)
-      entry.subtitle = smapi_item.item->GetValue("dc:creator");
-    entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
-    entry.display_as_grid = smapi_item.displayType == NSROOT::SMAPIItem::Grid;
-    entries.push_back(std::move(entry));
-    // Containers have no uriMetadata (they're never played, only browsed
-    // into) — null is fine, PlayLibraryItem() only reaches this index for
-    // non-container entries.
-    raw.push_back(smapi_item.uriMetadata);
   }
 
   {
