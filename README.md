@@ -35,8 +35,11 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   a single speaker
 - Shuffle and repeat, including repeat-one, with both greyed out on
   sources that don't support them (radio, line-in)
-- Zone grouping and ungrouping, with a per-room volume slider
-- Now playing view with cover art, a seek bar, and track details
+- Zone grouping and ungrouping (including a one-click "disband group"),
+  with a per-room volume slider
+- A bottom Now Playing bar with cover art, a wide seek bar, and track
+  details (with quick links to search the library for the current artist
+  or album)
 - Queue management: reordering, removing tracks, saving as a Sonos playlist
 - Favorites, with search
 - Alarms: create, edit, enable/disable, delete, with a sound preview
@@ -53,9 +56,9 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Light/dark appearance override, adjustable cover art cache size
 - Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
   and repeat
-- A responsive window: both side panels tuck away behind a toggle button
-  once the window gets narrow, and remembers its size and panel widths
-  across restarts
+- A responsive window: the room sidebar tucks away behind a toggle button
+  once the window gets narrow, and both the window's and the sidebar's
+  size are remembered across restarts
 - Optional desktop notifications on track change
 
 ## Hardware support

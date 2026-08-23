@@ -121,10 +121,10 @@ private:
   // the app at, instead of always reopening at the fixed default_size().
   void LoadWindowState();
   bool OnCloseRequest();
-  // sidebar_width_fraction for split_view_/content_split_view_, same
-  // state.ini [window] group as LoadWindowState() — separate function
-  // since it must run after both split views exist (LoadWindowState()
-  // runs early in the constructor, before either does).
+  // split_view_'s sidebar_width_fraction, same state.ini [window] group
+  // as LoadWindowState() — separate function since it must run after
+  // split_view_ exists (LoadWindowState() runs early in the constructor,
+  // before it does).
   void LoadSplitFractions();
   bool OnKeyPressed(guint keyval, guint keycode, Gdk::ModifierType state);
 
@@ -168,20 +168,14 @@ private:
   Gtk::Switch nightmode_switch_;
   bool suppress_sound_signals_ = false;
 
-  // Three-pane layout (sidebar | tab content | Now Playing panel), styled
-  // after Euphonica's — see PlayerBar's own header comment. Both splits are
-  // AdwOverlaySplitViews, each with its own AdwBreakpoint (see the
-  // constructor) so they collapse independently as the window narrows:
-  // split_view_ (room sidebar, collapses under 900px) hides first, then
-  // content_split_view_ (the Now Playing panel, collapses under 700px) —
-  // below 700px both panels are hidden behind their own toggle buttons and
-  // only the tabbed content remains. Two separate widgets rather than one
-  // because AdwOverlaySplitView only ever has a sidebar and a content
-  // child, and both panels need their own independent collapse point.
+  // Room sidebar | tab content, with player_bar_ docked as its own
+  // fixed-height bar along the bottom of the whole window (see the
+  // constructor's root_box) — not part of this split at all. split_view_
+  // is an AdwOverlaySplitView (not a plain Gtk::Paned) so the sidebar can
+  // collapse behind sidebar_toggle_button_ via an AdwBreakpoint on narrow
+  // windows.
   GtkWidget* split_view_ = nullptr;
   Gtk::ToggleButton sidebar_toggle_button_;
-  GtkWidget* content_split_view_ = nullptr;
-  Gtk::ToggleButton now_playing_toggle_button_;
   Gtk::ListBox zones_list_box_;
   Gtk::ScrolledWindow zones_scroller_;
   Gtk::Label zones_placeholder_;

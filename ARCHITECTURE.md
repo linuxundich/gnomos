@@ -25,13 +25,19 @@ extending the code; if you just want to use the app, see [README.md](README.md).
   `Update()`/`SetItems()`-style setters, with no knowledge of libnoson.
 - `src/gnomos-window.{h,cpp}` — wires the backend to the widgets and owns
   the window layout: a room sidebar (`AdwOverlaySplitView`, collapsible on
-  narrow windows), tabbed Queue/Favorites/Alarms/History/Library content,
-  and `PlayerBar` as a wide Now Playing side panel — structurally inspired
-  by [Euphonica](https://github.com/htkhiem/euphonica)'s own dedicated Now
-  Playing panel (large circular art, centered transport controls below it),
-  without adopting its dynamic accent colors, background blur, or lyrics —
-  none of those have a matching data source, or are worth the added
-  complexity for what Sonos actually exposes.
+  narrow windows) beside tabbed Queue/Favorites/Alarms/History/Library
+  content, with `PlayerBar` docked as a fixed-height bar along the bottom
+  of the whole window (`root_box` in the constructor) — cover art and
+  title/artist on the left, transport controls above a wide seek bar in
+  the middle, favorite/mute/volume on the right. This replaced an earlier
+  design with `PlayerBar` as a wide side panel (structurally inspired by
+  [Euphonica](https://github.com/htkhiem/euphonica)'s own Now Playing
+  panel); moved to a bottom bar on request, mainly to give the seek bar
+  real usable width instead of the ~300px a side column could ever offer
+  it. Every round icon button in `PlayerBar` gets an explicit *equal*
+  width/height `set_size_request()` plus `valign(CENTER)` (never the
+  `Gtk::Box` default of `FILL`) — without both, the bar's own fixed
+  height stretches a button into an oval instead of a circle.
 - No `.ui` templates: everything is built in C++. That was a deliberate
   call to reduce risk in an early, largely-unverified first pass — an
   XML/C++ ID mismatch is a class of bug this sidesteps entirely. Worth
@@ -173,6 +179,24 @@ reordering would introduce a use-after-free.
   on a 5-minute TTL. Capped at 300 cached levels (dropped outright past
   that, rather than real LRU bookkeeping) so a very long session can't
   grow this unbounded.
+
+### Player bar and grouping additions
+
+- **"Previous" restarts the current track once a few seconds in**,
+  instead of always skipping to the actual previous track — the same
+  convention most media players use. Implemented as a plain `SeekTime(0)`
+  in `NosonBackend::Previous()` when `position_` is past a 3-second
+  threshold, falling back to a real `Player::Previous()` otherwise.
+- **"Gruppe auflösen"** in the grouping popover, symmetric to the existing
+  "Alle Räume gruppieren" — removes every other member of the current
+  group via the same `RemoveRoomFromGroup()` each room's own switch
+  already calls, leaving just the coordinator.
+- The mute button icon now reflects the actual volume level
+  (low/medium/high/muted thresholds, matching the system volume icon
+  convention) instead of always showing "high" for any unmuted level: a
+  volume slider tooltip now also shows the percentage.
+- The track details dialog's existing "Interpret suchen" button now has an
+  "Album suchen" counterpart alongside it.
 
 ## Bugs found during hardware testing
 

@@ -43,7 +43,10 @@ namespace gnomos
 GnomosWindow::GnomosWindow()
 {
   set_title("Gnomos");
-  set_default_size(1280, 700);  // room sidebar + tab content + the wider Now Playing panel — overridden by LoadWindowState() below if a size was saved from a previous run
+  // Room sidebar + tab content; player_bar_ is a fixed-height bottom bar,
+  // not a factor in width — overridden by LoadWindowState() below if a
+  // size was saved from a previous run.
+  set_default_size(1000, 760);
   LoadWindowState();
   signal_close_request().connect(sigc::mem_fun(*this, &GnomosWindow::OnCloseRequest), false);
 
@@ -82,15 +85,6 @@ GnomosWindow::GnomosWindow()
   primary_menu_button_.set_menu_model(primary_menu);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(primary_menu_button_.gobj()));
 
-  // Now Playing panel toggle — only ever visible once content_split_view_
-  // has collapsed it behind a breakpoint on narrow windows, same
-  // "collapsed"-bound-to-"visible" pattern as sidebar_toggle_button_ (see
-  // the constructor further down for where content_split_view_ exists).
-  now_playing_toggle_button_.set_icon_name("sidebar-show-right-symbolic");
-  now_playing_toggle_button_.set_tooltip_text("Wiedergabe ein-/ausblenden");
-  now_playing_toggle_button_.set_visible(false);
-  adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(now_playing_toggle_button_.gobj()));
-
   discovery_spinner_.set_margin_start(6);
   discovery_spinner_.set_margin_end(6);
   refresh_button_.set_icon_name("view-refresh-symbolic");
@@ -127,8 +121,23 @@ GnomosWindow::GnomosWindow()
         backend_->JoinRoomToCurrentZone(room.player_uuid);
   });
 
+  // Symmetric counterpart — removes every *other* member of the current
+  // group (leaving the coordinator standalone), reusing the exact same
+  // RemoveRoomFromGroup() each per-room switch already calls.
+  auto* ungroup_all_button = Gtk::make_managed<Gtk::Button>("Gruppe auflösen");
+  ungroup_all_button->add_css_class("flat");
+  ungroup_all_button->set_margin_start(6);
+  ungroup_all_button->set_margin_end(6);
+  ungroup_all_button->set_margin_bottom(6);
+  ungroup_all_button->signal_clicked().connect([this] {
+    for (const RoomInfo& room : backend_->Rooms())
+      if (room.group_id == selected_group_id_ && room.player_uuid != room.coordinator_uuid)
+        backend_->RemoveRoomFromGroup(room.player_uuid);
+  });
+
   auto* grouping_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
   grouping_box->append(*group_all_button);
+  grouping_box->append(*ungroup_all_button);
   grouping_box->append(*Gtk::make_managed<Gtk::Separator>());
   grouping_box->append(*grouping_scroller);
   grouping_popover_.set_child(*grouping_box);
@@ -335,8 +344,9 @@ GnomosWindow::GnomosWindow()
   zones_scroller_.set_vexpand(true);
 
   // --- Content: queue/favorites/alarms/library tabs. The Now Playing
-  // panel (player_bar_) is no longer docked here — see content_split_view_
-  // below, which gives it its own wide side pane instead. ---
+  // panel (player_bar_) is docked separately, as a bottom bar spanning
+  // the whole window rather than living inside this content area — see
+  // root_box further down this constructor. ---
   view_stack_ = adw_view_stack_new();
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(queue_view_.gobj()), "queue",
                                        "Warteschlange", "view-list-symbolic");
@@ -432,30 +442,6 @@ GnomosWindow::GnomosWindow()
   queue_view_.signal_reorder_requested().connect(
       [this](unsigned from, unsigned to) { backend_->ReorderQueueItem(from, to); });
 
-  // --- Now Playing panel as a second AdwOverlaySplitView, not a plain
-  // Gtk::Paned — lets it collapse behind now_playing_toggle_button_ on
-  // narrow windows too (see the AdwBreakpoint below), the same treatment
-  // split_view_ (the room sidebar) already gets. player_bar_ is the
-  // "sidebar" here, pinned to the END so it keeps sitting on the right
-  // like before; its min/max width mirror its own set_size_request(280, -1).
-  content_split_view_ = adw_overlay_split_view_new();
-  adw_overlay_split_view_set_sidebar_position(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), GTK_PACK_END);
-  adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), GTK_WIDGET(player_bar_.gobj()));
-  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), GTK_WIDGET(content_box_.gobj()));
-  adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), 280);
-  adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), 360);
-  // G_BINDING_SYNC_CREATE syncs from the *source* (the toggle button's own
-  // "active") to the target on creation — so the button needs to start
-  // active itself, or this binding would immediately force show-sidebar
-  // back to false and hide the panel completely at normal window widths.
-  // Confirmed live: without this, both side panels were simply missing at
-  // startup, not just uncollapsed.
-  now_playing_toggle_button_.set_active(true);
-  g_object_bind_property(now_playing_toggle_button_.gobj(), "active", content_split_view_, "show-sidebar",
-                          static_cast<GBindingFlags>(G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE));
-  g_object_bind_property(content_split_view_, "collapsed", now_playing_toggle_button_.gobj(), "visible",
-                          G_BINDING_SYNC_CREATE);
-
   // --- Room sidebar as an AdwOverlaySplitView, not a plain Gtk::Paned —
   // lets it collapse behind sidebar_toggle_button_ on narrow windows (see
   // the AdwBreakpoint below), the adaptive behavior the README used to
@@ -463,7 +449,7 @@ GnomosWindow::GnomosWindow()
   // position this replaced.
   split_view_ = adw_overlay_split_view_new();
   adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(zones_scroller_.gobj()));
-  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), content_split_view_);
+  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(content_box_.gobj()));
   adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 220);
   adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 320);
   // sidebar_toggle_button_ only needs to exist (and be shown) once the
@@ -475,9 +461,11 @@ GnomosWindow::GnomosWindow()
   //
   // G_BINDING_SYNC_CREATE syncs from the *source* (the button's own
   // "active") to the target on creation, so the button needs to start
-  // active — see the identical comment on now_playing_toggle_button_ above
-  // for why (this was a real bug: both side panels were missing at
-  // startup until the window got narrow enough to collapse them).
+  // active first — otherwise this binding would immediately force
+  // show-sidebar back to false and hide the sidebar completely at normal
+  // window widths (a real bug once, confirmed live: the sidebar was
+  // simply missing at startup until the window got narrow enough to
+  // collapse it).
   sidebar_toggle_button_.set_active(true);
   g_object_bind_property(sidebar_toggle_button_.gobj(), "active", split_view_, "show-sidebar",
                           static_cast<GBindingFlags>(G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE));
@@ -493,15 +481,12 @@ GnomosWindow::GnomosWindow()
   // AdwBreakpointBin has no natural minimum size of its own (unlike a
   // regular container, which would size itself from its child) — without
   // this, GTK warns at every allocation and the window could in principle
-  // shrink to 0x0. 360x400 is a sane practical floor for this UI.
-  gtk_widget_set_size_request(breakpoint_bin, 360, 400);
+  // shrink to 0x0. 360x480 is a sane practical floor for this UI — a bit
+  // taller than before now that player_bar_ (below) adds a fixed-height
+  // bottom bar rather than sharing width with the content area.
+  gtk_widget_set_size_request(breakpoint_bin, 360, 480);
   adw_breakpoint_bin_set_child(ADW_BREAKPOINT_BIN(breakpoint_bin), split_view_);
 
-  // Two independent breakpoints on the same bin: below 900px the room
-  // sidebar collapses; below 700px the Now Playing panel *also* collapses
-  // (both conditions are true at once for anything under 700px, so both
-  // setters apply together there) — a progressive collapse from three
-  // panes down to one, rather than an all-or-nothing jump.
   AdwBreakpoint* sidebar_breakpoint =
       adw_breakpoint_new(adw_breakpoint_condition_new_length(ADW_BREAKPOINT_CONDITION_MAX_WIDTH, 900, ADW_LENGTH_UNIT_PX));
   GValue collapsed_value = G_VALUE_INIT;
@@ -509,18 +494,25 @@ GnomosWindow::GnomosWindow()
   g_value_set_boolean(&collapsed_value, TRUE);
   adw_breakpoint_add_setter(sidebar_breakpoint, G_OBJECT(split_view_), "collapsed", &collapsed_value);
   adw_breakpoint_bin_add_breakpoint(ADW_BREAKPOINT_BIN(breakpoint_bin), sidebar_breakpoint);
-
-  AdwBreakpoint* now_playing_breakpoint =
-      adw_breakpoint_new(adw_breakpoint_condition_new_length(ADW_BREAKPOINT_CONDITION_MAX_WIDTH, 700, ADW_LENGTH_UNIT_PX));
-  adw_breakpoint_add_setter(now_playing_breakpoint, G_OBJECT(content_split_view_), "collapsed", &collapsed_value);
-  adw_breakpoint_bin_add_breakpoint(ADW_BREAKPOINT_BIN(breakpoint_bin), now_playing_breakpoint);
   g_value_unset(&collapsed_value);
 
   LoadSplitFractions();
 
+  // --- Root layout: sidebar+content above, player_bar_ docked as a fixed-
+  // height bar along the bottom — not a side panel anymore (see
+  // PlayerBar's own header comment for why: a bottom bar gives the seek
+  // bar far more usable width than a ~300px-wide side column ever could).
+  // vexpand on breakpoint_bin only, not player_bar_, is what keeps the
+  // bar pinned to its natural height instead of being stretched.
+  auto* root_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
+  Gtk::Widget* wrapped_breakpoint_bin = Glib::wrap(breakpoint_bin);
+  wrapped_breakpoint_bin->set_vexpand(true);
+  root_box->append(*wrapped_breakpoint_bin);
+  root_box->append(player_bar_);
+
   // --- Toast overlay wraps everything, for error feedback ---
   toast_overlay_ = adw_toast_overlay_new();
-  adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), breakpoint_bin);
+  adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), GTK_WIDGET(root_box->gobj()));
   set_child(*Glib::wrap(toast_overlay_));
 
   // --- Backend wiring ---
@@ -663,10 +655,6 @@ void GnomosWindow::LoadSplitFractions()
     double sidebar_fraction = keyfile->get_double("window", "sidebar_fraction");
     if (sidebar_fraction > 0.0 && sidebar_fraction < 1.0)
       adw_overlay_split_view_set_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(split_view_), sidebar_fraction);
-    double now_playing_fraction = keyfile->get_double("window", "now_playing_fraction");
-    if (now_playing_fraction > 0.0 && now_playing_fraction < 1.0)
-      adw_overlay_split_view_set_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(content_split_view_),
-                                                          now_playing_fraction);
   }
   catch (const Glib::Error&)
   {
@@ -701,9 +689,6 @@ bool GnomosWindow::OnCloseRequest()
   // until show-sidebar is true again.
   keyfile->set_double("window", "sidebar_fraction",
                        adw_overlay_split_view_get_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(split_view_)));
-  keyfile->set_double(
-      "window", "now_playing_fraction",
-      adw_overlay_split_view_get_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(content_split_view_)));
   try
   {
     keyfile->save_to_file(StateFilePath());
@@ -2033,6 +2018,19 @@ void GnomosWindow::ShowTrackInfoDialog()
       ShowLibrarySearchDialog(artist);
     });
     button_box->append(*search_artist_button);
+  }
+
+  if (!np.album.empty())
+  {
+    auto* search_album_button = Gtk::make_managed<Gtk::Button>();
+    search_album_button->set_icon_name("media-optical-cd-audio-symbolic");
+    search_album_button->set_tooltip_text("Album in der Bibliothek suchen");
+    std::string album = np.album;
+    search_album_button->signal_clicked().connect([this, dialog, album] {
+      dialog->close();
+      ShowLibrarySearchDialog(album);
+    });
+    button_box->append(*search_album_button);
   }
 
   auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");

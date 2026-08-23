@@ -539,8 +539,34 @@ void NosonBackend::Next()
 void NosonBackend::Previous()
 {
   tasks_.Push([this] {
-    if (auto player = SnapshotPlayer())
-      player->Previous();
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+
+    // Restart the current track instead of skipping to the actual
+    // previous one once a few seconds into it — the same convention most
+    // media players use (Spotify, YouTube Music, ...): right at the start
+    // of a track, "Previous" means the previous track; partway through,
+    // it more usefully means "start this one over". Mirrors SeekAsync()'s
+    // own success handling below, since a restart really is just a seek
+    // to 0.
+    unsigned current_position;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      current_position = position_;
+    }
+    constexpr unsigned kRestartThresholdSeconds = 3;
+    if (current_position > kRestartThresholdSeconds && player->SeekTime(0))
+    {
+      {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        position_ = 0;
+      }
+      position_dispatcher_.emit();
+      return;
+    }
+
+    player->Previous();
   });
 }
 

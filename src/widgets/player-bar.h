@@ -18,13 +18,17 @@
 namespace gnomos
 {
 
-// The "Now Playing" side panel: cover art, transport, seek, and volume.
-// Styled after Euphonica's dedicated Now Playing panel (see
-// https://github.com/htkhiem/euphonica) — a tall, vertically-stacked panel
-// with a large circular art image, rather than a thin horizontal strip.
-// Purely a view: it emits signals for user actions and exposes Update*()
-// setters; GnomosWindow wires it to NosonBackend so this widget has no
-// knowledge of libnoson.
+// The "Now Playing" bottom bar: cover art + title/artist on the left,
+// transport controls above a wide seek bar in the middle, favorite/mute/
+// volume on the right — a horizontal bar spanning the full window width,
+// docked along the bottom (see GnomosWindow's root_box), rather than a
+// side panel. Deliberately gives the seek bar generous, hexpand()'d width
+// rather than the ~250px a side panel could ever offer it. Every round
+// icon button gets an explicit equal width/height size_request() plus
+// valign(CENTER) so the bar's own fixed height can never stretch it into
+// an oval. Purely a view: it emits signals for user actions and exposes
+// Update*() setters; GnomosWindow wires it to NosonBackend so this widget
+// has no knowledge of libnoson.
 class PlayerBar : public Gtk::Box
 {
 public:

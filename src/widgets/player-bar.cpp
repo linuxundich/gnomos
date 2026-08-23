@@ -9,6 +9,7 @@
 #include <glibmm/bytes.h>
 #include <glibmm/error.h>
 #include <glibmm/main.h>
+#include <gtkmm/separator.h>
 #include <pangomm/layout.h>
 
 #include "art-cache.h"
@@ -23,6 +24,20 @@ const char* IconForState(TransportState state)
 {
   return state == TransportState::Playing ? "media-playback-pause-symbolic"
                                            : "media-playback-start-symbolic";
+}
+
+// Mirrors the system volume icon convention (low/medium/high thresholds at
+// roughly a third and two-thirds) instead of always showing "high" for any
+// unmuted level, which read as inaccurate at low volumes.
+const char* IconForVolume(uint8_t volume, bool muted)
+{
+  if (muted || volume == 0)
+    return "audio-volume-muted-symbolic";
+  if (volume < 34)
+    return "audio-volume-low-symbolic";
+  if (volume < 67)
+    return "audio-volume-medium-symbolic";
+  return "audio-volume-high-symbolic";
 }
 
 std::string FormatTime(unsigned seconds)
@@ -43,66 +58,154 @@ std::string FormatTime(unsigned seconds)
 PlayerBar::PlayerBar()
 : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 {
-  // "view" gives the panel its own slightly different background shade
-  // from the surrounding window chrome — visual separation matching
-  // Euphonica's own Now Playing panel, which sits on a distinctly shaded
-  // (there, image-derived) background from the rest of the window. Applied
-  // to `this` (which fills the whole panel area content_split_view_ gives it)
-  // rather than to the centered content block below, so the shaded
-  // background actually covers the full panel instead of just a
-  // center-aligned island within it.
+  // "view" gives the bar its own slightly different background shade from
+  // the content area above it; the separator is what actually reads as
+  // "docked to the bottom edge" (no custom CSS provider anywhere in this
+  // app — see ARCHITECTURE.md — so a plain Gtk::Separator does this job
+  // rather than a hand-rolled top border).
   add_css_class("view");
   set_hexpand(true);
-  set_vexpand(true);
-  set_size_request(280, -1);
+  set_vexpand(false);
+  append(*Gtk::make_managed<Gtk::Separator>());
 
-  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
-  content->set_margin_top(24);
-  content->set_margin_bottom(18);
-  content->set_margin_start(18);
-  content->set_margin_end(18);
-  content->set_valign(Gtk::Align::CENTER);
-  content->set_vexpand(true);
-  append(*content);
+  auto* bar = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 14);
+  bar->set_margin_top(8);
+  bar->set_margin_bottom(8);
+  bar->set_margin_start(14);
+  bar->set_margin_end(14);
+  append(*bar);
 
-  // Large circular art — AdwAvatar (raw C API; see the header comment on
-  // avatar_) gives free native clipping of a custom image, no hand-rolled
-  // CSS clipping needed. The icon_name fallback is music-appropriate
-  // ("no album art") rather than AdwAvatar's own generic-person default,
-  // which would read as "no profile picture".
-  avatar_ = adw_avatar_new(200, nullptr, FALSE);
+  // --- Left: art + title/artist/next-track. No hexpand and no forced
+  // minimum width here (title/subtitle ellipsize down to almost nothing)
+  // — the center column (transport + seek bar) is what should claim
+  // available width, not this one; a hard floor here would only inflate
+  // the window's own enforced minimum size for no benefit. ---
+  auto* info_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 10);
+  info_box->set_valign(Gtk::Align::CENTER);
+
+  // AdwAvatar (raw C API; see the header comment on avatar_) gives free
+  // native circular clipping of a custom image, no hand-rolled CSS
+  // clipping needed. The icon_name fallback is music-appropriate ("no
+  // album art") rather than AdwAvatar's own generic-person default, which
+  // would read as "no profile picture". A fixed 48px size (AdwAvatar is
+  // always exactly square) plus explicit valign/halign CENTER on the
+  // button wrapping it — never FILL — so the bar's own fixed height can't
+  // stretch it into an oval.
+  avatar_ = adw_avatar_new(48, nullptr, FALSE);
   adw_avatar_set_icon_name(ADW_AVATAR(avatar_), "audio-x-generic-symbolic");
   auto* avatar_widget = Glib::wrap(avatar_);
   art_button_.set_child(*avatar_widget);
   art_button_.add_css_class("flat");
   art_button_.add_css_class("circular");
+  art_button_.set_valign(Gtk::Align::CENTER);
   art_button_.set_halign(Gtk::Align::CENTER);
   art_button_.set_tooltip_text("Titel-Details");
   art_button_.signal_clicked().connect([this] { signal_art_clicked_.emit(); });
-  content->append(art_button_);
+  info_box->append(art_button_);
 
-  title_label_.set_halign(Gtk::Align::CENTER);
-  title_label_.set_justify(Gtk::Justification::CENTER);
-  title_label_.set_wrap(true);
-  title_label_.set_lines(2);
+  auto* text_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
+  text_box->set_valign(Gtk::Align::CENTER);
+  text_box->set_hexpand(true);
+
+  title_label_.set_halign(Gtk::Align::START);
   title_label_.set_ellipsize(Pango::EllipsizeMode::END);
-  title_label_.add_css_class("title-2");
-  content->append(title_label_);
+  title_label_.add_css_class("heading");
+  text_box->append(title_label_);
 
-  subtitle_label_.set_halign(Gtk::Align::CENTER);
-  subtitle_label_.set_justify(Gtk::Justification::CENTER);
-  subtitle_label_.set_wrap(true);
+  subtitle_label_.set_halign(Gtk::Align::START);
   subtitle_label_.set_ellipsize(Pango::EllipsizeMode::END);
   subtitle_label_.add_css_class("dim-label");
-  content->append(subtitle_label_);
+  subtitle_label_.add_css_class("caption");
+  text_box->append(subtitle_label_);
 
-  auto* position_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  next_track_label_.set_halign(Gtk::Align::START);
+  next_track_label_.set_ellipsize(Pango::EllipsizeMode::END);
+  next_track_label_.add_css_class("dim-label");
+  next_track_label_.add_css_class("caption");
+  next_track_label_.set_visible(false);
+  text_box->append(next_track_label_);
+
+  info_box->append(*text_box);
+  bar->append(*info_box);
+
+  // --- Center: transport row above the seek bar. Both hexpand, so this
+  // whole column claims whatever width is left between the two fixed-ish
+  // side columns — deliberately: a bottom bar has far more usable
+  // horizontal room for the seek bar than the old side panel ever did,
+  // and it should actually use it rather than staying a fixed narrow
+  // width. ---
+  auto* center_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
+  center_box->set_hexpand(true);
+  center_box->set_valign(Gtk::Align::CENTER);
+
+  auto* transport_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 10);
+  transport_row->set_halign(Gtk::Align::CENTER);
+  transport_row->set_valign(Gtk::Align::CENTER);
+
+  // Every round button below gets an explicit *equal* width/height
+  // size_request() plus valign(CENTER) (never the Box default of FILL) —
+  // without both, the bar's own fixed height would stretch it into an
+  // oval rather than a circle.
+  shuffle_button_.set_icon_name("media-playlist-shuffle-symbolic");
+  shuffle_button_.add_css_class("flat");
+  shuffle_button_.add_css_class("circular");
+  shuffle_button_.set_size_request(32, 32);
+  shuffle_button_.set_valign(Gtk::Align::CENTER);
+  shuffle_button_.set_tooltip_text("Zufallswiedergabe");
+  shuffle_button_.signal_clicked().connect([this] { signal_shuffle_clicked_.emit(); });
+  transport_row->append(shuffle_button_);
+
+  previous_button_.set_icon_name("media-skip-backward-symbolic");
+  previous_button_.add_css_class("flat");
+  previous_button_.add_css_class("circular");
+  previous_button_.set_size_request(36, 36);
+  previous_button_.set_valign(Gtk::Align::CENTER);
+  previous_button_.signal_clicked().connect([this] { signal_previous_.emit(); });
+  transport_row->append(previous_button_);
+
+  play_pause_button_.set_icon_name(IconForState(TransportState::Stopped));
+  play_pause_button_.add_css_class("circular");
+  play_pause_button_.add_css_class("suggested-action");
+  play_pause_button_.set_size_request(44, 44);
+  play_pause_button_.set_valign(Gtk::Align::CENTER);
+  play_pause_button_.signal_clicked().connect([this] { signal_play_pause_.emit(); });
+  transport_row->append(play_pause_button_);
+
+  next_button_.set_icon_name("media-skip-forward-symbolic");
+  next_button_.add_css_class("flat");
+  next_button_.add_css_class("circular");
+  next_button_.set_size_request(36, 36);
+  next_button_.set_valign(Gtk::Align::CENTER);
+  next_button_.signal_clicked().connect([this] { signal_next_.emit(); });
+  transport_row->append(next_button_);
+
+  repeat_button_.set_icon_name("media-playlist-repeat-symbolic");
+  repeat_button_.add_css_class("flat");
+  repeat_button_.add_css_class("circular");
+  repeat_button_.set_size_request(32, 32);
+  repeat_button_.set_valign(Gtk::Align::CENTER);
+  repeat_button_.set_tooltip_text("Wiederholen");
+  repeat_button_.signal_clicked().connect([this] { signal_repeat_clicked_.emit(); });
+  transport_row->append(repeat_button_);
+
+  center_box->append(*transport_row);
+
+  auto* position_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+  position_row->set_hexpand(true);
   elapsed_label_.add_css_class("caption");
   elapsed_label_.add_css_class("dim-label");
   position_row->append(elapsed_label_);
   position_scale_.set_range(0, 1);
   position_scale_.set_draw_value(false);
   position_scale_.set_hexpand(true);
+  // A floor, not a cap — hexpand above already lets it grow generously on
+  // a normal-width window (see the class header comment on why the seek
+  // bar getting real width at all was the point of this whole layout
+  // change); kept modest rather than large so it doesn't itself inflate
+  // the window's enforced minimum size the way info_box's own floor would
+  // have (see info_box's comment above).
+  position_scale_.set_size_request(120, -1);
+  position_scale_.set_valign(Gtk::Align::CENTER);
   // Gtk::Range's own internal drag gesture claims the pointer sequence, so
   // a separately-added Gtk::GestureClick sibling never reliably sees a
   // "released" for it (confirmed live: the marker moved, but no seek ever
@@ -130,6 +233,7 @@ PlayerBar::PlayerBar()
   duration_label_.add_css_class("dim-label");
   duration_button_.set_child(duration_label_);
   duration_button_.add_css_class("flat");
+  duration_button_.set_valign(Gtk::Align::CENTER);
   duration_button_.set_tooltip_text("Gesamtdauer/Restzeit umschalten");
   duration_button_.signal_clicked().connect([this] {
     show_remaining_ = !show_remaining_;
@@ -137,70 +241,29 @@ PlayerBar::PlayerBar()
   });
   position_row->append(duration_button_);
   position_row->set_visible(false);
-  content->append(*position_row);
+  center_box->append(*position_row);
   position_row_ = position_row;
 
-  next_track_label_.set_halign(Gtk::Align::CENTER);
-  next_track_label_.set_justify(Gtk::Justification::CENTER);
-  next_track_label_.set_ellipsize(Pango::EllipsizeMode::END);
-  next_track_label_.add_css_class("dim-label");
-  next_track_label_.add_css_class("caption");
-  next_track_label_.set_visible(false);
-  content->append(next_track_label_);
+  bar->append(*center_box);
 
-  // Transport controls — centered row, matching Euphonica's Now Playing
-  // panel layout (shuffle/prev/play-pause/next/repeat in one line, rather
-  // than split across a horizontal strip).
-  auto* transport_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 12);
-  transport_row->set_halign(Gtk::Align::CENTER);
-  transport_row->set_margin_top(6);
-
-  shuffle_button_.set_icon_name("media-playlist-shuffle-symbolic");
-  shuffle_button_.add_css_class("flat");
-  shuffle_button_.set_tooltip_text("Zufallswiedergabe");
-  shuffle_button_.signal_clicked().connect([this] { signal_shuffle_clicked_.emit(); });
-  transport_row->append(shuffle_button_);
-
-  previous_button_.set_icon_name("media-skip-backward-symbolic");
-  previous_button_.add_css_class("flat");
-  previous_button_.add_css_class("circular");
-  previous_button_.signal_clicked().connect([this] { signal_previous_.emit(); });
-  transport_row->append(previous_button_);
-
-  play_pause_button_.set_icon_name(IconForState(TransportState::Stopped));
-  play_pause_button_.add_css_class("circular");
-  play_pause_button_.add_css_class("suggested-action");
-  play_pause_button_.set_size_request(52, 52);
-  play_pause_button_.signal_clicked().connect([this] { signal_play_pause_.emit(); });
-  transport_row->append(play_pause_button_);
-
-  next_button_.set_icon_name("media-skip-forward-symbolic");
-  next_button_.add_css_class("flat");
-  next_button_.add_css_class("circular");
-  next_button_.signal_clicked().connect([this] { signal_next_.emit(); });
-  transport_row->append(next_button_);
-
-  repeat_button_.set_icon_name("media-playlist-repeat-symbolic");
-  repeat_button_.add_css_class("flat");
-  repeat_button_.set_tooltip_text("Wiederholen");
-  repeat_button_.signal_clicked().connect([this] { signal_repeat_clicked_.emit(); });
-  transport_row->append(repeat_button_);
-
-  content->append(*transport_row);
-
-  // Secondary row — favorite + mute + volume, also centered.
-  auto* secondary_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
-  secondary_row->set_halign(Gtk::Align::CENTER);
-  secondary_row->set_margin_top(6);
+  // --- Right: favorite + mute + volume, a fixed-ish-width column. ---
+  auto* secondary_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  secondary_row->set_valign(Gtk::Align::CENTER);
 
   favorite_button_.set_icon_name("starred-symbolic");
   favorite_button_.add_css_class("flat");
+  favorite_button_.add_css_class("circular");
+  favorite_button_.set_size_request(32, 32);
+  favorite_button_.set_valign(Gtk::Align::CENTER);
   favorite_button_.set_tooltip_text("Zu Favoriten hinzufügen");
   favorite_button_.signal_clicked().connect([this] { signal_add_to_favorites_clicked_.emit(); });
   secondary_row->append(favorite_button_);
 
   mute_button_.set_icon_name("audio-volume-high-symbolic");
   mute_button_.add_css_class("flat");
+  mute_button_.add_css_class("circular");
+  mute_button_.set_size_request(32, 32);
+  mute_button_.set_valign(Gtk::Align::CENTER);
   mute_button_.signal_clicked().connect([this] {
     muted_ = !muted_;
     signal_mute_toggled_.emit(muted_);
@@ -208,7 +271,7 @@ PlayerBar::PlayerBar()
   secondary_row->append(mute_button_);
 
   volume_scale_.set_range(0, 100);
-  volume_scale_.set_size_request(140, -1);
+  volume_scale_.set_size_request(120, -1);
   volume_scale_.set_valign(Gtk::Align::CENTER);
   volume_scale_.signal_value_changed().connect([this] {
     if (!suppress_volume_signal_)
@@ -216,7 +279,7 @@ PlayerBar::PlayerBar()
   });
   secondary_row->append(volume_scale_);
 
-  content->append(*secondary_row);
+  bar->append(*secondary_row);
 
   SetEnabled(false);
 }
@@ -378,9 +441,10 @@ void PlayerBar::UpdateVolume(const VolumeInfo& volume)
   suppress_volume_signal_ = true;
   volume_scale_.set_value(volume.volume);
   suppress_volume_signal_ = false;
+  volume_scale_.set_tooltip_text(std::to_string(volume.volume) + "%");
 
   muted_ = volume.muted;
-  mute_button_.set_icon_name(volume.muted ? "audio-volume-muted-symbolic" : "audio-volume-high-symbolic");
+  mute_button_.set_icon_name(IconForVolume(volume.volume, volume.muted));
 }
 
 void PlayerBar::SetEnabled(bool enabled)
