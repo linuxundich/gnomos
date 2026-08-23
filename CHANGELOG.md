@@ -8,6 +8,13 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.5.2] - 2026-08-24
+
+### Fixed
+- A radio station's icon in the bottom Now Playing bar could get
+  permanently stuck on the generic fallback, even for a station whose
+  thumbnail displayed correctly everywhere else in the library.
+
 ## [0.5.1] - 2026-08-24
 
 ### Added
