@@ -614,6 +614,93 @@ clashed with the rest of a GNOME app.
     — Artists/Albums/Genres/Playlists all qualify once they're long
     enough; nothing here is specific to any one entry type.
 
+### A-Z index redesign: compact and scroll-tracking, not a fixed full alphabet
+
+The first version showed all 27 buckets (`0`, `A`-`Z`) at once, stretched
+to fill the available height — reported back live as not actually
+solving the problem: a shorter window still couldn't fit all 27 rows
+legibly, so "you can't see the whole alphabet at the edge anyway" was
+still true. Replaced with a compact, always-fully-visible window that
+tracks scroll position instead of trying to show everything at once:
+
+- `bucket_order_` (`std::vector<std::pair<char, int>>`) now holds only
+  the buckets actually *present* at this level, in alphabet order —
+  computed once by `RebuildIndexStrip()`, same bucketing (`BucketFor()`)
+  as before.
+- `UpdateIndexWindow()`, connected to `scroller_`'s own
+  `vadjustment`'s `signal_value_changed()`, finds the last bucket whose
+  first entry's own top edge (via `compute_bounds()`) is at or above the
+  current scroll position — i.e. "the bucket currently scrolled into",
+  the same convention section-header list UIs (iOS Contacts, for one)
+  already use — and re-renders `index_strip_` to show only `kContext` (3)
+  buckets above and below it, the current one highlighted
+  (`suggested-action`). Only re-renders when the *bucket* actually
+  changes, not on every scroll pixel.
+- `index_strip_` itself is no longer stretched (`vexpand`/`homogeneous`)
+  — just `valign(CENTER)`, sized to whatever its current ~7 rows need —
+  so it's never taller than the window regardless of how many buckets
+  exist in total.
+- `JumpToIndex()` needed no changes: setting the vertical adjustment's
+  value itself fires `signal_value_changed()`, so clicking a letter
+  re-centers the window on the newly-current bucket as a natural
+  consequence of `UpdateIndexWindow()` already being connected to that
+  signal, not a separate step.
+
+### Fixed: browsing local library after visiting a service came back empty
+
+Reported live: internal library → click a service (e.g. bonob, itself
+reached via the section sidebar's own service sub-item, not just the
+library's root screen) → click a *different* sidebar sub-item to return
+to local browsing (e.g. "Alben") → empty content.
+
+Root cause: `NosonBackend::BrowseLibraryAsync()` only ever reset
+`active_smapi_`/`active_service_` in its `object_id == ""` branch (the
+true root). `GnomosWindow::RebuildLibraryNavEntries()`'s own sidebar
+sub-items (see the "Library categories as sidebar sub-items" section
+above) call `BrowseLibraryAsync()` with a *local* object_id directly,
+never routing through `""` first — so if `active_smapi_` was still set
+from a service visited earlier, `BrowseLibraryAsync()`'s
+`if (active_smapi_) { BrowseActiveServiceLocked(object_id); }` branch
+wrongly routed the local id (e.g. `"A:ALBUM"`) through the *stale
+service session* instead, which of course has no item by that id and
+came back empty.
+
+Fixed by recognizing local object_ids on sight — they always carry one of
+three reserved prefixes (`"A:"`, `"SQ:"`, `"R:"`, per the root categories
+`BrowseLibraryAsync("")` itself builds) that a SMAPI service would never
+return as one of its own item ids — and force-resetting
+`active_smapi_`/`active_service_` whenever a browse request looks local,
+regardless of what was active before. `BrowseLibraryAsync("")`'s own
+existing reset is unaffected; this just closes the gap for every *other*
+caller that jumps straight to a local id.
+
+### Fixed: real images displayed noticeably larger than fallback icons
+
+Reported live with a screenshot: a bonob category tile showing a real
+downloaded icon image came out visibly bigger than neighboring tiles
+showing a fallback symbolic icon, despite both being the same
+`CoverThumbnail(120)`.
+
+Root cause: `Gtk::Image::set_pixel_size()` only constrains icon-name/GIcon
+rendering — a raw `Gdk::Texture` set via `Gtk::Image::set()` (real
+downloaded art, an artist photo, a service's own icon image) has no size
+cap of its own and displays at its natural decoded resolution. Fixed with
+a new `ArtCache::GetScaled(uri, target_size)`, decoding via
+`Gdk::Pixbuf::create_from_stream_at_scale()` (a purpose-built scaling
+loader) rather than resizing an already-decoded `Gdk::Texture` after the
+fact — texture pixel data is only reachable via
+`Gdk::Texture::download()`, whose Cairo-ARGB32 layout (premultiplied
+alpha, platform-dependent byte order) would need its own careful,
+easy-to-get-subtly-wrong conversion back to GdkPixbuf's plain
+non-premultiplied RGBA; scaling from the original bytes sidesteps that
+conversion entirely. `ArtCache::Entry` gained a `raw_bytes` field
+(populated by `Put()` and `Get()`'s own disk-fallback, alongside the
+existing `texture` field) so a memory-cache hit can still be re-decoded
+at an arbitrary target size without another disk read. `Get()`/`Put()`
+themselves are unchanged — `PlayerBar`'s own (single, larger) art image
+had no such problem to fix, so only `CoverThumbnail` switched to the new
+method.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

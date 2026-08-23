@@ -132,16 +132,27 @@ LibraryView::LibraryView()
   scroller_.set_child(list_box_);
   scroller_.set_vexpand(true);
   scroller_.set_hexpand(true);
+  // Keeps the index window's "current" letter in sync with what's
+  // actually scrolled into view — see UpdateIndexWindow()'s own comment
+  // for why a live-tracking small window replaced an earlier attempt at
+  // showing the full A-Z range at once (it didn't reliably fit).
+  scroller_.get_vadjustment()->signal_value_changed().connect(sigc::mem_fun(*this, &LibraryView::UpdateIndexWindow));
 
-  // A-Z jump index (see RebuildIndexStrip()) — narrow, fixed-width, its
-  // own "card" background so it reads as a distinct control rather than
-  // part of the scrolled content next to it, matching the user's own
-  // "schmale farblich abgesetzte Spalte" request. Only visible once
-  // SetEntries() has enough entries to actually be worth jumping around
-  // in — see RebuildIndexStrip()'s own threshold.
+  // A-Z jump index (see RebuildIndexStrip()/UpdateIndexWindow()) — narrow,
+  // fixed-width, its own "card" background so it reads as a distinct
+  // control rather than part of the scrolled content next to it, matching
+  // the user's own "schmale farblich abgesetzte Spalte" request.
+  // Vertically centered and only as tall as its own handful of rows need
+  // — not stretched to fill the available height — so it always fits
+  // regardless of window height, unlike an earlier version that tried to
+  // show the entire alphabet at once. Only visible once SetEntries() has
+  // enough entries to actually be worth jumping around in — see
+  // RebuildIndexStrip()'s own threshold.
   index_strip_.add_css_class("card");
-  index_strip_.set_homogeneous(true);
-  index_strip_.set_vexpand(true);
+  index_strip_.set_valign(Gtk::Align::CENTER);
+  index_strip_.set_margin_top(6);
+  index_strip_.set_margin_bottom(6);
+  index_strip_.set_margin_start(4);
   index_strip_.set_size_request(28, -1);
   index_strip_.set_visible(false);
 
@@ -361,12 +372,11 @@ char BucketFor(const std::string& title)
 
 void LibraryView::RebuildIndexStrip(const std::vector<LibraryEntry>& entries)
 {
-  while (Gtk::Widget* child = index_strip_.get_first_child())
-    index_strip_.remove(*child);
+  bucket_order_.clear();
+  current_bucket_pos_ = -1;
 
   // Only worth showing once there's enough content to actually need
-  // jumping around in — a handful of entries doesn't need this, and the
-  // 27-row strip would dwarf a short list.
+  // jumping around in — a handful of entries doesn't need this.
   static constexpr size_t kMinEntriesForIndex = 30;
   if (entries.size() < kMinEntriesForIndex)
   {
@@ -381,33 +391,75 @@ void LibraryView::RebuildIndexStrip(const std::vector<LibraryEntry>& entries)
     if (first_index_for_bucket.find(bucket) == first_index_for_bucket.end())
       first_index_for_bucket[bucket] = static_cast<int>(i);
   }
+  bucket_order_.assign(first_index_for_bucket.begin(), first_index_for_bucket.end());
 
-  static const std::string kAlphabet = "0ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  for (char c : kAlphabet)
+  index_strip_.set_visible(!bucket_order_.empty());
+  // current_bucket_pos_ is already -1 (reset above), which never matches
+  // any real position UpdateIndexWindow() computes, so this always
+  // renders — the freshly built list_box_/flow_box_ children aren't
+  // allocated yet at this exact point (that only happens once GTK's next
+  // layout pass runs), so compute_bounds() below will find nothing to
+  // measure yet and this falls back to showing bucket 0 — corrected
+  // automatically by the very next real scroll/layout event, since that's
+  // what actually re-invokes this.
+  UpdateIndexWindow();
+}
+
+void LibraryView::UpdateIndexWindow()
+{
+  if (bucket_order_.empty())
+    return;
+
+  double scroll_value = scroller_.get_vadjustment()->get_value();
+  Gtk::Widget& container =
+      grid_mode_active_ ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_);
+
+  // Last bucket whose first entry's own top edge is at or above the
+  // current scroll position — i.e. the bucket currently scrolled into,
+  // the same "top of viewport decides the current section" convention
+  // list-with-section-headers UIs (e.g. iOS Contacts) already use.
+  int pos = 0;
+  for (size_t i = 0; i < bucket_order_.size(); ++i)
   {
+    Gtk::Widget* target = grid_mode_active_
+                              ? static_cast<Gtk::Widget*>(flow_box_.get_child_at_index(bucket_order_[i].second))
+                              : static_cast<Gtk::Widget*>(list_box_.get_row_at_index(bucket_order_[i].second));
+    if (!target)
+      continue;
+    auto bounds = target->compute_bounds(container);
+    if (!bounds || bounds->get_y() > scroll_value + 1.0)
+      break;
+    pos = static_cast<int>(i);
+  }
+
+  if (pos == current_bucket_pos_)
+    return;
+  current_bucket_pos_ = pos;
+
+  while (Gtk::Widget* child = index_strip_.get_first_child())
+    index_strip_.remove(*child);
+
+  // Rows shown above/below the current letter — kept small on purpose:
+  // the whole point of tracking the current bucket live is to never need
+  // more than a handful of rows regardless of window height or how many
+  // buckets exist in total.
+  static constexpr int kContext = 3;
+  int first = std::max(0, pos - kContext);
+  int last = std::min(static_cast<int>(bucket_order_.size()) - 1, pos + kContext);
+  for (int i = first; i <= last; ++i)
+  {
+    char c = bucket_order_[static_cast<size_t>(i)].first;
     auto* label = Gtk::make_managed<Gtk::Label>(std::string(1, c));
     label->add_css_class("caption");
-
-    auto it = first_index_for_bucket.find(c);
-    if (it == first_index_for_bucket.end())
-    {
-      // Still shown (not removed) so the strip's spatial layout stays a
-      // reliable, consistent guide to "roughly where" a letter is even
-      // when nothing that entries this level happens to start with it.
-      label->add_css_class("dim-label");
-      label->set_opacity(0.35);
-      index_strip_.append(*label);
-      continue;
-    }
-
     auto* button = Gtk::make_managed<Gtk::Button>();
     button->set_child(*label);
     button->add_css_class("flat");
-    int target_index = it->second;
+    if (i == pos)
+      button->add_css_class("suggested-action");
+    int target_index = bucket_order_[static_cast<size_t>(i)].second;
     button->signal_clicked().connect([this, target_index] { JumpToIndex(target_index); });
     index_strip_.append(*button);
   }
-  index_strip_.set_visible(true);
 }
 
 void LibraryView::JumpToIndex(int entry_index)
@@ -418,6 +470,10 @@ void LibraryView::JumpToIndex(int entry_index)
   if (!target)
     return;
   Gtk::Widget& container = grid_mode_active_ ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_);
+  // set_value() triggers vadjustment's own signal_value_changed(), which
+  // UpdateIndexWindow() is connected to — the index window re-centers on
+  // the newly-current bucket as a natural side effect, not a separate
+  // step here.
   if (auto bounds = target->compute_bounds(container))
     scroller_.get_vadjustment()->set_value(bounds->get_y());
 }

@@ -50,6 +50,13 @@ public:
 private:
   void OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::RefPtr<Gio::File>& file, unsigned generation);
 
+  // Constructor's own pixel_size argument, kept for ArtCache::GetScaled()
+  // calls later — a plain Gdk::Texture set via Gtk::Image::set() has no
+  // size cap of its own (unlike icon-name/GIcon rendering, which
+  // set_pixel_size() already handles), so every real image load needs to
+  // ask ArtCache to decode already scaled to this, rather than relying on
+  // the widget to shrink an arbitrarily-sized source image on its own.
+  int pixel_size_ = 40;
   std::string fallback_icon_name_ = "audio-x-generic-symbolic";
   std::string current_uri_;
   unsigned generation_ = 0;

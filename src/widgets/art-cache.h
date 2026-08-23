@@ -42,6 +42,21 @@ public:
   // decoded as an image at all.
   Glib::RefPtr<Gdk::Texture> Put(const std::string& uri, const Glib::RefPtr<Glib::Bytes>& raw_bytes);
 
+  // Same lookup as Get() (memory, then disk, empty RefPtr on a genuine
+  // miss — still means the caller should fetch over HTTP), but the
+  // returned texture is decoded so neither dimension exceeds target_size
+  // (aspect ratio preserved), rather than Get()'s always-original-resolution
+  // one. Needed because unlike Gtk::Image's icon-name/GIcon rendering
+  // (which respects set_pixel_size()), a raw Gdk::Texture set via
+  // Gtk::Image::set() has no size cap of its own — confirmed live: list/
+  // grid thumbnails showing a real downloaded image (an album cover, a
+  // service's own icon, a fetched artist photo) came out visibly larger
+  // than neighboring tiles showing a fallback icon, which does respect
+  // pixel_size. CoverThumbnail uses this instead of Get() for exactly
+  // that reason; Get()/Put() themselves are unchanged, since PlayerBar's
+  // own (single, larger) art image has no such problem to fix.
+  Glib::RefPtr<Gdk::Texture> GetScaled(const std::string& uri, int target_size);
+
   // Persisted setting (see art-cache.ini next to state.ini/linked-services.ini
   // under $XDG_CONFIG_HOME/gnomos/). Setting a smaller limit than the
   // current on-disk usage evicts immediately.
@@ -60,7 +75,11 @@ private:
 
   static std::string CacheDir();
   std::string PathFor(const std::string& uri) const;
-  void InsertMemory(const std::string& uri, const Glib::RefPtr<Gdk::Texture>& texture);
+  // raw_bytes may be an empty RefPtr — GetScaled() needs it kept around
+  // for its own on-demand scaled decode, but Get()/Put()'s existing
+  // full-resolution callers don't have a reason to provide it.
+  void InsertMemory(const std::string& uri, const Glib::RefPtr<Gdk::Texture>& texture,
+                     const Glib::RefPtr<Glib::Bytes>& raw_bytes = {});
   void Touch(const std::string& uri);
   void EnforceDiskLimit();
   void LoadSettings();
@@ -69,6 +88,10 @@ private:
   struct Entry
   {
     Glib::RefPtr<Gdk::Texture> texture;
+    // Kept alongside the full-resolution texture specifically so
+    // GetScaled() can re-decode at an arbitrary target size on demand
+    // without hitting disk again — see InsertMemory()'s own comment.
+    Glib::RefPtr<Glib::Bytes> raw_bytes;
     std::list<std::string>::iterator lru_it;
   };
 

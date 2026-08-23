@@ -12,7 +12,7 @@
 namespace gnomos
 {
 
-CoverThumbnail::CoverThumbnail(int pixel_size)
+CoverThumbnail::CoverThumbnail(int pixel_size) : pixel_size_(pixel_size)
 {
   set_from_icon_name("audio-x-generic-symbolic");
   set_pixel_size(pixel_size);
@@ -64,7 +64,7 @@ void CoverThumbnail::SetArtUri(const std::string& uri)
     return;
   }
 
-  if (auto cached = ArtCache::Instance().Get(uri))
+  if (auto cached = ArtCache::Instance().GetScaled(uri, pixel_size_))
   {
     set(cached);
     return;
@@ -96,11 +96,21 @@ void CoverThumbnail::OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib
     {
       auto bytes = Glib::Bytes::create(contents, length);
       g_free(contents);
-      auto texture = ArtCache::Instance().Put(current_uri_, bytes);
-      if (texture)
-        set(texture);
+      // Put() first, so ArtCache has this uri's raw bytes on hand — then
+      // GetScaled() re-decodes from exactly those (a cache hit, no disk
+      // I/O) at this widget's own pixel_size_ rather than displaying
+      // Put()'s full-resolution return value directly.
+      if (ArtCache::Instance().Put(current_uri_, bytes))
+      {
+        if (auto scaled = ArtCache::Instance().GetScaled(current_uri_, pixel_size_))
+          set(scaled);
+        else
+          set_from_icon_name(fallback_icon_name_);
+      }
       else
+      {
         set_from_icon_name(fallback_icon_name_);
+      }
     }
     else
     {

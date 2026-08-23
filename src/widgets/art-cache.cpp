@@ -6,9 +6,11 @@
 #include <vector>
 
 #include <glib.h>
+#include <gdkmm/pixbuf.h>
 #include <giomm/file.h>
 #include <giomm/fileenumerator.h>
 #include <giomm/fileinfo.h>
+#include <giomm/memoryinputstream.h>
 #include <glibmm/checksum.h>
 #include <glibmm/datetime.h>
 #include <glibmm/error.h>
@@ -24,6 +26,33 @@ namespace
 std::string SettingsPath()
 {
   return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "art-cache.ini");
+}
+
+// Decodes raw_bytes scaled so neither dimension exceeds target_size
+// (aspect ratio preserved) — via GdkPixbuf's own purpose-built scaling
+// loader rather than decoding at full resolution and resizing a
+// Gdk::Texture after the fact (texture pixel data is only accessible via
+// Gdk::Texture::download(), whose Cairo-ARGB32 layout — premultiplied
+// alpha, platform-dependent byte order — would need its own careful,
+// easy-to-get-subtly-wrong conversion back to GdkPixbuf's plain
+// non-premultiplied RGBA; scaling from the original bytes sidesteps that
+// entirely). Returns an empty RefPtr if raw_bytes can't be decoded as an
+// image at all.
+Glib::RefPtr<Gdk::Texture> DecodeScaledTexture(const Glib::RefPtr<Glib::Bytes>& raw_bytes, int target_size)
+{
+  try
+  {
+    auto stream = Gio::MemoryInputStream::create();
+    gsize size = 0;
+    gconstpointer data = raw_bytes->get_data(size);
+    stream->add_data(data, static_cast<gssize>(size), nullptr);
+    auto pixbuf = Gdk::Pixbuf::create_from_stream_at_scale(stream, target_size, target_size, true);
+    return Gdk::Texture::create_for_pixbuf(pixbuf);
+  }
+  catch (const Glib::Error&)
+  {
+    return {};
+  }
 }
 }  // namespace
 
@@ -107,12 +136,15 @@ void ArtCache::Touch(const std::string& uri)
   it->second.lru_it = lru_.begin();
 }
 
-void ArtCache::InsertMemory(const std::string& uri, const Glib::RefPtr<Gdk::Texture>& texture)
+void ArtCache::InsertMemory(const std::string& uri, const Glib::RefPtr<Gdk::Texture>& texture,
+                             const Glib::RefPtr<Glib::Bytes>& raw_bytes)
 {
   auto it = entries_.find(uri);
   if (it != entries_.end())
   {
     it->second.texture = texture;
+    if (raw_bytes)
+      it->second.raw_bytes = raw_bytes;
     Touch(uri);
     return;
   }
@@ -125,7 +157,7 @@ void ArtCache::InsertMemory(const std::string& uri, const Glib::RefPtr<Gdk::Text
   }
 
   lru_.push_front(uri);
-  entries_.emplace(uri, Entry{texture, lru_.begin()});
+  entries_.emplace(uri, Entry{texture, raw_bytes, lru_.begin()});
 }
 
 Glib::RefPtr<Gdk::Texture> ArtCache::Get(const std::string& uri)
@@ -148,7 +180,7 @@ Glib::RefPtr<Gdk::Texture> ArtCache::Get(const std::string& uri)
     std::string contents = Glib::file_get_contents(path);
     auto bytes = Glib::Bytes::create(contents.data(), contents.size());
     auto texture = Gdk::Texture::create_from_bytes(bytes);
-    InsertMemory(uri, texture);
+    InsertMemory(uri, texture, bytes);
     // Re-touch the file's mtime so this counts as recently used for the
     // mtime-based eviction order in EnforceDiskLimit() — otherwise a
     // frequently-viewed-but-never-re-Put() art would look stale and get
@@ -158,6 +190,41 @@ Glib::RefPtr<Gdk::Texture> ArtCache::Get(const std::string& uri)
     file->set_attribute_uint64(G_FILE_ATTRIBUTE_TIME_MODIFIED, static_cast<guint64>(now.to_unix()),
                                 Gio::FileQueryInfoFlags::NONE);
     return texture;
+  }
+  catch (const Glib::Error&)
+  {
+    return {};
+  }
+}
+
+Glib::RefPtr<Gdk::Texture> ArtCache::GetScaled(const std::string& uri, int target_size)
+{
+  auto it = entries_.find(uri);
+  if (it != entries_.end() && it->second.raw_bytes)
+  {
+    Touch(uri);
+    return DecodeScaledTexture(it->second.raw_bytes, target_size);
+  }
+
+  // Not in memory (or a memory entry exists but predates raw_bytes being
+  // tracked — can't happen post-restart, but harmless to also just fall
+  // through to disk here) — same disk fallback Get() has, just decoding
+  // the result at target_size once found instead of at full resolution.
+  const std::string path = PathFor(uri);
+  if (!Glib::file_test(path, Glib::FileTest::EXISTS))
+    return {};
+
+  try
+  {
+    std::string contents = Glib::file_get_contents(path);
+    auto bytes = Glib::Bytes::create(contents.data(), contents.size());
+    auto texture = Gdk::Texture::create_from_bytes(bytes);
+    InsertMemory(uri, texture, bytes);
+    auto file = Gio::File::create_for_path(path);
+    auto now = Glib::DateTime::create_now_local();
+    file->set_attribute_uint64(G_FILE_ATTRIBUTE_TIME_MODIFIED, static_cast<guint64>(now.to_unix()),
+                                Gio::FileQueryInfoFlags::NONE);
+    return DecodeScaledTexture(bytes, target_size);
   }
   catch (const Glib::Error&)
   {
@@ -177,7 +244,7 @@ Glib::RefPtr<Gdk::Texture> ArtCache::Put(const std::string& uri, const Glib::Ref
     return {};
   }
 
-  InsertMemory(uri, texture);
+  InsertMemory(uri, texture, raw_bytes);
 
   // Best-effort disk write — a failure here (disk full, permissions, ...)
   // just means this particular art won't survive a restart, not a reason

@@ -111,11 +111,23 @@ private:
                  bool load_artist_images);
   void BuildGrid(const std::vector<LibraryEntry>& entries, bool load_artist_images);
   // A-Z jump index down index_strip_'s left edge — one row per bucket
-  // ('0' for anything that doesn't start with a Latin letter, then A..Z),
-  // each jumping to that bucket's first entry when the list has enough
-  // entries to be worth it. See its own .cpp comment for the threshold and
-  // the accent-folding behind bucketing.
+  // ('0' for anything that doesn't start with a Latin letter, then A..Z)
+  // that actually has at least one entry, jumping to that bucket's first
+  // entry when clicked. Only a small window of buckets around the
+  // *current* one is ever shown at once (see UpdateIndexWindow()) — with
+  // 27 possible buckets, showing all of them at a fixed height either
+  // crams them illegibly small or, full-height, still doesn't fit a
+  // shorter window at all; a compact, scroll-following window is legible
+  // regardless of window height and needs no more space than a handful of
+  // rows ever take. See the .cpp's own comments for the threshold and the
+  // accent-folding behind bucketing.
   void RebuildIndexStrip(const std::vector<LibraryEntry>& entries);
+  // Recomputes which bucket is "current" (the one at/just above the top
+  // of the visible scrolled area) and re-renders index_strip_'s small
+  // window around it, if that bucket actually changed since the last
+  // call — connected to scroller_'s own vadjustment, so the index tracks
+  // scrolling live rather than staying static.
+  void UpdateIndexWindow();
   void JumpToIndex(int entry_index);
 
   Gtk::Button back_button_;
@@ -133,11 +145,18 @@ private:
   Gtk::ListBox list_box_;
   Gtk::FlowBox flow_box_;
   Gtk::Label placeholder_;
-  Gtk::Box index_strip_{Gtk::Orientation::VERTICAL, 0};
+  Gtk::Box index_strip_{Gtk::Orientation::VERTICAL, 2};
   // Set by the most recent SetEntries() — JumpToIndex() needs to know
   // whether entry indices currently map onto flow_box_'s children or
   // list_box_'s rows.
   bool grid_mode_active_ = false;
+  // (bucket letter, first entry index) for every bucket actually present
+  // at the current level, in alphabet order — recomputed by
+  // RebuildIndexStrip(), read by UpdateIndexWindow() on every scroll tick.
+  std::vector<std::pair<char, int>> bucket_order_;
+  // Position within bucket_order_ last rendered as "current" — re-render
+  // only happens when this actually changes, not on every scroll pixel.
+  int current_bucket_pos_ = -1;
   sigc::signal<void(unsigned)> signal_entry_activated_;
   sigc::signal<void()> signal_back_requested_;
   sigc::signal<void()> signal_search_requested_;

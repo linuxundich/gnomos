@@ -1739,6 +1739,29 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       return;
     }
 
+    // A local library object_id always carries one of these three reserved
+    // prefixes (see the root categories BrowseLibraryAsync("") builds) — a
+    // SMAPI service would never itself return one of these as an item id,
+    // so seeing one here means we're browsing local content regardless of
+    // whether active_smapi_ is still set from a service visited earlier.
+    // Confirmed live: jumping from a service straight to a local library
+    // sidebar shortcut (GnomosWindow::RebuildLibraryNavEntries()) — which
+    // calls BrowseLibraryAsync() with the local id directly, not via the ""
+    // root first — silently routed that local id through the still-active
+    // service session instead, coming back empty rather than showing the
+    // local level at all.
+    bool looks_local = object_id.compare(0, 2, "A:") == 0 || object_id.compare(0, 3, "SQ:") == 0 ||
+                        object_id.compare(0, 2, "R:") == 0;
+    if (looks_local && active_smapi_)
+    {
+      active_smapi_.reset();
+      active_service_.reset();
+      {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        active_service_search_categories_.clear();
+      }
+    }
+
     if (active_smapi_)
     {
       BrowseActiveServiceLocked(object_id);
