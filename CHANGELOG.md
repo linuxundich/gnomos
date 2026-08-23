@@ -8,6 +8,15 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.5.1] - 2026-08-24
+
+### Added
+- Real thumbnails for custom radio stations added via the Radio-Browser
+  search — both in the library listing and the bottom Now Playing bar
+  while one is playing.
+- A link to the GitHub project (and its issue tracker) in the About
+  dialog, plus a credit for the Radio Browser project.
+
 ## [0.5.0] - 2026-08-24
 
 ### Added

@@ -15,6 +15,14 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.5.1" date="2026-08-24">
+      <description>
+        <p>Real thumbnails for custom radio stations added via the
+        Radio-Browser search, shown both in the library and the Now
+        Playing bar. The About dialog now links to the GitHub project
+        and credits Radio Browser.</p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-08-24">
       <description>
         <p>Radio station search against radio-browser.info's public
