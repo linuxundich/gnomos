@@ -22,7 +22,7 @@ own libnoson backend already does the hard work of actually talking to
 Sonos hardware, writing a new frontend on top of it seemed like a
 reasonable way to give noson new legs as a proper GNOME citizen, without
 starting from zero on the UPnP/SOAP side. Gnomos does not modify or fork
-libnoson; it links against a vendored copy and uses its public API.
+libnoson; it links against it as a git submodule and uses its public API.
 
 The first-generation focus comes from the same motivation: those speakers
 are still fully functional, just no longer supported by Sonos's current

@@ -8,6 +8,28 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.3.4] - 2026-08-23
+
+### Added
+- "Play all"/"add all to queue" in the library view, once you've browsed
+  into a track listing (e.g. an album).
+- Success toasts ("added to queue", "added as next") for the existing
+  add-to-queue/play-next actions on favorites and library items.
+- An optional desktop notification on track change (off by default,
+  Settings toggle).
+- Window size and maximized state are now remembered across restarts.
+
+### Changed
+- libnoson is now vendored as a proper git submodule instead of a plain
+  copy of its source — cloning the repository now needs
+  `--recurse-submodules` (see README).
+
+### Fixed
+- The room sidebar and Now Playing panel could be completely invisible at
+  a normal window width, only reappearing once the window was narrow
+  enough to trigger their collapse — a regression from 0.3.3's adaptive
+  layout work.
+
 ## [0.3.3] - 2026-08-23
 
 ### Added
