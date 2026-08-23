@@ -142,6 +142,14 @@ struct SoundSettings
   bool loudness = false;
   bool nightmode = false;
   bool nightmode_supported = false;  // not every model has this (e.g. no subwoofer channel)
+  // Fixed volume / line-out mode: with it on, the device ignores its own
+  // volume control entirely (meant for feeding a receiver/amp that already
+  // has its own volume knob) — same OutputFixed concept
+  // NosonBackend::SetGroupVolume()/SetMuted() already skip when scaling a
+  // group. Only relevant for a device wired via line-out, so gated behind
+  // GetSupportsOutputFixed() rather than always shown.
+  bool output_fixed_supported = false;
+  bool output_fixed = false;
 };
 
 struct QueueItem

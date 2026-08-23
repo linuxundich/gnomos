@@ -36,6 +36,10 @@ public:
   sigc::signal<void(std::string)>& signal_delete_requested() { return signal_delete_requested_; }
   sigc::signal<void()>& signal_add_requested() { return signal_add_requested_; }
   sigc::signal<void(std::string)>& signal_edit_requested() { return signal_edit_requested_; }
+  // Opens the same add-alarm dialog as signal_add_requested(), but
+  // pre-filled from this alarm's own settings — for a similar alarm
+  // (e.g. "same time, different room") without re-entering everything.
+  sigc::signal<void(std::string)>& signal_duplicate_requested() { return signal_duplicate_requested_; }
 
 private:
   Gtk::Button add_button_;
@@ -47,6 +51,7 @@ private:
   sigc::signal<void(std::string)> signal_delete_requested_;
   sigc::signal<void()> signal_add_requested_;
   sigc::signal<void(std::string)> signal_edit_requested_;
+  sigc::signal<void(std::string)> signal_duplicate_requested_;
 };
 
 }  // namespace gnomos

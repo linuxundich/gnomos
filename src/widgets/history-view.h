@@ -16,8 +16,10 @@ namespace gnomos
 {
 
 // Read-only list of recently played tracks (client-side history — see
-// HistoryEntry). No per-row actions: unlike QueueItem/FavoriteItem, a
-// HistoryEntry carries no object_id/URI it could be replayed from.
+// HistoryEntry). A HistoryEntry carries no object_id/URI it could be
+// replayed from directly, so the one per-row action is a search button —
+// re-finding the same artist/title in the library rather than playing the
+// exact recorded item.
 class HistoryView : public Gtk::Box
 {
 public:
@@ -27,6 +29,7 @@ public:
   void Clear();
 
   sigc::signal<void()>& signal_clear_requested() { return signal_clear_requested_; }
+  sigc::signal<void(unsigned)>& signal_search_requested() { return signal_search_requested_; }
 
 private:
   Gtk::Button clear_button_;
@@ -34,6 +37,7 @@ private:
   Gtk::ListBox list_box_;
   Gtk::Label placeholder_;
   sigc::signal<void()> signal_clear_requested_;
+  sigc::signal<void(unsigned)> signal_search_requested_;
 };
 
 }  // namespace gnomos

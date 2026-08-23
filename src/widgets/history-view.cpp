@@ -48,6 +48,7 @@ HistoryView::HistoryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeholde
 void HistoryView::SetItems(const std::vector<HistoryEntry>& items)
 {
   Clear();
+  unsigned index = 0;
   for (const HistoryEntry& entry : items)
   {
     auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
@@ -82,7 +83,16 @@ void HistoryView::SetItems(const std::vector<HistoryEntry>& items)
     }
     row_box->append(*labels);
 
+    auto* search_button = Gtk::make_managed<Gtk::Button>();
+    search_button->set_icon_name("system-search-symbolic");
+    search_button->add_css_class("flat");
+    search_button->set_valign(Gtk::Align::CENTER);
+    search_button->set_tooltip_text("In der Bibliothek suchen");
+    search_button->signal_clicked().connect([this, index] { signal_search_requested_.emit(index); });
+    row_box->append(*search_button);
+
     list_box_.append(*row_box);
+    ++index;
   }
 }
 

@@ -319,6 +319,23 @@ GnomosWindow::GnomosWindow()
   nightmode_row->append(nightmode_switch_);
   sound_box->append(*nightmode_row);
 
+  auto* output_fixed_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  auto* output_fixed_label = Gtk::make_managed<Gtk::Label>("Feste Lautstärke (Line-Out)");
+  output_fixed_label->set_halign(Gtk::Align::START);
+  output_fixed_label->set_hexpand(true);
+  output_fixed_row->append(*output_fixed_label);
+  output_fixed_switch_.set_valign(Gtk::Align::CENTER);
+  output_fixed_switch_.set_tooltip_text(
+      "Ignoriert die eigene Lautstärkeregelung — für den Anschluss an einen Verstärker mit eigener Lautstärke");
+  output_fixed_switch_.signal_state_set().connect(
+      [this](bool state) -> bool {
+        backend_->SetOutputFixed(state);
+        return true;
+      },
+      false);
+  output_fixed_row->append(output_fixed_switch_);
+  sound_box->append(*output_fixed_row);
+
   sound_box->append(*Gtk::make_managed<Gtk::Separator>());
 
   // Plain buttons, not a switch: libnoson has no GetLEDState() to show a
@@ -451,6 +468,11 @@ GnomosWindow::GnomosWindow()
   });
   favorites_view_.signal_delete_requested().connect(
       sigc::mem_fun(*this, &GnomosWindow::ShowDeleteFavoriteConfirmDialog));
+  favorites_view_.signal_play_all_requested().connect([this] { backend_->PlayAllFavoritesAsync(); });
+  favorites_view_.signal_queue_all_requested().connect([this] {
+    backend_->AddAllFavoritesToQueue();
+    ShowToast("Zur Warteschlange hinzugefügt");
+  });
 
   alarms_view_.signal_enabled_toggled().connect(
       [this](std::string id, bool enabled) { backend_->SetAlarmEnabled(id, enabled); });
@@ -459,12 +481,19 @@ GnomosWindow::GnomosWindow()
   alarms_view_.signal_delete_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowDeleteAlarmConfirmDialog));
   alarms_view_.signal_add_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowAddAlarmDialog));
   alarms_view_.signal_edit_requested().connect(sigc::mem_fun(*this, &GnomosWindow::OnAlarmEditRequested));
+  alarms_view_.signal_duplicate_requested().connect(sigc::mem_fun(*this, &GnomosWindow::OnAlarmDuplicateRequested));
 
   history_view_.signal_clear_requested().connect([this] {
     history_.clear();
     last_history_key_.clear();
     history_view_.SetItems(history_);
     SaveHistory();
+  });
+  history_view_.signal_search_requested().connect([this](unsigned index) {
+    if (index >= history_.size())
+      return;
+    const HistoryEntry& entry = history_[index];
+    ShowLibrarySearchDialog(entry.artist.empty() ? entry.title : entry.artist);
   });
 
   library_stack_.push_back({"", "Bibliothek"});
@@ -480,6 +509,10 @@ GnomosWindow::GnomosWindow()
   library_view_.signal_play_next_requested().connect([this](unsigned index) {
     backend_->PlayLibraryItemNext(index);
     ShowToast("Als Nächstes hinzugefügt");
+  });
+  library_view_.signal_add_to_favorites_requested().connect([this](unsigned index) {
+    backend_->AddLibraryItemToFavorites(index);
+    ShowToast("Zu Favoriten hinzugefügt");
   });
   library_view_.signal_play_all_requested().connect([this] { backend_->PlayAllLibraryItemsAsync(); });
   library_view_.signal_queue_all_requested().connect([this] {
@@ -1367,6 +1400,18 @@ void GnomosWindow::OnAlarmEditRequested(std::string alarm_id)
   }
 }
 
+void GnomosWindow::OnAlarmDuplicateRequested(std::string alarm_id)
+{
+  for (const AlarmInfo& alarm : backend_->GetAlarms())
+  {
+    if (alarm.id == alarm_id)
+    {
+      ShowAlarmDialog(&alarm, /*duplicate=*/true);
+      return;
+    }
+  }
+}
+
 void GnomosWindow::OnLibraryChanged()
 {
   current_library_entries_ = backend_->GetLibraryEntries();
@@ -1383,7 +1428,9 @@ void GnomosWindow::OnLibraryChanged()
   bool grid_available = std::any_of(current_library_entries_.begin(), current_library_entries_.end(),
                                      [](const LibraryEntry& entry) { return entry.display_as_grid; });
 
-  library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_);
+  // Favoriting only offered below the true root — "Interpreten"/"Alben"/...
+  // are static categories, not real content Sonos has anything to favorite.
+  library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_, library_stack_.size() > 1);
   library_view_.SetLevelTitle(library_stack_.back().second);
   library_view_.SetBackVisible(library_stack_.size() > 1);
 
@@ -1540,7 +1587,7 @@ void GnomosWindow::ShowAddAlarmDialog()
 // existing == nullptr creates a new alarm; otherwise edits it in place,
 // prefilled from its current schedule (enabled state and sound source are
 // left untouched either way — see NosonBackend::UpdateAlarmSchedule()).
-void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing)
+void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
 {
   std::vector<RoomInfo> rooms = backend_->Rooms();
   if (rooms.empty())
@@ -1549,8 +1596,14 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing)
     return;
   }
 
+  // existing (when non-null) supplies default field values either way;
+  // editing specifically means "saving updates *existing's own alarm" —
+  // false for both a genuinely new alarm (existing == nullptr) and a
+  // duplicate (existing != nullptr, but a new one gets created instead).
+  bool editing = existing && !duplicate;
+
   auto* dialog = new Gtk::Window();
-  dialog->set_title(existing ? "Alarm bearbeiten" : "Neuer Alarm");
+  dialog->set_title(editing ? "Alarm bearbeiten" : (duplicate ? "Alarm duplizieren" : "Neuer Alarm"));
   dialog->set_transient_for(*this);
   dialog->set_modal(true);
   dialog->set_default_size(360, -1);
@@ -1677,7 +1730,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing)
   // see NosonBackend::kKeepExistingAlarmSound.
   std::vector<std::string> sound_titles = backend_->GetAlarmSoundTitles();
   std::vector<Glib::ustring> sound_entries;
-  if (existing)
+  if (editing)
     sound_entries.push_back("Aktueller Klang beibehalten");
   for (const std::string& title : sound_titles)
     sound_entries.push_back(title);
@@ -1687,7 +1740,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing)
   sound_dropdown->set_selected(0);
   content->append(*sound_dropdown);
 
-  bool has_keep_current_for_test = existing != nullptr;
+  bool has_keep_current_for_test = editing;
   auto* test_sound_button = Gtk::make_managed<Gtk::Button>("Wecker-Ton testen");
   test_sound_button->add_css_class("flat");
   test_sound_button->set_halign(Gtk::Align::START);
@@ -1716,10 +1769,10 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing)
   button_box->set_margin_top(6);
   auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* confirm_button = Gtk::make_managed<Gtk::Button>(existing ? "Speichern" : "Erstellen");
+  auto* confirm_button = Gtk::make_managed<Gtk::Button>(editing ? "Speichern" : "Erstellen");
   confirm_button->add_css_class("suggested-action");
-  std::string alarm_id = existing ? existing->id : std::string();
-  bool has_keep_current = existing != nullptr;
+  std::string alarm_id = editing ? existing->id : std::string();
+  bool has_keep_current = editing;
   confirm_button->signal_clicked().connect(
       [this, dialog, room_dropdown, hour_spin, minute_spin, volume_scale, day_buttons, rooms, alarm_id,
        sound_dropdown, has_keep_current, duration_dropdown, shuffle_switch] {
@@ -1788,6 +1841,10 @@ void GnomosWindow::OnSoundSettingsChanged()
   nightmode_switch_.set_sensitive(settings.nightmode_supported);
   nightmode_switch_.set_active(settings.nightmode);
   nightmode_switch_.set_state(settings.nightmode);
+
+  output_fixed_switch_.set_sensitive(settings.output_fixed_supported);
+  output_fixed_switch_.set_active(settings.output_fixed);
+  output_fixed_switch_.set_state(settings.output_fixed);
 }
 
 void GnomosWindow::OnBackendError(std::string message)

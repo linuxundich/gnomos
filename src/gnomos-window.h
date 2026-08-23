@@ -68,8 +68,14 @@ private:
   // nav_row_actions_'s own comment for why those are never rebuilt.
   void RebuildLibraryNavEntries();
   void ShowAddAlarmDialog();
-  void ShowAlarmDialog(const AlarmInfo* existing);
+  // duplicate: pre-fills every field from *existing (same as editing), but
+  // always creates a brand-new alarm rather than updating *existing's own
+  // one — forces alarm_id empty and skips the "Aktueller Klang beibehalten"
+  // sound option, which only makes sense for an alarm that already exists
+  // server-side. See OnAlarmDuplicateRequested().
+  void ShowAlarmDialog(const AlarmInfo* existing, bool duplicate = false);
   void OnAlarmEditRequested(std::string alarm_id);
+  void OnAlarmDuplicateRequested(std::string alarm_id);
   void ShowAboutDialog();
   void ShowSettingsDialog();
   void ShowShortcutsDialog();
@@ -205,6 +211,12 @@ private:
   Gtk::Scale treble_scale_;
   Gtk::Switch loudness_switch_;
   Gtk::Switch nightmode_switch_;
+  // Line-out / fixed-volume mode — for a device feeding a receiver/amp with
+  // its own volume control, so the device's own volume slider has no
+  // effect. Same set_sensitive()-when-unsupported treatment as
+  // nightmode_switch_ above (not set_visible()), for a consistent, always
+  // in the same place popover layout regardless of which room is selected.
+  Gtk::Switch output_fixed_switch_;
   bool suppress_sound_signals_ = false;
 
   // Section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/Bibliothek,

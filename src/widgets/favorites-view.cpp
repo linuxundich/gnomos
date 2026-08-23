@@ -27,8 +27,26 @@ FavoritesView::FavoritesView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeh
   set_vexpand(true);
   set_hexpand(true);
 
+  auto* toolbar = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  toolbar->set_halign(Gtk::Align::END);
+  toolbar->set_margin_top(6);
+  toolbar->set_margin_end(12);
+  play_all_button_.set_icon_name("media-playback-start-symbolic");
+  play_all_button_.add_css_class("flat");
+  play_all_button_.set_tooltip_text("Alle Favoriten abspielen");
+  play_all_button_.set_visible(false);
+  play_all_button_.signal_clicked().connect([this] { signal_play_all_requested_.emit(); });
+  toolbar->append(play_all_button_);
+  queue_all_button_.set_icon_name("list-add-symbolic");
+  queue_all_button_.add_css_class("flat");
+  queue_all_button_.set_tooltip_text("Alle Favoriten zur Warteschlange hinzufügen");
+  queue_all_button_.set_visible(false);
+  queue_all_button_.signal_clicked().connect([this] { signal_queue_all_requested_.emit(); });
+  toolbar->append(queue_all_button_);
+  append(*toolbar);
+
   search_entry_.set_placeholder_text("Favoriten durchsuchen…");
-  search_entry_.set_margin_top(12);
+  search_entry_.set_margin_top(6);
   search_entry_.set_margin_start(12);
   search_entry_.set_margin_end(12);
   search_entry_.signal_search_changed().connect(sigc::mem_fun(*this, &FavoritesView::ApplyFilter));
@@ -74,6 +92,10 @@ void FavoritesView::ApplyFilter()
 
   std::string term = search_entry_.get_text();
   std::transform(term.begin(), term.end(), term.begin(), [](unsigned char c) { return std::tolower(c); });
+
+  bool show_bulk_actions = term.empty() && !all_items_.empty();
+  play_all_button_.set_visible(show_bulk_actions);
+  queue_all_button_.set_visible(show_bulk_actions);
 
   for (const FavoriteItem& item : all_items_)
   {

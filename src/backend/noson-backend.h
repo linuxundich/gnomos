@@ -116,6 +116,14 @@ public:
   // household's own ContentDirectoryChanged event, like any other Favorites
   // change.
   void AddCurrentTrackToFavorites();
+  // Same idea as AddCurrentTrackToFavorites(), but for an arbitrary already-
+  // browsed library entry rather than whatever's currently playing — index
+  // into current_library_entries_/library_raw_ (both index-aligned, same
+  // pattern PlayLibraryItem() already uses). Works for a container (e.g. a
+  // whole album or playlist) as well as a leaf track, since Sonos favorites
+  // support both — GnomosWindow only offers the action below the true root
+  // level, where entries are real content rather than static categories.
+  void AddLibraryItemToFavorites(unsigned index);
 
   // Switches the current zone's coordinator to its own local input. Not
   // every first-generation model has both (or either) physical input —
@@ -135,6 +143,7 @@ public:
   void SetTreble(int8_t value);
   void SetLoudness(bool enabled);
   void SetNightmode(bool enabled);
+  void SetOutputFixed(bool enabled);
   // Write-only, like PlayLineIn()/PlayDigitalIn() — libnoson has no
   // GetLEDState() to show a current value with.
   void SetLedState(bool enabled);
@@ -168,6 +177,14 @@ public:
   // ObjectID (this is a genuine ContentDirectory browse result, unlike the
   // unwrapped playable item PlayFavorite() extracts from it).
   void DeleteFavorite(unsigned index);
+  // Same semantics as AddAllLibraryItemsToQueue()/PlayAllLibraryItemsAsync()
+  // below, over favorites_raw_ instead of library_raw_ — unlike a library
+  // level, a favorites list is never gated on "all leaf" first, since every
+  // favorite (track, album, playlist, or radio station alike) is already
+  // individually playable/queueable the same way PlayFavorite()/
+  // AddFavoriteToQueue() handle it per-row.
+  void AddAllFavoritesToQueue();
+  void PlayAllFavoritesAsync();
 
   // object_id == "" browses the fixed, local root categories (no network
   // call); anything else is a real objectID browsed against the household

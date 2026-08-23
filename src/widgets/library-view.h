@@ -43,11 +43,16 @@ public:
   // by combining grid_available with the user's own persisted preference.
   // Cover-art tiles are styled after Euphonica's own Albums/Artists grid
   // (https://github.com/htkhiem/euphonica). Grid tiles never get the
-  // add-to-queue/play-next buttons list rows do (see those signals' own
-  // comments) — a grid is only ever offered for containers (albums/
-  // artists/playlists to browse into), never leaf tracks those buttons
-  // would apply to.
-  void SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active);
+  // add-to-queue/play-next/favorite buttons list rows do (see those
+  // signals' own comments) — a grid is only ever offered for containers
+  // (albums/artists/playlists to browse into), never leaf tracks those
+  // buttons would apply to; switching to list view offers them instead.
+  // show_favorite_action: whether to show a per-row "add to favorites"
+  // star at all — GnomosWindow only passes true below the true library
+  // root, where entries are real content rather than static categories
+  // ("Interpreten", "Alben", ...) that Sonos has nothing to favorite.
+  void SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
+                  bool show_favorite_action);
   void SetLevelTitle(const std::string& title);
   void SetBackVisible(bool visible);
   void Clear();
@@ -62,6 +67,11 @@ public:
   // Also only ever emitted for a leaf entry in list mode — see
   // signal_add_to_queue_requested()'s comment.
   sigc::signal<void(unsigned)>& signal_play_next_requested() { return signal_play_next_requested_; }
+  // Unlike add-to-queue/play-next, this one *is* emitted for containers too
+  // (a whole album/playlist/artist is a perfectly normal thing to
+  // favorite in Sonos) — only ever in list mode, and only when
+  // show_favorite_action was true for this level (see SetEntries()).
+  sigc::signal<void(unsigned)>& signal_add_to_favorites_requested() { return signal_add_to_favorites_requested_; }
   // play_all_button_/queue_all_button_ only ever show up once the current
   // level is entirely leaf tracks (e.g. an album's contents) — see
   // SetEntries(). Both act on the whole level, not a single row, so
@@ -77,7 +87,7 @@ public:
   sigc::signal<void()>& signal_view_mode_toggled() { return signal_view_mode_toggled_; }
 
 private:
-  void BuildList(const std::vector<LibraryEntry>& entries);
+  void BuildList(const std::vector<LibraryEntry>& entries, bool show_favorite_action);
   void BuildGrid(const std::vector<LibraryEntry>& entries);
 
   Gtk::Button back_button_;
@@ -96,6 +106,7 @@ private:
   sigc::signal<void()> signal_search_requested_;
   sigc::signal<void(unsigned)> signal_add_to_queue_requested_;
   sigc::signal<void(unsigned)> signal_play_next_requested_;
+  sigc::signal<void(unsigned)> signal_add_to_favorites_requested_;
   sigc::signal<void()> signal_play_all_requested_;
   sigc::signal<void()> signal_queue_all_requested_;
   sigc::signal<void()> signal_view_mode_toggled_;

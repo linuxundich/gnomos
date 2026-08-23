@@ -39,10 +39,19 @@ public:
   sigc::signal<void(unsigned)>& signal_add_to_queue_requested() { return signal_add_to_queue_requested_; }
   sigc::signal<void(unsigned)>& signal_play_next_requested() { return signal_play_next_requested_; }
   sigc::signal<void(unsigned)>& signal_delete_requested() { return signal_delete_requested_; }
+  // Both act on the household's whole favorites list (NosonBackend's own
+  // favorites_raw_), not just what's currently visible under a search
+  // filter — ApplyFilter() only shows play_all_button_/queue_all_button_
+  // at all while the filter is empty, so there's no ambiguity between
+  // "all favorites" and "all filtered results".
+  sigc::signal<void()>& signal_play_all_requested() { return signal_play_all_requested_; }
+  sigc::signal<void()>& signal_queue_all_requested() { return signal_queue_all_requested_; }
 
 private:
   void ApplyFilter();
 
+  Gtk::Button play_all_button_;
+  Gtk::Button queue_all_button_;
   Gtk::SearchEntry search_entry_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
@@ -61,6 +70,8 @@ private:
   sigc::signal<void(unsigned)> signal_add_to_queue_requested_;
   sigc::signal<void(unsigned)> signal_play_next_requested_;
   sigc::signal<void(unsigned)> signal_delete_requested_;
+  sigc::signal<void()> signal_play_all_requested_;
+  sigc::signal<void()> signal_queue_all_requested_;
 };
 
 }  // namespace gnomos

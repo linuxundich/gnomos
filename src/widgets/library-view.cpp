@@ -121,7 +121,8 @@ LibraryView::LibraryView()
   append(scroller_);
 }
 
-void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active)
+void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
+                              bool show_favorite_action)
 {
   Clear();
   count_label_.set_text(entries.empty()      ? ""
@@ -132,7 +133,7 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
   if (grid)
     BuildGrid(entries);
   else
-    BuildList(entries);
+    BuildList(entries, show_favorite_action);
 
   view_mode_button_.set_visible(grid_available);
   // Icon/tooltip reflect the mode a click switches *to*, not the current
@@ -149,7 +150,7 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
   queue_all_button_.set_visible(all_leaf);
 }
 
-void LibraryView::BuildList(const std::vector<LibraryEntry>& entries)
+void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_favorite_action)
 {
   for (size_t i = 0; i < entries.size(); ++i)
   {
@@ -181,6 +182,23 @@ void LibraryView::BuildList(const std::vector<LibraryEntry>& entries)
     }
     row_box->append(*labels);
 
+    unsigned index = static_cast<unsigned>(i);
+
+    // Both a container (a whole album/playlist/artist) and a leaf track can
+    // be favorited in Sonos, unlike add-to-queue/play-next which only make
+    // sense for a leaf — so this button sits outside the container/leaf
+    // split below, common to both branches.
+    if (show_favorite_action)
+    {
+      auto* favorite_button = Gtk::make_managed<Gtk::Button>();
+      favorite_button->set_icon_name("non-starred-symbolic");
+      favorite_button->add_css_class("flat");
+      favorite_button->set_valign(Gtk::Align::CENTER);
+      favorite_button->set_tooltip_text("Zu Favoriten hinzufügen");
+      favorite_button->signal_clicked().connect([this, index] { signal_add_to_favorites_requested_.emit(index); });
+      row_box->append(*favorite_button);
+    }
+
     if (entry.is_container)
     {
       auto* chevron = Gtk::make_managed<Gtk::Image>();
@@ -195,7 +213,6 @@ void LibraryView::BuildList(const std::vector<LibraryEntry>& entries)
       add_button->add_css_class("flat");
       add_button->set_valign(Gtk::Align::CENTER);
       add_button->set_tooltip_text("Zur Warteschlange hinzufügen");
-      unsigned index = static_cast<unsigned>(i);
       add_button->signal_clicked().connect([this, index] { signal_add_to_queue_requested_.emit(index); });
       row_box->append(*add_button);
 

@@ -767,6 +767,30 @@ void NosonBackend::AddCurrentTrackToFavorites()
   });
 }
 
+void NosonBackend::AddLibraryItemToFavorites(unsigned index)
+{
+  tasks_.Push([this, index] {
+    NSROOT::DigitalItemPtr item;
+    std::string art_uri;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (index >= library_raw_.size())
+        return;
+      item = library_raw_[index];
+      art_uri = index < library_entries_.size() ? library_entries_[index].art_uri : std::string();
+    }
+
+    if (!item || !system_->AddURIToFavorites(item, "", art_uri))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Eintrag konnte nicht zu Favoriten hinzugefügt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+    RefreshFavoritesAsync();
+  });
+}
+
 void NosonBackend::RefreshPositionAsync()
 {
   tasks_.Push([this] {
@@ -906,6 +930,11 @@ void NosonBackend::RefreshSoundSettingsAsync()
     if (settings.nightmode_supported)
       settings.nightmode = nightmode != 0;
 
+    uint8_t supports_fixed = 0, fixed = 0;
+    settings.output_fixed_supported = player->GetSupportsOutputFixed(uuid, &supports_fixed) && supports_fixed != 0;
+    if (settings.output_fixed_supported && player->GetOutputFixed(uuid, &fixed))
+      settings.output_fixed = fixed != 0;
+
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       sound_settings_ = settings;
@@ -980,6 +1009,28 @@ void NosonBackend::SetNightmode(bool enabled)
       pending_error_ = "Night Mode wird von diesem Gerät nicht unterstützt.";
       error_dispatcher_.emit();
     }
+    RefreshSoundSettingsAsync();
+  });
+}
+
+void NosonBackend::SetOutputFixed(bool enabled)
+{
+  tasks_.Push([this, enabled] {
+    auto player = SnapshotPlayer();
+    auto zone = SnapshotZone();
+    if (!player || !zone)
+      return;
+    auto coord = zone->GetCoordinator();
+    if (!coord)
+      return;
+    if (!player->SetOutputFixed(coord->GetUUID(), enabled ? 1 : 0))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Feste Lautstärke konnte nicht geändert werden.";
+      error_dispatcher_.emit();
+    }
+    // Same reasoning as SetLoudness()/SetNightmode(): refresh unconditionally
+    // so the switch snaps back to the true device state on failure.
     RefreshSoundSettingsAsync();
   });
 }
@@ -1355,6 +1406,86 @@ void NosonBackend::DeleteFavorite(unsigned index)
       return;
     }
     RefreshFavoritesAsync();
+  });
+}
+
+void NosonBackend::AddAllFavoritesToQueue()
+{
+  tasks_.Push([this] {
+    std::vector<NSROOT::DigitalItemPtr> favorites;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      favorites = favorites_raw_;
+    }
+    auto player = SnapshotPlayer();
+    if (!player || favorites.empty())
+      return;
+
+    // Each favorite wraps its real playable item, same unwrapping
+    // PlayFavorite()/AddFavoriteToQueue() do per-item — see
+    // ExtractObjectFromFavorite()'s own comment there. A favorite that
+    // doesn't unwrap to a queueable item (a live radio stream, most
+    // commonly) is silently skipped, same as AddAllLibraryItemsToQueue()
+    // already does for its own non-queueable entries — there's nothing
+    // sensible a bulk queue action could do with a stream anyway.
+    unsigned added = 0;
+    for (const NSROOT::DigitalItemPtr& favorite : favorites)
+    {
+      NSROOT::DigitalItemPtr item;
+      if (NSROOT::System::ExtractObjectFromFavorite(favorite, item) && NSROOT::System::CanQueueItem(item) &&
+          player->AddURIToQueue(item, 0) > 0)
+        ++added;
+    }
+
+    if (added == 0)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Favoriten konnten nicht zur Warteschlange hinzugefügt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+    RefreshQueueAsync();
+  });
+}
+
+void NosonBackend::PlayAllFavoritesAsync()
+{
+  tasks_.Push([this] {
+    std::vector<NSROOT::DigitalItemPtr> favorites;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      favorites = favorites_raw_;
+    }
+    auto player = SnapshotPlayer();
+    if (!player || favorites.empty())
+      return;
+
+    player->PlayQueue(false);
+    if (!player->RemoveAllTracksFromQueue())
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Warteschlange konnte nicht geleert werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+
+    unsigned added = 0;
+    for (const NSROOT::DigitalItemPtr& favorite : favorites)
+    {
+      NSROOT::DigitalItemPtr item;
+      if (NSROOT::System::ExtractObjectFromFavorite(favorite, item) && NSROOT::System::CanQueueItem(item) &&
+          player->AddURIToQueue(item, 0) > 0)
+        ++added;
+    }
+
+    if (added == 0 || !player->SeekTrack(1) || !player->Play())
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Favoriten konnten nicht abgespielt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+    RefreshQueueAsync();
   });
 }
 

@@ -113,6 +113,16 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
     edit_button->signal_clicked().connect([this, id_for_edit] { signal_edit_requested_.emit(id_for_edit); });
     row_box->append(*edit_button);
 
+    auto* duplicate_button = Gtk::make_managed<Gtk::Button>();
+    duplicate_button->set_icon_name("edit-copy-symbolic");
+    duplicate_button->add_css_class("flat");
+    duplicate_button->set_valign(Gtk::Align::CENTER);
+    duplicate_button->set_tooltip_text("Alarm duplizieren");
+    std::string id_for_duplicate = alarm.id;
+    duplicate_button->signal_clicked().connect(
+        [this, id_for_duplicate] { signal_duplicate_requested_.emit(id_for_duplicate); });
+    row_box->append(*duplicate_button);
+
     auto* delete_button = Gtk::make_managed<Gtk::Button>();
     delete_button->set_icon_name("user-trash-symbolic");
     delete_button->add_css_class("flat");

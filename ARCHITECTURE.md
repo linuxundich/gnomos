@@ -352,6 +352,61 @@ initial fetch and any later change (a service gets linked/unlinked).
   excluded from the sidebar — it opens a dialog rather than browsing
   anywhere, which would read oddly as a permanent nav destination.
 
+### Five more additions: history search, library favoriting, fixed volume, alarm duplication, favorites bulk actions
+
+- **History → search**: a `HistoryEntry` carries no `object_id`/URI it
+  could be replayed from (client-side only, see its own comment), so
+  `HistoryView` gained a per-row search button instead of a play action —
+  `GnomosWindow` calls the existing `ShowLibrarySearchDialog(prefill)` with
+  the entry's artist (falling back to its title), the same dialog the
+  track-details "Interpret suchen"/"Album suchen" buttons already open.
+- **"Add to Favorites" on library entries**: `NosonBackend::AddLibraryItemToFavorites(index)`
+  mirrors `AddCurrentTrackToFavorites()`, using `library_raw_[index]`
+  directly rather than needing a live-playback snapshot. Unlike
+  add-to-queue/play-next, this one applies to *containers* too (a whole
+  album/playlist/artist is a completely normal thing to favorite in
+  Sonos) — `LibraryView::SetEntries()` gained a `show_favorite_action`
+  flag that `GnomosWindow` only sets once `library_stack_.size() > 1`, so
+  the static root categories ("Interpreten", "Alben", ...) don't get a
+  meaningless favorite button of their own. List rows only — a grid tile
+  has no room for a third action button; switching to list view offers it
+  instead.
+- **Fixed volume / line-out toggle**: `SoundSettings` gained
+  `output_fixed_supported`/`output_fixed`, populated in
+  `RefreshSoundSettingsAsync()` via `GetSupportsOutputFixed()`/
+  `GetOutputFixed()` and applied via `SetOutputFixed()` — a new switch in
+  the sound popover, `set_sensitive()`-gated the same way
+  `nightmode_switch_` already handles a per-model-unsupported case, rather
+  than hiding the whole row (keeps the popover's layout stable across room
+  switches). For a device wired via line-out to a receiver/amp that has
+  its own volume control; `SetGroupVolume()`/`SetMuted()` already knew to
+  skip an `OutputFixed` member when scaling a group, so this closes the
+  matching write-side gap.
+- **Duplicate an alarm**: `ShowAlarmDialog()` gained a `duplicate`
+  parameter, separating "pre-fill fields from `*existing`" from "saving
+  should update `*existing`'s own alarm" — previously the same
+  `existing != nullptr` check drove both, which doesn't fit a duplicate
+  (pre-fill yes, update no). A local `editing = existing && !duplicate`
+  now drives every edit-specific decision (dialog title, confirm button
+  label, `alarm_id` used for create-vs-update, and whether "Aktueller
+  Klang beibehalten" is offered — that option only makes sense for an
+  alarm that already exists server-side), while every *value* default
+  (room/time/days/volume/duration/shuffle) stays keyed off `existing`
+  itself, unaffected by which mode it's used in.
+- **"Play all"/"add all to queue" for Favorites**: `AddAllFavoritesToQueue()`/
+  `PlayAllFavoritesAsync()` mirror the library's own
+  `AddAllLibraryItemsToQueue()`/`PlayAllLibraryItemsAsync()`, over
+  `favorites_raw_` instead of `library_raw_` — each favorite first needs
+  `System::ExtractObjectFromFavorite()` to unwrap its real playable item,
+  same as `PlayFavorite()`/`AddFavoriteToQueue()` already do per-row; one
+  that doesn't unwrap to a queueable item (most commonly a live radio
+  stream) is silently skipped, same tension `AddAllLibraryItemsToQueue()`
+  already resolves the same way. Unlike the library's version, there's no
+  "all leaf" gate first — every favorite is already individually
+  playable/queueable regardless of type. `FavoritesView` only shows the
+  two bulk buttons while its search filter is empty, so "play all" can
+  never be misread as "play the filtered results".
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real
