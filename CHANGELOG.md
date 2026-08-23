@@ -8,6 +8,14 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.4.1] - 2026-08-23
+
+### Fixed
+- Switching to a very large grid (1000+ entries, e.g. the local library's
+  or a linked service's full "Alben" listing) took several seconds.
+  Cover art decoding now happens off the main thread instead of blocking
+  it once per tile.
+
 ## [0.4.0] - 2026-08-23
 
 ### Added
