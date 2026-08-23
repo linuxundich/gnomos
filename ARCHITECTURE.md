@@ -27,14 +27,22 @@ extending the code; if you just want to use the app, see [README.md](README.md).
   the window layout: a room sidebar (`AdwOverlaySplitView`, collapsible on
   narrow windows) beside tabbed Queue/Favorites/Alarms/History/Library
   content, with `PlayerBar` docked as a fixed-height bar along the bottom
-  of the whole window (`root_box` in the constructor) — cover art and
-  title/artist on the left, transport controls above a wide seek bar in
-  the middle, favorite/mute/volume on the right. This replaced an earlier
-  design with `PlayerBar` as a wide side panel (structurally inspired by
-  [Euphonica](https://github.com/htkhiem/euphonica)'s own Now Playing
-  panel); moved to a bottom bar on request, mainly to give the seek bar
-  real usable width instead of the ~300px a side column could ever offer
-  it. Every round icon button in `PlayerBar` gets an explicit *equal*
+  of the whole window (`root_box` in the constructor). Two stacked rows:
+  a full-width seek bar (wrapped in an `AdwClamp`, capped at 1000px so it
+  doesn't stretch absurdly long on an ultrawide monitor) with elapsed/
+  duration labels flanking its ends, then cover art + title/artist on the
+  left, transport controls centered, favorite/mute/volume on the right.
+  This replaced an earlier design with `PlayerBar` as a wide side panel
+  (structurally inspired by [Euphonica](https://github.com/htkhiem/euphonica)'s
+  own Now Playing panel); moved to a bottom bar on request, mainly to give
+  the seek bar real usable width instead of the ~300px a side column
+  could ever offer it — the current two-row structure (seek bar on its
+  own row above everything else, not squeezed into a center column)
+  mirrors Euphonica's own bottom bar screenshot more directly than the
+  first bottom-bar attempt did. `AdwClamp`-capping the seek row instead of
+  letting it grow unbounded mirrors GNOME Music's own `PlayerToolbar`
+  (`data/ui/PlayerToolbar.ui`), which wraps its equivalent row the same
+  way. Every round icon button in `PlayerBar` gets an explicit *equal*
   width/height `set_size_request()` plus `valign(CENTER)` (never the
   `Gtk::Box` default of `FILL`) — without both, the bar's own fixed
   height stretches a button into an oval instead of a circle.

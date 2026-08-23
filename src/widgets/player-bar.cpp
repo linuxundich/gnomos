@@ -68,8 +68,75 @@ PlayerBar::PlayerBar()
   set_vexpand(false);
   append(*Gtk::make_managed<Gtk::Separator>());
 
+  // --- Seek bar: its own full-width row above everything else, not
+  // squeezed into a column between the info/transport/volume row's side
+  // groups — styled after Euphonica's own now-playing bar
+  // (https://github.com/htkhiem/euphonica), which puts the scrubber on a
+  // dedicated row spanning almost the entire window width, with the
+  // elapsed/duration labels flanking it at the very ends rather than
+  // hugging close to the bar itself. This is the actual point of moving
+  // the whole panel to the bottom in the first place: a side column could
+  // never give the seek bar this much usable width. ---
+  auto* seek_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 10);
+  seek_row->set_margin_top(6);
+  seek_row->set_margin_start(16);
+  seek_row->set_margin_end(16);
+  elapsed_label_.add_css_class("caption");
+  elapsed_label_.add_css_class("dim-label");
+  seek_row->append(elapsed_label_);
+  position_scale_.set_range(0, 1);
+  position_scale_.set_draw_value(false);
+  position_scale_.set_hexpand(true);
+  position_scale_.set_valign(Gtk::Align::CENTER);
+  // Gtk::Range's own internal drag gesture claims the pointer sequence, so
+  // a separately-added Gtk::GestureClick sibling never reliably sees a
+  // "released" for it (confirmed live: the marker moved, but no seek ever
+  // fired). signal_value_changed() itself, however, always fires — for a
+  // drag, a click-to-jump, and keyboard nudges alike, and for our own
+  // programmatic set_value() calls in UpdatePosition() too (guarded off via
+  // suppress_position_signal_). A short debounce coalesces a drag's many
+  // intermediate ticks into a single seek once the value settles, instead
+  // of flooding the device with a blocking SOAP call per tick.
+  position_scale_.signal_value_changed().connect([this] {
+    if (suppress_position_signal_)
+      return;
+    user_seeking_ = true;
+    seek_debounce_connection_.disconnect();
+    seek_debounce_connection_ = Glib::signal_timeout().connect(
+        [this] {
+          user_seeking_ = false;
+          signal_seek_requested_.emit(static_cast<unsigned>(position_scale_.get_value()));
+          return false;  // one-shot
+        },
+        400);
+  });
+  seek_row->append(position_scale_);
+  duration_label_.add_css_class("caption");
+  duration_label_.add_css_class("dim-label");
+  duration_button_.set_child(duration_label_);
+  duration_button_.add_css_class("flat");
+  duration_button_.set_valign(Gtk::Align::CENTER);
+  duration_button_.set_tooltip_text("Gesamtdauer/Restzeit umschalten");
+  duration_button_.signal_clicked().connect([this] {
+    show_remaining_ = !show_remaining_;
+    RenderDurationLabel();
+  });
+  seek_row->append(duration_button_);
+  seek_row->set_visible(false);
+  position_row_ = seek_row;
+
+  // Capped at a generous max width (matching GNOME Music's own
+  // PlayerToolbar, which wraps its equivalent row in the same
+  // AdwClamp/maximum-size pattern) so the bar gets almost the full window
+  // width on any normal or even fairly wide window, without stretching
+  // into an absurdly long, hard-to-read line on an ultrawide monitor.
+  GtkWidget* seek_clamp = adw_clamp_new();
+  adw_clamp_set_maximum_size(ADW_CLAMP(seek_clamp), 1000);
+  adw_clamp_set_child(ADW_CLAMP(seek_clamp), GTK_WIDGET(seek_row->gobj()));
+  append(*Glib::wrap(seek_clamp));
+
   auto* bar = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 14);
-  bar->set_margin_top(8);
+  bar->set_margin_top(4);
   bar->set_margin_bottom(8);
   bar->set_margin_start(14);
   bar->set_margin_end(14);
@@ -128,12 +195,9 @@ PlayerBar::PlayerBar()
   info_box->append(*text_box);
   bar->append(*info_box);
 
-  // --- Center: transport row above the seek bar. Both hexpand, so this
-  // whole column claims whatever width is left between the two fixed-ish
-  // side columns — deliberately: a bottom bar has far more usable
-  // horizontal room for the seek bar than the old side panel ever did,
-  // and it should actually use it rather than staying a fixed narrow
-  // width. ---
+  // --- Center: the transport row, centered in whatever width is left
+  // between the two side columns (the seek bar itself lives in its own
+  // full-width row above this one — see seek_clamp above). ---
   auto* center_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
   center_box->set_hexpand(true);
   center_box->set_valign(Gtk::Align::CENTER);
@@ -189,60 +253,6 @@ PlayerBar::PlayerBar()
   transport_row->append(repeat_button_);
 
   center_box->append(*transport_row);
-
-  auto* position_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
-  position_row->set_hexpand(true);
-  elapsed_label_.add_css_class("caption");
-  elapsed_label_.add_css_class("dim-label");
-  position_row->append(elapsed_label_);
-  position_scale_.set_range(0, 1);
-  position_scale_.set_draw_value(false);
-  position_scale_.set_hexpand(true);
-  // A floor, not a cap — hexpand above already lets it grow generously on
-  // a normal-width window (see the class header comment on why the seek
-  // bar getting real width at all was the point of this whole layout
-  // change); kept modest rather than large so it doesn't itself inflate
-  // the window's enforced minimum size the way info_box's own floor would
-  // have (see info_box's comment above).
-  position_scale_.set_size_request(120, -1);
-  position_scale_.set_valign(Gtk::Align::CENTER);
-  // Gtk::Range's own internal drag gesture claims the pointer sequence, so
-  // a separately-added Gtk::GestureClick sibling never reliably sees a
-  // "released" for it (confirmed live: the marker moved, but no seek ever
-  // fired). signal_value_changed() itself, however, always fires — for a
-  // drag, a click-to-jump, and keyboard nudges alike, and for our own
-  // programmatic set_value() calls in UpdatePosition() too (guarded off via
-  // suppress_position_signal_). A short debounce coalesces a drag's many
-  // intermediate ticks into a single seek once the value settles, instead
-  // of flooding the device with a blocking SOAP call per tick.
-  position_scale_.signal_value_changed().connect([this] {
-    if (suppress_position_signal_)
-      return;
-    user_seeking_ = true;
-    seek_debounce_connection_.disconnect();
-    seek_debounce_connection_ = Glib::signal_timeout().connect(
-        [this] {
-          user_seeking_ = false;
-          signal_seek_requested_.emit(static_cast<unsigned>(position_scale_.get_value()));
-          return false;  // one-shot
-        },
-        400);
-  });
-  position_row->append(position_scale_);
-  duration_label_.add_css_class("caption");
-  duration_label_.add_css_class("dim-label");
-  duration_button_.set_child(duration_label_);
-  duration_button_.add_css_class("flat");
-  duration_button_.set_valign(Gtk::Align::CENTER);
-  duration_button_.set_tooltip_text("Gesamtdauer/Restzeit umschalten");
-  duration_button_.signal_clicked().connect([this] {
-    show_remaining_ = !show_remaining_;
-    RenderDurationLabel();
-  });
-  position_row->append(duration_button_);
-  position_row->set_visible(false);
-  center_box->append(*position_row);
-  position_row_ = position_row;
 
   bar->append(*center_box);
 
