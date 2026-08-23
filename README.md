@@ -64,9 +64,9 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Local music library browsing, with a toggle between list and cover art
   grid for Albums/Artists and similar (local and third-party services
   alike), consistent GNOME iconography per category (artist/album/genre/
-  playlist), an A-Z jump index down the side of any long list, "play
-  all"/"add all to queue" for a track listing, adding a custom internet
-  radio station, deleting a saved Sonos playlist, and a cache so
+  playlist), a live filter for narrowing down a long list as you type,
+  "play all"/"add all to queue" for a track listing, adding a custom
+  internet radio station, deleting a saved Sonos playlist, and a cache so
   revisiting a level doesn't refetch it over the network every time
 - Optional real artist photos in the library, looked up by name against
   Deezer's public API — off by default, since it's the one thing in this

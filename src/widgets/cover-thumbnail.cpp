@@ -12,8 +12,9 @@
 namespace gnomos
 {
 
-CoverThumbnail::CoverThumbnail(int pixel_size)
-: pixel_size_(pixel_size), fallback_pixel_size_(pixel_size * 3 / 5)
+double CoverThumbnail::s_fallback_icon_scale = 1.0;
+
+CoverThumbnail::CoverThumbnail(int pixel_size) : pixel_size_(pixel_size)
 {
   add_css_class("card");
   ShowFallback();
@@ -26,9 +27,14 @@ CoverThumbnail::~CoverThumbnail()
     cancellable_->cancel();
 }
 
+void CoverThumbnail::SetFallbackIconScale(double scale)
+{
+  s_fallback_icon_scale = scale;
+}
+
 void CoverThumbnail::ShowFallback()
 {
-  set_pixel_size(fallback_pixel_size_);
+  set_pixel_size(static_cast<int>(pixel_size_ * s_fallback_icon_scale));
   set_from_icon_name(fallback_icon_name_);
 }
 

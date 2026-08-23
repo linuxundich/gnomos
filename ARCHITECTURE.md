@@ -577,74 +577,60 @@ clashed with the rest of a GNOME app.
   `"avatar-default-symbolic"` **and** `art_uri` is empty — never for an
   artist a service already supplied real art for.
 
-### Stronger Deezer disclosure, and an A-Z jump index for long lists
+### Stronger Deezer disclosure
 
-- The "Künstlerbilder laden" setting's subtitle now names the actual
-  endpoint (`api.deezer.com`), says explicitly that it's a real internet
-  request rather than a local Sonos one, and states that Deezer's own
-  terms of use apply. A second row right below it links out to
-  `developers.deezer.com/api` (`Gtk::LinkButton`, same widget the
-  service-linking dialog already uses) so the terms are one click away
-  rather than just asserted in prose. `AdwPreferencesGroup` itself also
-  gained a description stating that this is the *only* thing in the app
-  that isn't local-network-only.
-- **A-Z jump index**: `LibraryView` gained `index_strip_`, a narrow
-  (28px), `.card`-styled vertical strip along the content's left edge —
-  one row per bucket (`'0'` for anything not starting with a Latin
-  letter, then `A`..`Z`), clickable when the current level has at least
-  one entry in that bucket, dimmed and inert when it doesn't (kept
-  visible either way, so the strip's own layout stays a reliable spatial
-  guide to "roughly where" a letter is). Only shown at all once
-  `SetEntries()` sees at least 30 entries — a short list doesn't need it,
-  and the 27-row strip would dwarf one.
-  - Bucketing (`BucketFor()`) folds accented Latin letters to their base
-    letter via Unicode NFD decomposition + skipping the resulting
-    combining mark, so a German entry starting with Ä/Ö/Ü doesn't get
-    stranded under "0" just because of the umlaut.
-  - Clicking a letter calls `JumpToIndex()`, which resolves the target
-    child from `list_box_`/`flow_box_` directly (`grid_mode_active_`
-    tracks which one — set by `SetEntries()`, since entry indices map
-    onto different widgets depending on list vs. grid mode), computes its
-    position via `Gtk::Widget::compute_bounds()` relative to that same
-    container, and sets the scrolled window's own vertical adjustment to
-    it directly — no smooth-scroll animation, an instant jump, matching
-    what the index is actually for (skipping past hundreds of entries at
-    once, not a gentle nudge).
-  - Applies uniformly to every library level, local and third-party alike
-    — Artists/Albums/Genres/Playlists all qualify once they're long
-    enough; nothing here is specific to any one entry type.
+The "Künstlerbilder laden" setting's subtitle now names the actual
+endpoint (`api.deezer.com`), says explicitly that it's a real internet
+request rather than a local Sonos one, and states that Deezer's own terms
+of use apply. A second row right below it links out to
+`developers.deezer.com/api` (`Gtk::LinkButton`, same widget the
+service-linking dialog already uses) so the terms are one click away
+rather than just asserted in prose. `AdwPreferencesGroup` itself also
+gained a description stating that this is the *only* thing in the app
+that isn't local-network-only.
 
-### A-Z index redesign: compact and scroll-tracking, not a fixed full alphabet
+### Long lists: two rounds of an A-Z jump index, replaced with a live filter
 
-The first version showed all 27 buckets (`0`, `A`-`Z`) at once, stretched
-to fill the available height — reported back live as not actually
-solving the problem: a shorter window still couldn't fit all 27 rows
-legibly, so "you can't see the whole alphabet at the edge anyway" was
-still true. Replaced with a compact, always-fully-visible window that
-tracks scroll position instead of trying to show everything at once:
+`LibraryView` tried an A-Z jump index twice — first a fixed 27-row strip
+(one row per bucket, always all shown), then, after that was reported
+back as not actually solving the problem (a shorter window still couldn't
+fit 27 rows legibly), a compact ~7-row window tracking scroll position
+live via `scroller_`'s `vadjustment`. Asked directly to look for a better
+approach rather than a third iteration on the same idea: GNOME apps
+generally don't reach for alphabet scrubbers for this at all — Contacts,
+Music, and Nautilus all lean on live filtering instead, and this app
+already had exactly that pattern proven out in `FavoritesView`
+(`search_entry_`, narrows the list instantly per keystroke, no dialog, no
+network call). `LibraryView` now uses the same approach:
 
-- `bucket_order_` (`std::vector<std::pair<char, int>>`) now holds only
-  the buckets actually *present* at this level, in alphabet order —
-  computed once by `RebuildIndexStrip()`, same bucketing (`BucketFor()`)
-  as before.
-- `UpdateIndexWindow()`, connected to `scroller_`'s own
-  `vadjustment`'s `signal_value_changed()`, finds the last bucket whose
-  first entry's own top edge (via `compute_bounds()`) is at or above the
-  current scroll position — i.e. "the bucket currently scrolled into",
-  the same convention section-header list UIs (iOS Contacts, for one)
-  already use — and re-renders `index_strip_` to show only `kContext` (3)
-  buckets above and below it, the current one highlighted
-  (`suggested-action`). Only re-renders when the *bucket* actually
-  changes, not on every scroll pixel.
-- `index_strip_` itself is no longer stretched (`vexpand`/`homogeneous`)
-  — just `valign(CENTER)`, sized to whatever its current ~7 rows need —
-  so it's never taller than the window regardless of how many buckets
-  exist in total.
-- `JumpToIndex()` needed no changes: setting the vertical adjustment's
-  value itself fires `signal_value_changed()`, so clicking a letter
-  re-centers the window on the newly-current bucket as a natural
-  consequence of `UpdateIndexWindow()` already being connected to that
-  signal, not a separate step.
+- `filter_entry_` (a `Gtk::SearchEntry`, its own row below the header) —
+  narrows entries already loaded for the *current* level as you type.
+  Deliberately distinct from `search_button_`'s existing dialog (which
+  searches the whole library/service on the server): one is instant and
+  local, the other is thorough but round-trips over the network — kept as
+  two separate, complementary tools rather than merging them.
+- `all_entries_` now holds the level's full, unfiltered content;
+  `ApplyFilter()` (connected to `filter_entry_`'s own
+  `signal_search_changed()`) re-renders from it on every keystroke,
+  case-insensitive substring matching against title and subtitle. `SetEntries()`
+  stores the incoming entries/flags into `all_entries_` and friends, resets
+  `filter_entry_`'s text (a filter that made sense for the *previous*
+  level shouldn't silently keep hiding entries after navigating somewhere
+  unrelated — `set_text()` alone won't fire the change signal when the
+  text was already empty, the common case, so `ApplyFilter()` is called
+  explicitly regardless), and delegates the actual render to `ApplyFilter()`.
+- `BuildList()`/`BuildGrid()` now take the *filtered* index list
+  (`std::vector<unsigned>`, positions into `all_entries_`) rather than a
+  entries vector directly, and use each real index — not its position in
+  the filtered subset — for every signal emission (favorite/delete/
+  add-to-queue/play-next/activate), the same "always the real underlying
+  index, never the on-screen position" contract `FavoritesView` already
+  documents for its own `row_index_map_`.
+- `play_all_button_`/`queue_all_button_` now also require the filter to
+  be empty, on top of the existing all-leaf-entries check — with a filter
+  narrowing the view, "all of them" would be ambiguous between the full
+  level and just the filtered subset, so they're hidden entirely rather
+  than guessing.
 
 ### Fixed: browsing local library after visiting a service came back empty
 
@@ -711,13 +697,24 @@ class of "too big" from this one. Root cause here is closer to an icon
 what it's documented to do (constrain the icon to that many pixels), but
 `"audio-x-generic-symbolic"`'s own glyph fills nearly its entire square
 canvas, unlike a more generously-padded icon (an avatar silhouette, a
-disc), so the *same* pixel size still reads as visually larger. Fixed by
-giving `CoverThumbnail` a `fallback_pixel_size_` distinct from
-`pixel_size_` — 3/5 of it — used only for `set_from_icon_name()` calls
-(a new `ShowFallback()` helper wraps every one of them, so the smaller
-size can't accidentally get skipped at one call site); real texture
-content (`set(scaled)`) is completely unaffected by `pixel_size`, so
-still displays at the *full* `pixel_size_` via `GetScaled()` as before.
+disc), so the *same* pixel size still reads as visually larger.
+
+A first attempt fixed this with a hardcoded 3/5 shrink specifically for
+fallback icons — reported back as solving the wrong problem: the
+complaint was about the *glyph's* size within its tile, not the tile
+itself, and a fixed ratio is still just a guess at what looks balanced
+across every icon this app uses. Replaced with a user-adjustable setting
+instead, defaulting back to the original (pre-shrink) full size:
+`CoverThumbnail::s_fallback_icon_scale` (a static, process-wide fraction,
+1.0 = full `pixel_size_`) is applied only inside `ShowFallback()`
+(`set_pixel_size(pixel_size_ * s_fallback_icon_scale)` right before
+`set_from_icon_name()`) — real texture content is completely unaffected,
+still displaying at the full `pixel_size_` via `GetScaled()` regardless.
+`GnomosWindow::fallback_icon_scale_` persists the user's choice to
+`state.ini`'s `[library]` group and calls the static setter both at
+startup (syncing a value loaded from a previous run) and from a new
+"Symbolgröße" `AdwSpinRow` in Settings (20-100%, mirroring the existing
+cover-art-cache-size spin row's own pattern) whenever it changes.
 
 ## Bugs found during hardware testing
 

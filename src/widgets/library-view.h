@@ -9,6 +9,7 @@
 #include <gtkmm/label.h>
 #include <gtkmm/listbox.h>
 #include <gtkmm/scrolledwindow.h>
+#include <gtkmm/searchentry.h>
 #include <gtkmm/togglebutton.h>
 #include <sigc++/sigc++.h>
 
@@ -19,16 +20,17 @@ namespace gnomos
 {
 
 // Hierarchical browser for the music library: a header row with a back
-// button + current level title, and either a list or a cover-art grid of
-// entries below. Whether activating an entry means "go deeper" or "play
-// it" depends on LibraryEntry::is_container. Whether a grid is even an
-// option for the current level is a single, uniform signal now —
-// LibraryEntry::display_as_grid, which both the local library and
-// third-party services populate (via their own, different underlying
-// heuristics — see that field's own comment) — so GnomosWindow itself no
-// longer branches on where the level came from; it just checks whether
-// *any* entry wants a grid. Whether to actually render one *when
-// available* is the user's own choice, via view_mode_button_.
+// button + current level title, a live local filter row below it, and
+// either a list or a cover-art grid of entries below that. Whether
+// activating an entry means "go deeper" or "play it" depends on
+// LibraryEntry::is_container. Whether a grid is even an option for the
+// current level is a single, uniform signal now — LibraryEntry::display_as_grid,
+// which both the local library and third-party services populate (via
+// their own, different underlying heuristics — see that field's own
+// comment) — so GnomosWindow itself no longer branches on where the level
+// came from; it just checks whether *any* entry wants a grid. Whether to
+// actually render one *when available* is the user's own choice, via
+// view_mode_button_.
 class LibraryView : public Gtk::Box
 {
 public:
@@ -61,6 +63,9 @@ public:
   // (icon_name == "avatar-default-symbolic", see IconNameForSubType())
   // with no real art_uri gets a genuine photo fetched via
   // ArtistImageFetcher instead of just showing that generic icon forever.
+  // Resets filter_entry_'s own text — a search that made sense for the
+  // *previous* level (e.g. "adele" while browsing Interpreten) shouldn't
+  // silently keep hiding entries after navigating somewhere unrelated.
   void SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
                   bool show_favorite_action, bool show_delete_action, bool load_artist_images);
   void SetLevelTitle(const std::string& title);
@@ -72,7 +77,18 @@ public:
 
   sigc::signal<void(unsigned)>& signal_entry_activated() { return signal_entry_activated_; }
   sigc::signal<void()>& signal_back_requested() { return signal_back_requested_; }
+  // search_button_'s click — opens GnomosWindow's own server-side search
+  // dialog (searches the whole library/service, not just this level).
+  // Deliberately kept distinct from filter_entry_ below, which only ever
+  // narrows entries already loaded for *this* level, with no network
+  // round trip at all — the two are complementary, not redundant.
   sigc::signal<void()>& signal_search_requested() { return signal_search_requested_; }
+  // Both indices below are the entry's position in the *unfiltered* level
+  // SetEntries() was last called with — what GnomosWindow's own
+  // current_library_entries_[index]-based handlers expect. Never the
+  // row/tile's on-screen position, which shifts once filter_entry_ has
+  // hidden earlier entries — see row_index_map_'s own comment.
+  //
   // Only ever emitted for a leaf entry in list mode — SetEntries() doesn't
   // add the triggering button to container rows, since there's nothing to
   // append to the queue until you've browsed into one.
@@ -93,9 +109,12 @@ public:
   // existing row.
   sigc::signal<void()>& signal_add_requested() { return signal_add_requested_; }
   // play_all_button_/queue_all_button_ only ever show up once the current
-  // level is entirely leaf tracks (e.g. an album's contents) — see
-  // SetEntries(). Both act on the whole level, not a single row, so
-  // neither signal carries an index.
+  // level is entirely leaf tracks (e.g. an album's contents) *and* no
+  // filter is currently narrowing the view — see SetEntries()/ApplyFilter().
+  // Both act on the whole (unfiltered) level, not a single row, so neither
+  // signal carries an index — while a filter is active there'd be no way
+  // to tell "all of them" from "just the filtered ones" apart, so they're
+  // hidden entirely rather than being ambiguous.
   sigc::signal<void()>& signal_play_all_requested() { return signal_play_all_requested_; }
   sigc::signal<void()>& signal_queue_all_requested() { return signal_queue_all_requested_; }
   // Fires on user click only (Gtk::Button::signal_clicked(), not
@@ -107,28 +126,17 @@ public:
   sigc::signal<void()>& signal_view_mode_toggled() { return signal_view_mode_toggled_; }
 
 private:
-  void BuildList(const std::vector<LibraryEntry>& entries, bool show_favorite_action, bool show_delete_action,
+  // Re-renders from all_entries_/the flags SetEntries() last stored,
+  // showing only entries whose title/subtitle contains filter_entry_'s
+  // current text (case-insensitive substring, empty text = everything) —
+  // connected to filter_entry_'s own signal_search_changed(), so this
+  // runs on every keystroke. Mirrors FavoritesView's own ApplyFilter()
+  // (same "small enough to just rebuild wholesale" reasoning it already
+  // documents), extended for LibraryView's own grid/list duality.
+  void ApplyFilter();
+  void BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
                  bool load_artist_images);
-  void BuildGrid(const std::vector<LibraryEntry>& entries, bool load_artist_images);
-  // A-Z jump index down index_strip_'s left edge — one row per bucket
-  // ('0' for anything that doesn't start with a Latin letter, then A..Z)
-  // that actually has at least one entry, jumping to that bucket's first
-  // entry when clicked. Only a small window of buckets around the
-  // *current* one is ever shown at once (see UpdateIndexWindow()) — with
-  // 27 possible buckets, showing all of them at a fixed height either
-  // crams them illegibly small or, full-height, still doesn't fit a
-  // shorter window at all; a compact, scroll-following window is legible
-  // regardless of window height and needs no more space than a handful of
-  // rows ever take. See the .cpp's own comments for the threshold and the
-  // accent-folding behind bucketing.
-  void RebuildIndexStrip(const std::vector<LibraryEntry>& entries);
-  // Recomputes which bucket is "current" (the one at/just above the top
-  // of the visible scrolled area) and re-renders index_strip_'s small
-  // window around it, if that bucket actually changed since the last
-  // call — connected to scroller_'s own vadjustment, so the index tracks
-  // scrolling live rather than staying static.
-  void UpdateIndexWindow();
-  void JumpToIndex(int entry_index);
+  void BuildGrid(const std::vector<unsigned>& indices, bool load_artist_images);
 
   Gtk::Button back_button_;
   Gtk::Label level_title_;
@@ -141,22 +149,24 @@ private:
   // play_all_button_/queue_all_button_.
   Gtk::Button add_button_;
   Gtk::Button search_button_;
+  // Live local filter — see ApplyFilter()'s own comment for how this
+  // differs from search_button_'s server-side search dialog. Its own row
+  // below the header, same layout FavoritesView already uses for the
+  // equivalent field.
+  Gtk::SearchEntry filter_entry_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
   Gtk::FlowBox flow_box_;
   Gtk::Label placeholder_;
-  Gtk::Box index_strip_{Gtk::Orientation::VERTICAL, 2};
-  // Set by the most recent SetEntries() — JumpToIndex() needs to know
-  // whether entry indices currently map onto flow_box_'s children or
-  // list_box_'s rows.
-  bool grid_mode_active_ = false;
-  // (bucket letter, first entry index) for every bucket actually present
-  // at the current level, in alphabet order — recomputed by
-  // RebuildIndexStrip(), read by UpdateIndexWindow() on every scroll tick.
-  std::vector<std::pair<char, int>> bucket_order_;
-  // Position within bucket_order_ last rendered as "current" — re-render
-  // only happens when this actually changes, not on every scroll pixel.
-  int current_bucket_pos_ = -1;
+  // The full, unfiltered level, plus the flags it was shown with —
+  // ApplyFilter() needs both on every keystroke, without GnomosWindow
+  // having to call SetEntries() again just because the filter text changed.
+  std::vector<LibraryEntry> all_entries_;
+  bool grid_available_ = false;
+  bool grid_active_ = false;
+  bool show_favorite_action_ = false;
+  bool show_delete_action_ = false;
+  bool load_artist_images_ = false;
   sigc::signal<void(unsigned)> signal_entry_activated_;
   sigc::signal<void()> signal_back_requested_;
   sigc::signal<void()> signal_search_requested_;

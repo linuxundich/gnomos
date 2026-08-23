@@ -157,6 +157,10 @@ private:
   void LoadArtistImagesSetting();
   void SetLoadArtistImages(bool enabled);
   void SetPreferGridView(bool prefer_grid);
+  // [library] fallback_icon_scale in state.ini — see fallback_icon_scale_'s
+  // own comment.
+  void LoadFallbackIconScaleSetting();
+  void SetFallbackIconScale(double scale);
   // Window width/height/maximized, persisted to state.ini's [window] group
   // alongside last_room_uuid — restores the size the user actually left
   // the app at, instead of always reopening at the fixed default_size().
@@ -318,6 +322,18 @@ private:
   // household. Persisted to state.ini's [library] group, alongside
   // prefer_grid_view_.
   bool load_artist_images_ = false;
+  // How large a CoverThumbnail fallback icon's own glyph renders relative
+  // to its tile — see CoverThumbnail::SetFallbackIconScale()'s own
+  // comment for why this is the user's own call rather than a fixed
+  // value: some fallback icons' glyphs fill nearly their whole canvas,
+  // unlike more generously-padded ones, so the same box can still read as
+  // visually bigger depending which icon a given level happens to show.
+  // 1.0 (full size) is the default — deliberately matching what this
+  // looked like before a fixed 3/5 shrink was tried as a fix and reported
+  // back as solving the wrong problem (the *tile* size was never the
+  // complaint). Persisted to state.ini's [library] group, alongside
+  // prefer_grid_view_/load_artist_images_.
+  double fallback_icon_scale_ = 1.0;
   // (object_id, display title) from root to current level; back() is the
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;

@@ -47,14 +47,32 @@ public:
   // takes, same as it would for any other pending load.
   void LoadArtistImage(const std::string& artist_name);
 
+  // Global, shared across every CoverThumbnail instance — how large a
+  // fallback icon's own *glyph* renders relative to its pixel_size_ box,
+  // as a fraction (1.0 = full size). Only affects icon-name rendering
+  // (ShowFallback()); real texture content (a downloaded photo, a
+  // service's own icon image) always fills its box regardless, via
+  // ArtCache::GetScaled(). GnomosWindow's own Settings row calls this
+  // whenever the user changes "Symbolgröße" — see its own state.ini entry.
+  // Confirmed live: some fallback icons (e.g. "audio-x-generic-symbolic")
+  // have a glyph that fills nearly their whole square canvas, unlike a
+  // more generously-padded one (an avatar silhouette, a disc), so the
+  // *same* pixel_size_ can still read as visually bigger — this exists so
+  // that's the user's own call to make rather than a fixed value baked in
+  // here, after an earlier fixed 3/5 shrink (since reverted) turned out to
+  // be the wrong fix for what was actually being reported.
+  static void SetFallbackIconScale(double scale);
+
 private:
   void OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::RefPtr<Gio::File>& file, unsigned generation);
-  // Switches to fallback_icon_name_ at fallback_pixel_size_ — every
-  // "nothing to show" case (empty uri, failed load) goes through this
-  // rather than calling set_from_icon_name() directly, so the smaller
-  // fallback size (see fallback_pixel_size_'s own comment) can't
-  // accidentally get skipped at one of the call sites.
+  // Switches to fallback_icon_name_, sized by pixel_size_ *
+  // s_fallback_icon_scale — every "nothing to show" case (empty uri,
+  // failed load) goes through this rather than calling
+  // set_from_icon_name() directly, so that scaling can't accidentally get
+  // skipped at one of the call sites.
   void ShowFallback();
+
+  static double s_fallback_icon_scale;
 
   // Constructor's own pixel_size argument, kept for ArtCache::GetScaled()
   // calls later — a plain Gdk::Texture set via Gtk::Image::set() has no
@@ -63,15 +81,6 @@ private:
   // ask ArtCache to decode already scaled to this, rather than relying on
   // the widget to shrink an arbitrarily-sized source image on its own.
   int pixel_size_ = 40;
-  // Smaller than pixel_size_ on purpose — confirmed live: a symbolic
-  // fallback icon (e.g. "audio-x-generic-symbolic", whose glyph fills
-  // most of its own square canvas) rendered at the *full* pixel_size_
-  // reads as visibly larger than a neighboring tile showing real
-  // downloaded art or a more generously-padded icon (an avatar silhouette,
-  // say), even though both are the exact same pixel_size_ box. Icons meant
-  // to sit inside a fixed-size thumbnail slot need their own margin, the
-  // same way a padded icon already carries one built into its own SVG.
-  int fallback_pixel_size_ = 24;
   std::string fallback_icon_name_ = "audio-x-generic-symbolic";
   std::string current_uri_;
   unsigned generation_ = 0;

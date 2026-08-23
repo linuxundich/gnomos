@@ -39,6 +39,7 @@
 
 #include "config.h"
 #include "widgets/art-cache.h"
+#include "widgets/cover-thumbnail.h"
 
 namespace gnomos
 {
@@ -670,6 +671,12 @@ GnomosWindow::GnomosWindow()
   LoadNotificationSetting();
   LoadLibraryViewPreference();
   LoadArtistImagesSetting();
+  LoadFallbackIconScaleSetting();
+  // CoverThumbnail's own scale is a static, process-wide default — needs
+  // syncing explicitly here for a value loaded from a previous run;
+  // SetFallbackIconScale() (the Settings row's own handler) keeps it in
+  // sync for any *later* change on its own.
+  CoverThumbnail::SetFallbackIconScale(fallback_icon_scale_);
 
   // Space = play/pause — see OnKeyPressed()'s header comment for why a
   // focused-Editable check is needed alongside the keyval check.
@@ -1313,6 +1320,53 @@ void GnomosWindow::SetLoadArtistImages(bool enabled)
   // artist-typed entries) happens to be the currently displayed one —
   // harmless no-op re-render otherwise, same as toggling prefer_grid_view_
   // already does unconditionally.
+  OnLibraryChanged();
+}
+
+void GnomosWindow::LoadFallbackIconScaleSetting()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    double scale = keyfile->get_double("library", "fallback_icon_scale");
+    if (scale > 0.0 && scale <= 1.0)
+      fallback_icon_scale_ = scale;
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no setting saved yet, stays at the full-size default
+  }
+}
+
+void GnomosWindow::SetFallbackIconScale(double scale)
+{
+  fallback_icon_scale_ = scale;
+  CoverThumbnail::SetFallbackIconScale(scale);
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_double("library", "fallback_icon_scale", scale);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the setting won't be remembered next launch
+  }
+  // Same immediate-feedback reasoning as SetLoadArtistImages()'s own
+  // OnLibraryChanged() call.
   OnLibraryChanged();
 }
 
@@ -2177,6 +2231,15 @@ extern "C" void DeleteBoolCallback(gpointer data, GClosure*)
 {
   delete static_cast<std::function<void(bool)>*>(data);
 }
+extern "C" void OnDoubleSpinRowValueChanged(GObject* object, GParamSpec*, gpointer user_data)
+{
+  auto* callback = static_cast<std::function<void(double)>*>(user_data);
+  (*callback)(adw_spin_row_get_value(ADW_SPIN_ROW(object)));
+}
+extern "C" void DeleteDoubleCallback(gpointer data, GClosure*)
+{
+  delete static_cast<std::function<void(double)>*>(data);
+}
 }  // namespace
 
 void GnomosWindow::ShowSettingsDialog()
@@ -2267,8 +2330,20 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(library_group), "Bibliothek");
   adw_preferences_group_set_description(
       ADW_PREFERENCES_GROUP(library_group),
-      "Alles andere in Gnomos bleibt innerhalb deines Sonos-Haushalts im lokalen Netzwerk — die folgende "
-      "Funktion ist die einzige Ausnahme davon.");
+      "Alles andere in Gnomos bleibt innerhalb deines Sonos-Haushalts im lokalen Netzwerk — die Funktion "
+      "unten ist die einzige Ausnahme davon.");
+
+  GtkWidget* icon_scale_row = adw_spin_row_new_with_range(20, 100, 5);
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(icon_scale_row), "Symbolgröße");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(icon_scale_row),
+      "Größe des Symbols innerhalb einer Kachel, wenn kein Coverbild verfügbar ist");
+  adw_spin_row_set_value(ADW_SPIN_ROW(icon_scale_row), fallback_icon_scale_ * 100.0);
+  g_signal_connect_data(
+      icon_scale_row, "notify::value", G_CALLBACK(OnDoubleSpinRowValueChanged),
+      new std::function<void(double)>([this](double percent) { SetFallbackIconScale(percent / 100.0); }),
+      DeleteDoubleCallback, static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), icon_scale_row);
 
   GtkWidget* artist_images_row = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(artist_images_row), "Künstlerbilder laden");

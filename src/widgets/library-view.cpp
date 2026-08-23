@@ -3,16 +3,25 @@
 #include "library-view.h"
 
 #include <algorithm>
-#include <map>
+#include <cctype>
 #include <string>
 
-#include <glib.h>
-#include <gtkmm/adjustment.h>
 #include <gtkmm/image.h>
 #include <pangomm/layout.h>
 
 namespace gnomos
 {
+
+namespace
+{
+bool ContainsCaseInsensitive(const std::string& haystack, const std::string& needle_lower)
+{
+  std::string haystack_lower = haystack;
+  std::transform(haystack_lower.begin(), haystack_lower.end(), haystack_lower.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  return haystack_lower.find(needle_lower) != std::string::npos;
+}
+}  // namespace
 
 LibraryView::LibraryView()
 : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeholder_("Keine Einträge gefunden.")
@@ -38,9 +47,9 @@ LibraryView::LibraryView()
   level_title_.add_css_class("heading");
   header->append(level_title_);
 
-  // Only ever shown for a fully-leaf level (e.g. an album's track list) —
-  // see SetEntries(). Placed before the search button so search stays the
-  // rightmost, always-present action.
+  // Only ever shown for a fully-leaf level (e.g. an album's track list),
+  // and only while no filter is active — see ApplyFilter(). Placed before
+  // the search button so search stays the rightmost, always-present action.
   play_all_button_.set_icon_name("media-playback-start-symbolic");
   play_all_button_.add_css_class("flat");
   play_all_button_.set_tooltip_text("Alle abspielen");
@@ -79,11 +88,23 @@ LibraryView::LibraryView()
 
   search_button_.set_icon_name("system-search-symbolic");
   search_button_.add_css_class("flat");
-  search_button_.set_tooltip_text("Suchen");
+  search_button_.set_tooltip_text("Im ganzen Dienst suchen");
   search_button_.signal_clicked().connect([this] { signal_search_requested_.emit(); });
   header->append(search_button_);
 
   append(*header);
+
+  // Live local filter — narrows entries already loaded for *this* level as
+  // you type, no network round trip (unlike search_button_'s dialog, which
+  // searches the whole library/service on the server). Replaces an earlier
+  // A-Z jump index that was tried here first and reported back as not a
+  // good fit — this mirrors FavoritesView's own proven filter field instead.
+  filter_entry_.set_placeholder_text("Filtern…");
+  filter_entry_.set_margin_start(12);
+  filter_entry_.set_margin_end(12);
+  filter_entry_.set_margin_bottom(6);
+  filter_entry_.signal_search_changed().connect(sigc::mem_fun(*this, &LibraryView::ApplyFilter));
+  append(filter_entry_);
 
   count_label_.add_css_class("dim-label");
   count_label_.add_css_class("caption");
@@ -132,75 +153,80 @@ LibraryView::LibraryView()
   scroller_.set_child(list_box_);
   scroller_.set_vexpand(true);
   scroller_.set_hexpand(true);
-  // Keeps the index window's "current" letter in sync with what's
-  // actually scrolled into view — see UpdateIndexWindow()'s own comment
-  // for why a live-tracking small window replaced an earlier attempt at
-  // showing the full A-Z range at once (it didn't reliably fit).
-  scroller_.get_vadjustment()->signal_value_changed().connect(sigc::mem_fun(*this, &LibraryView::UpdateIndexWindow));
-
-  // A-Z jump index (see RebuildIndexStrip()/UpdateIndexWindow()) — narrow,
-  // fixed-width, its own "card" background so it reads as a distinct
-  // control rather than part of the scrolled content next to it, matching
-  // the user's own "schmale farblich abgesetzte Spalte" request.
-  // Vertically centered and only as tall as its own handful of rows need
-  // — not stretched to fill the available height — so it always fits
-  // regardless of window height, unlike an earlier version that tried to
-  // show the entire alphabet at once. Only visible once SetEntries() has
-  // enough entries to actually be worth jumping around in — see
-  // RebuildIndexStrip()'s own threshold.
-  index_strip_.add_css_class("card");
-  index_strip_.set_valign(Gtk::Align::CENTER);
-  index_strip_.set_margin_top(6);
-  index_strip_.set_margin_bottom(6);
-  index_strip_.set_margin_start(4);
-  index_strip_.set_size_request(28, -1);
-  index_strip_.set_visible(false);
-
-  auto* content_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 0);
-  content_row->set_vexpand(true);
-  content_row->set_hexpand(true);
-  content_row->append(index_strip_);
-  content_row->append(scroller_);
-  append(*content_row);
+  append(scroller_);
 }
 
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
                               bool show_favorite_action, bool show_delete_action, bool load_artist_images)
 {
-  Clear();
-  count_label_.set_text(entries.empty()      ? ""
-                         : entries.size() == 1 ? "1 Eintrag"
-                                                : std::to_string(entries.size()) + " Einträge");
-  bool grid = grid_available && grid_active;
-  grid_mode_active_ = grid;
-  scroller_.set_child(grid ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_));
-  if (grid)
-    BuildGrid(entries, load_artist_images);
-  else
-    BuildList(entries, show_favorite_action, show_delete_action, load_artist_images);
-  RebuildIndexStrip(entries);
+  all_entries_ = entries;
+  grid_available_ = grid_available;
+  grid_active_ = grid_active;
+  show_favorite_action_ = show_favorite_action;
+  show_delete_action_ = show_delete_action;
+  load_artist_images_ = load_artist_images;
 
+  // A filter that made sense for the *previous* level shouldn't silently
+  // keep hiding entries after navigating somewhere unrelated — set_text()
+  // alone won't fire signal_search_changed() when the text was already
+  // empty (the common case), so ApplyFilter() is called explicitly below
+  // regardless.
+  filter_entry_.set_text("");
+
+  bool grid = grid_available && grid_active;
   view_mode_button_.set_visible(grid_available);
   // Icon/tooltip reflect the mode a click switches *to*, not the current
   // one.
   view_mode_button_.set_icon_name(grid ? "view-list-symbolic" : "view-grid-symbolic");
   view_mode_button_.set_tooltip_text(grid ? "Als Liste anzeigen" : "Als Raster anzeigen");
 
-  // "Play all"/"queue all" only make sense once every entry at this level
-  // is a leaf track — never for a grid (always containers to browse into)
-  // or a list still mixing in containers.
-  bool all_leaf = !grid && !entries.empty() &&
-                   std::none_of(entries.begin(), entries.end(), [](const LibraryEntry& e) { return e.is_container; });
-  play_all_button_.set_visible(all_leaf);
-  queue_all_button_.set_visible(all_leaf);
+  ApplyFilter();
 }
 
-void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_favorite_action,
-                             bool show_delete_action, bool load_artist_images)
+void LibraryView::ApplyFilter()
 {
-  for (size_t i = 0; i < entries.size(); ++i)
+  Clear();
+
+  std::string term = filter_entry_.get_text();
+  std::transform(term.begin(), term.end(), term.begin(), [](unsigned char c) { return std::tolower(c); });
+
+  std::vector<unsigned> indices;
+  indices.reserve(all_entries_.size());
+  for (unsigned i = 0; i < all_entries_.size(); ++i)
   {
-    const LibraryEntry& entry = entries[i];
+    const LibraryEntry& entry = all_entries_[i];
+    if (term.empty() || ContainsCaseInsensitive(entry.title, term) || ContainsCaseInsensitive(entry.subtitle, term))
+      indices.push_back(i);
+  }
+
+  count_label_.set_text(indices.empty()      ? ""
+                         : indices.size() == 1 ? "1 Eintrag"
+                                                : std::to_string(indices.size()) + " Einträge");
+
+  bool grid = grid_available_ && grid_active_;
+  scroller_.set_child(grid ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_));
+  if (grid)
+    BuildGrid(indices, load_artist_images_);
+  else
+    BuildList(indices, show_favorite_action_, show_delete_action_, load_artist_images_);
+
+  // "Play all"/"queue all" only make sense once every entry at the (full,
+  // unfiltered) level is a leaf track, and only while no filter is
+  // narrowing the view — see their own signal comments in the header for
+  // why a filtered subset can't unambiguously mean "all of them" too.
+  bool all_leaf =
+      !grid && !all_entries_.empty() &&
+      std::none_of(all_entries_.begin(), all_entries_.end(), [](const LibraryEntry& e) { return e.is_container; });
+  play_all_button_.set_visible(all_leaf && term.empty());
+  queue_all_button_.set_visible(all_leaf && term.empty());
+}
+
+void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
+                             bool load_artist_images)
+{
+  for (unsigned index : indices)
+  {
+    const LibraryEntry& entry = all_entries_[index];
     auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
     row_box->set_margin_top(6);
     row_box->set_margin_bottom(6);
@@ -234,8 +260,6 @@ void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_
       labels->append(*subtitle);
     }
     row_box->append(*labels);
-
-    unsigned index = static_cast<unsigned>(i);
 
     // Both a container (a whole album/playlist/artist) and a leaf track can
     // be favorited in Sonos, unlike add-to-queue/play-next which only make
@@ -297,10 +321,11 @@ void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_
   }
 }
 
-void LibraryView::BuildGrid(const std::vector<LibraryEntry>& entries, bool load_artist_images)
+void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_artist_images)
 {
-  for (const LibraryEntry& entry : entries)
+  for (unsigned index : indices)
   {
+    const LibraryEntry& entry = all_entries_[index];
     auto* tile = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
     tile->set_size_request(120, -1);
 
@@ -338,144 +363,6 @@ void LibraryView::BuildGrid(const std::vector<LibraryEntry>& entries, bool load_
 
     flow_box_.append(*tile);
   }
-}
-
-namespace
-{
-// '0' for anything not starting with a Latin letter, otherwise the
-// upper-cased first Latin letter — accented ones (Ä, É, ...) fold to
-// their base letter via Unicode NFD decomposition + skipping the
-// resulting combining mark, so a German or French entry isn't stranded
-// under "0" just because of an umlaut or accent.
-char BucketFor(const std::string& title)
-{
-  if (title.empty())
-    return '0';
-  gchar* normalized = g_utf8_normalize(title.c_str(), -1, G_NORMALIZE_NFD);
-  if (!normalized)
-    return '0';
-  char result = '0';
-  for (const char* p = normalized; *p; p = g_utf8_next_char(p))
-  {
-    gunichar ch = g_utf8_get_char(p);
-    if (g_unichar_type(ch) == G_UNICODE_NON_SPACING_MARK)
-      continue;
-    gunichar upper = g_unichar_toupper(ch);
-    if (upper >= 'A' && upper <= 'Z')
-      result = static_cast<char>(upper);
-    break;
-  }
-  g_free(normalized);
-  return result;
-}
-}  // namespace
-
-void LibraryView::RebuildIndexStrip(const std::vector<LibraryEntry>& entries)
-{
-  bucket_order_.clear();
-  current_bucket_pos_ = -1;
-
-  // Only worth showing once there's enough content to actually need
-  // jumping around in — a handful of entries doesn't need this.
-  static constexpr size_t kMinEntriesForIndex = 30;
-  if (entries.size() < kMinEntriesForIndex)
-  {
-    index_strip_.set_visible(false);
-    return;
-  }
-
-  std::map<char, int> first_index_for_bucket;
-  for (size_t i = 0; i < entries.size(); ++i)
-  {
-    char bucket = BucketFor(entries[i].title);
-    if (first_index_for_bucket.find(bucket) == first_index_for_bucket.end())
-      first_index_for_bucket[bucket] = static_cast<int>(i);
-  }
-  bucket_order_.assign(first_index_for_bucket.begin(), first_index_for_bucket.end());
-
-  index_strip_.set_visible(!bucket_order_.empty());
-  // current_bucket_pos_ is already -1 (reset above), which never matches
-  // any real position UpdateIndexWindow() computes, so this always
-  // renders — the freshly built list_box_/flow_box_ children aren't
-  // allocated yet at this exact point (that only happens once GTK's next
-  // layout pass runs), so compute_bounds() below will find nothing to
-  // measure yet and this falls back to showing bucket 0 — corrected
-  // automatically by the very next real scroll/layout event, since that's
-  // what actually re-invokes this.
-  UpdateIndexWindow();
-}
-
-void LibraryView::UpdateIndexWindow()
-{
-  if (bucket_order_.empty())
-    return;
-
-  double scroll_value = scroller_.get_vadjustment()->get_value();
-  Gtk::Widget& container =
-      grid_mode_active_ ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_);
-
-  // Last bucket whose first entry's own top edge is at or above the
-  // current scroll position — i.e. the bucket currently scrolled into,
-  // the same "top of viewport decides the current section" convention
-  // list-with-section-headers UIs (e.g. iOS Contacts) already use.
-  int pos = 0;
-  for (size_t i = 0; i < bucket_order_.size(); ++i)
-  {
-    Gtk::Widget* target = grid_mode_active_
-                              ? static_cast<Gtk::Widget*>(flow_box_.get_child_at_index(bucket_order_[i].second))
-                              : static_cast<Gtk::Widget*>(list_box_.get_row_at_index(bucket_order_[i].second));
-    if (!target)
-      continue;
-    auto bounds = target->compute_bounds(container);
-    if (!bounds || bounds->get_y() > scroll_value + 1.0)
-      break;
-    pos = static_cast<int>(i);
-  }
-
-  if (pos == current_bucket_pos_)
-    return;
-  current_bucket_pos_ = pos;
-
-  while (Gtk::Widget* child = index_strip_.get_first_child())
-    index_strip_.remove(*child);
-
-  // Rows shown above/below the current letter — kept small on purpose:
-  // the whole point of tracking the current bucket live is to never need
-  // more than a handful of rows regardless of window height or how many
-  // buckets exist in total.
-  static constexpr int kContext = 3;
-  int first = std::max(0, pos - kContext);
-  int last = std::min(static_cast<int>(bucket_order_.size()) - 1, pos + kContext);
-  for (int i = first; i <= last; ++i)
-  {
-    char c = bucket_order_[static_cast<size_t>(i)].first;
-    auto* label = Gtk::make_managed<Gtk::Label>(std::string(1, c));
-    label->add_css_class("caption");
-    auto* button = Gtk::make_managed<Gtk::Button>();
-    button->set_child(*label);
-    button->add_css_class("flat");
-    if (i == pos)
-      button->add_css_class("suggested-action");
-    int target_index = bucket_order_[static_cast<size_t>(i)].second;
-    button->signal_clicked().connect([this, target_index] { JumpToIndex(target_index); });
-    index_strip_.append(*button);
-  }
-}
-
-void LibraryView::JumpToIndex(int entry_index)
-{
-  Gtk::Widget* target = grid_mode_active_
-                            ? static_cast<Gtk::Widget*>(flow_box_.get_child_at_index(entry_index))
-                            : static_cast<Gtk::Widget*>(list_box_.get_row_at_index(entry_index));
-  if (!target)
-    return;
-  Gtk::Widget& container = grid_mode_active_ ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_);
-  // set_value() triggers vadjustment's own signal_value_changed(), which
-  // UpdateIndexWindow() is connected to — the index window re-centers on
-  // the newly-current bucket as a natural side effect, not a separate
-  // step here.
-  if (auto bounds = target->compute_bounds(container))
-    scroller_.get_vadjustment()->set_value(bounds->get_y());
 }
 
 void LibraryView::SetLevelTitle(const std::string& title)
