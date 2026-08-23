@@ -716,6 +716,26 @@ startup (syncing a value loaded from a previous run) and from a new
 "Symbolgröße" `AdwSpinRow` in Settings (20-100%, mirroring the existing
 cover-art-cache-size spin row's own pattern) whenever it changes.
 
+**Second follow-up, reported live**: dragging the new "Symbolgröße" row
+while looking at a real, large grid (bonob's Albums listing) crashed the
+app outright. `CoverThumbnail`'s async art loading was already checked
+and ruled out as the cause — it's guarded by an `alive_`/`generation_`
+pair specifically to survive being destroyed mid-load (see
+`CoverThumbnail`'s own header). The actual difference between this
+setting and every other one that also calls `OnLibraryChanged()`
+(`prefer_grid_view_`, `load_artist_images_`) is how it's driven: those
+are switch rows, which fire their change signal once per click, while an
+`AdwSpinRow` fires `notify::value` many times a second while being
+dragged or scrolled — and each firing was rebuilding the entire grid
+(`LibraryView::Clear()` tearing down and `BuildGrid()` recreating every
+tile) synchronously, back-to-back, with no chance for GTK to finish a
+frame in between. Fixed the same way `NosonBackend::SetVolume()` already
+handles its own rapid-fire slider input: `GnomosWindow::SetFallbackIconScale()`
+now only updates the live rendering scale immediately (cheap, no rebuild)
+and debounces the disk-persist + `OnLibraryChanged()` rebuild by 200ms via
+a `fallback_icon_scale_debounce_connection_` timeout, so only the
+settled value after dragging stops actually triggers a rebuild.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

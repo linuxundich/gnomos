@@ -1345,29 +1345,42 @@ void GnomosWindow::SetFallbackIconScale(double scale)
   fallback_icon_scale_ = scale;
   CoverThumbnail::SetFallbackIconScale(scale);
 
-  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
-  g_mkdir_with_parents(dir.c_str(), 0700);
-  auto keyfile = Glib::KeyFile::create();
-  try
-  {
-    keyfile->load_from_file(StateFilePath());
-  }
-  catch (const Glib::Error&)
-  {
-    // fine — first launch, nothing to preserve
-  }
-  keyfile->set_double("library", "fallback_icon_scale", scale);
-  try
-  {
-    keyfile->save_to_file(StateFilePath());
-  }
-  catch (const Glib::Error&)
-  {
-    // non-fatal — just means the setting won't be remembered next launch
-  }
-  // Same immediate-feedback reasoning as SetLoadArtistImages()'s own
-  // OnLibraryChanged() call.
-  OnLibraryChanged();
+  // Debounced: an AdwSpinRow fires notify::value many times a second while
+  // being dragged/scrolled — unlike a switch row (SetLoadArtistImages()'s
+  // own OnLibraryChanged() call), which only ever fires once per click.
+  // Confirmed live: letting each intermediate value trigger its own full
+  // save-to-disk + OnLibraryChanged() rebuild (potentially dozens/hundreds
+  // of grid tiles, e.g. a real Albums listing) back-to-back crashed the
+  // app. Same reasoning as NosonBackend::SetVolume()'s own debouncing —
+  // only the settled value, a short delay after the last change, actually
+  // persists and re-renders.
+  fallback_icon_scale_debounce_connection_.disconnect();
+  fallback_icon_scale_debounce_connection_ = Glib::signal_timeout().connect(
+      [this, scale] {
+        const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+        g_mkdir_with_parents(dir.c_str(), 0700);
+        auto keyfile = Glib::KeyFile::create();
+        try
+        {
+          keyfile->load_from_file(StateFilePath());
+        }
+        catch (const Glib::Error&)
+        {
+          // fine — first launch, nothing to preserve
+        }
+        keyfile->set_double("library", "fallback_icon_scale", scale);
+        try
+        {
+          keyfile->save_to_file(StateFilePath());
+        }
+        catch (const Glib::Error&)
+        {
+          // non-fatal — just means the setting won't be remembered next launch
+        }
+        OnLibraryChanged();
+        return false;  // one-shot
+      },
+      200);
 }
 
 void GnomosWindow::LoadNotificationSetting()

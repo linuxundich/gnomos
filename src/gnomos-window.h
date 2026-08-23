@@ -334,6 +334,12 @@ private:
   // complaint). Persisted to state.ini's [library] group, alongside
   // prefer_grid_view_/load_artist_images_.
   double fallback_icon_scale_ = 1.0;
+  // Debounces SetFallbackIconScale()'s own save-to-disk + OnLibraryChanged()
+  // rebuild — see that method's own comment for why (confirmed live: an
+  // AdwSpinRow fires notify::value many times a second while being
+  // dragged/scrolled, and each one re-rendering a potentially large grid
+  // back-to-back crashed the app).
+  sigc::connection fallback_icon_scale_debounce_connection_;
   // (object_id, display title) from root to current level; back() is the
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;
