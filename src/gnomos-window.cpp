@@ -360,6 +360,16 @@ GnomosWindow::GnomosWindow()
   zones_list_box_.set_selection_mode(Gtk::SelectionMode::SINGLE);
   zones_list_box_.add_css_class("navigation-sidebar");
   zones_list_box_.signal_row_selected().connect(sigc::mem_fun(*this, &GnomosWindow::OnZoneRowSelected));
+  // row-activated (real click/Enter on a row), not row-selected — the
+  // latter also fires from OnZonesChanged()'s own select_row() call
+  // whenever zones_list_box_'s selection gets (re)applied while the
+  // popover's content is still unmapped/hidden, which GTK then re-emits
+  // once the popover actually maps. Closing on row-selected instead
+  // closed the popover in the very same tick it had just opened in —
+  // confirmed live: every click logged "shown" immediately followed by
+  // "closed", so the popover was never visibly open at all.
+  zones_list_box_.signal_row_activated().connect(
+      [this](Gtk::ListBoxRow*) { room_popover_.popdown(); });
 
   zones_scroller_.set_child(zones_list_box_);
   zones_scroller_.set_size_request(260, -1);
@@ -637,7 +647,6 @@ void GnomosWindow::OnZoneRowSelected(Gtk::ListBoxRow* row)
   backend_->SelectZone(selected_group_id_);
   SaveLastRoom(zone.coordinator_uuid);
   UpdateRoomButtonLabel();
-  room_popover_.popdown();
 }
 
 void GnomosWindow::OnNavRowSelected(Gtk::ListBoxRow* row)
