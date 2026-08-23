@@ -168,6 +168,28 @@ Glib::RefPtr<Gdk::Texture> ArtCache::Get(const std::string& uri)
   if (it != entries_.end())
   {
     Touch(uri);
+    // A memory entry can have an empty texture with real raw_bytes —
+    // GetRawBytes()'s own disk-fallback deliberately skips the full-
+    // resolution decode (see its own comment), promising this exact
+    // lazy decode-on-first-actual-need in exchange. Confirmed live: this
+    // was never actually implemented, only promised in that comment —
+    // PlayerBar::LoadArt() (the only caller that still wants a full-res
+    // texture rather than GetScaled()'s own scaled one) got back a
+    // silently-empty RefPtr for anything that had gone through that
+    // disk-fallback path first, showing its own fallback icon forever
+    // even though a real image was one decode away the whole time.
+    if (!it->second.texture && it->second.raw_bytes)
+    {
+      try
+      {
+        it->second.texture = Gdk::Texture::create_from_bytes(it->second.raw_bytes);
+      }
+      catch (const Glib::Error&)
+      {
+        // raw_bytes turned out not to be decodable after all — leave
+        // texture empty, same as any other "no art available" case.
+      }
+    }
     return it->second.texture;
   }
 

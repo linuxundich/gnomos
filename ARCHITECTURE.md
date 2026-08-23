@@ -1235,6 +1235,57 @@ rather than read from a directory listing, so the identical scheme-
 rewrite reasoning (and the identical matching function) applies
 unchanged.
 
+### Fixed: some radio stations permanently stuck on the fallback icon, an actual `ArtCache` bug
+
+Reported live with a screenshot: the library listing showed correct,
+distinct thumbnails for *every* station (including SWR1) — but the
+bottom Now Playing bar still showed the generic fallback while SWR1 was
+actively playing, contradicting the two fixes just above. Live
+inspection (`gdb`, reading `backend_->now_playing_` directly on a real
+playing session — same generation-mismatch and type-resolution
+complications as ever, worked around the same way) showed
+`NowPlaying::art_uri` itself was already correctly resolved to SWR1's
+favicon URL. So the bug wasn't in resolving the URL at all — it was in
+what happened *after*.
+
+Root cause, found by reading `PlayerBar::LoadArt()`: unlike every
+library tile (`CoverThumbnail`, which uses `ArtCache::GetRawBytes()` +
+`DecodeScaledTexture()`), `PlayerBar` still calls the older
+`ArtCache::Get()` directly for a full-resolution texture. `Get()`'s
+memory-hit branch just returned `it->second.texture` unconditionally —
+but the large-grid performance fix earlier in this document
+(`GetRawBytes()`'s disk-fallback) deliberately leaves that field *empty*
+or a raw-bytes-only entry, on the explicit promise (written directly in
+that method's own comment) that `Get()` would decode it lazily on
+demand. That lazy decode was never actually implemented — only promised
+in the comment. Once a URI's memory entry existed at all (even with an
+empty texture), `Get()`'s `if (it != entries_.end())` check always
+matched and returned immediately, *never* falling through to retry via
+a fresh network fetch — a real, non-recoverable dead end, not a
+transient one, which matches exactly what was reported ("permanently
+the generic icon," not "briefly, then corrects itself").
+
+This is reachable any time a URI's memory entry gets populated via
+`GetRawBytes()`'s disk-fallback before `PlayerBar::LoadArt()` ever asks
+for it directly — in practice, exactly the radio thumbnail scenario:
+`CoverThumbnail` (the library tile) loads and caches the art first, that
+memory entry later gets evicted by the 300-entry LRU cap as other art
+gets browsed, and the *next* time the library tile re-requests it, the
+resulting disk-fallback re-populates the entry with an empty texture —
+poisoning it for `PlayerBar::Get()` from then on, permanently, even
+though the exact same bytes decode successfully every time `GetScaled()`
+asks for them.
+
+Fixed by actually implementing the lazy decode `Get()`'s memory-hit
+branch was always supposed to do: if the entry's `texture` is empty but
+its `raw_bytes` are present, decode a full-resolution texture from them
+right there, cache the result back into the entry, and return it —
+matching `GetRawBytes()`'s own comment for the first time. Verified live
+against the real, already-disk-cached SWR1 favicon (populated by
+actually browsing "R:0/0" first, the same way `CoverThumbnail` would):
+`ArtCache::Instance().Get(uri)` now returns a real, non-null texture for
+exactly the URI that would previously have been silently stuck empty.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real
