@@ -8,6 +8,34 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.5.0] - 2026-08-24
+
+### Added
+- Deleting a custom internet radio station, alongside the existing
+  ability to add one.
+- Adding a library track to an existing saved playlist, and reordering
+  tracks within one.
+- Line-in autoplay settings (enable, target volume) in the sound
+  popover.
+- A "Bibliothek neu einlesen" action in Settings, for rescanning an
+  indexed local music share after adding files to it.
+- Radio station search against radio-browser.info's public directory
+  (country filter, name search, results list), replacing manual name/
+  URL entry as the primary way to add a station — manual entry is still
+  available as a fallback.
+- A "play now" button on each radio station row.
+
+### Fixed
+- A freshly added or deleted radio station, a deleted playlist, or a
+  playlist edited via the two features above didn't show up until the
+  library cache happened to expire on its own (up to 5 minutes).
+- Several actions that don't make sense for a live radio stream (add to
+  queue, play next, add to playlist, bulk add-all-to-queue, bulk play
+  all) were shown on radio station rows anyway and failed on click —
+  removed for the Radiosender section.
+- Cover art briefly flickering between real art and the fallback icon a
+  few times right after launch.
+
 ## [0.4.1] - 2026-08-23
 
 ### Fixed
