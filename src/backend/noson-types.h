@@ -88,6 +88,24 @@ struct NowPlaying
   // device itself reports the mode as valid for what's currently playing.
   bool shuffle_supported = true;
   bool repeat_supported = true;
+  // AVTProperty::CurrentTransportActions ("Set, Play, Stop, Pause, Seek,
+  // Next, Previous" or a subset) — not every source supports every
+  // transport action (e.g. some radio stations don't support Next/
+  // Previous at all), so the corresponding buttons/MPRIS Can* properties
+  // are only true when the device itself reports the action as available.
+  bool can_go_next = true;
+  bool can_go_previous = true;
+  bool can_pause = true;
+  // AVTProperty::TransportStatus — "OK" normally; anything else (e.g.
+  // "ERROR_OCCURRED") means the device itself is reporting a transport
+  // problem, surfaced as a toast rather than silently ignored.
+  bool transport_status_ok = true;
+  // AVTProperty::r_AlarmRunning — an alarm is actively ringing in this
+  // room right now. Doesn't identify *which* alarm; stopping transport in
+  // the room (the same action Play/Pause already offers) stops it
+  // regardless of which one it was, so nothing further is needed to act
+  // on this.
+  bool alarm_running = false;
   // Seconds; 0 means a live stream (radio/line-in) or unknown, not "just
   // started" — mirrors noson-app's own postulate (player.cpp,
   // setCurrentMeta()). Pushed via AVTProperty::CurrentTrackDuration, unlike

@@ -68,6 +68,11 @@ GnomosWindow::GnomosWindow()
   add_action("about", sigc::mem_fun(*this, &GnomosWindow::ShowAboutDialog));
   add_action("settings", sigc::mem_fun(*this, &GnomosWindow::ShowSettingsDialog));
   add_action("shortcuts", sigc::mem_fun(*this, &GnomosWindow::ShowShortcutsDialog));
+  // Wired to the "Stoppen" button on the ringing-alarm toast — see
+  // CheckAlarmAndTransportStatus(). Stopping transport in the room stops
+  // the alarm regardless of which one it was, same call the play/pause
+  // button already uses.
+  add_action("stop-alarm", [this] { backend_->PauseOrStop(); });
   auto primary_menu = Gio::Menu::create();
   primary_menu->append("Einstellungen", "win.settings");
   primary_menu->append("Tastenkürzel", "win.shortcuts");
@@ -812,6 +817,7 @@ void GnomosWindow::OnNowPlayingChanged()
   queue_view_.SetCurrentIndex(current_queue_index_);
   UpdateNextTrackHint();
   RecordHistoryIfTrackChanged(np);
+  CheckAlarmAndTransportStatus(np);
 }
 
 void GnomosWindow::OnPositionChanged()
@@ -884,6 +890,22 @@ void GnomosWindow::RecordHistoryIfTrackChanged(const NowPlaying& now_playing)
   history_view_.SetItems(history_);
   SaveHistory();
   SendTrackChangeNotification(now_playing);
+}
+
+void GnomosWindow::CheckAlarmAndTransportStatus(const NowPlaying& now_playing)
+{
+  if (now_playing.alarm_running && !last_alarm_running_)
+  {
+    AdwToast* toast = adw_toast_new("Wecker klingelt");
+    adw_toast_set_button_label(toast, "Stoppen");
+    adw_toast_set_action_name(toast, "win.stop-alarm");
+    adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(toast_overlay_), toast);
+  }
+  last_alarm_running_ = now_playing.alarm_running;
+
+  if (now_playing.valid && !now_playing.transport_status_ok && last_transport_status_ok_)
+    ShowToast("Gerät meldet einen Wiedergabefehler.");
+  last_transport_status_ok_ = now_playing.transport_status_ok;
 }
 
 void GnomosWindow::LoadHistory()

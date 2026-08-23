@@ -98,6 +98,13 @@ private:
   // (not on every OnNowPlayingChanged() re-fire for the same track), and
   // persists it to $XDG_CONFIG_HOME/gnomos/history.ini.
   void RecordHistoryIfTrackChanged(const NowPlaying& now_playing);
+  // Surfaces two AVTProperty conditions that otherwise have no visible
+  // indication at all: an alarm actively ringing in the selected room
+  // (with a "Stoppen" toast action, win.stop-alarm), and the device
+  // itself reporting a transport error. Both edge-triggered off a
+  // last-known flag, so each condition only toasts once per occurrence,
+  // not on every now-playing refresh while it stays true.
+  void CheckAlarmAndTransportStatus(const NowPlaying& now_playing);
   void LoadHistory();
   void SaveHistory() const;
   // AdwStyleManager's light/dark override, persisted to state.ini
@@ -197,6 +204,10 @@ private:
   // fires twice for the same track. Off by default (opt-in via Settings);
   // persisted to state.ini's [notifications] group.
   bool notify_on_track_change_ = false;
+  // Edge-trigger state for CheckAlarmAndTransportStatus() — see its own
+  // comment.
+  bool last_alarm_running_ = false;
+  bool last_transport_status_ok_ = true;
   // (object_id, display title) from root to current level; back() is the
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;

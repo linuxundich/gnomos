@@ -269,6 +269,11 @@ void PlayerBar::Update(const NowPlaying& now_playing)
   // once when a zone becomes ready, before any real track is playing yet.
   shuffle_button_.set_sensitive(now_playing.shuffle_supported);
   repeat_button_.set_sensitive(now_playing.repeat_supported);
+  // Same device-reported-capability gating as shuffle/repeat above, but
+  // for AVTProperty::CurrentTransportActions — some radio stations don't
+  // support Next/Previous at all.
+  next_button_.set_sensitive(now_playing.can_go_next);
+  previous_button_.set_sensitive(now_playing.can_go_previous);
 
   LoadArt(now_playing.art_uri);
 }

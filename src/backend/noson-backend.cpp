@@ -136,6 +136,13 @@ NosonBackend::~NosonBackend()
   // mid-teardown or gone.
   if (system_bus_connection_ && sleep_signal_subscription_id_ != 0)
     system_bus_connection_->signal_unsubscribe(sleep_signal_subscription_id_);
+
+  // Same reasoning: a pending debounce timer's slot captures [this] and
+  // calls ApplyVolumeAsync()/ApplyRoomVolumeAsync() (which push onto
+  // tasks_), so it must never fire once tasks_/system_ are mid-teardown.
+  volume_debounce_connection_.disconnect();
+  for (auto& [uuid, connection] : room_volume_debounce_connections_)
+    connection.disconnect();
 }
 
 void NosonBackend::SubscribeToSleepSignal()
@@ -538,6 +545,24 @@ void NosonBackend::Previous()
 }
 
 void NosonBackend::SetVolume(uint8_t value)
+{
+  // Debounced: dragging the slider can fire this many times a second, and
+  // each call is a full read-every-member-then-scale-every-member round
+  // trip (see ApplyVolumeAsync() below) — without this, every intermediate
+  // step queued its own trip, leaving the device visibly lagging behind
+  // the slider for a while after the user had already stopped dragging.
+  // A short constant delay (not tied to drag speed) is enough: it only
+  // needs to collapse a burst of same-frame updates into one.
+  volume_debounce_connection_.disconnect();
+  volume_debounce_connection_ = Glib::signal_timeout().connect(
+      [this, value] {
+        ApplyVolumeAsync(value);
+        return false;  // one-shot
+      },
+      150);
+}
+
+void NosonBackend::ApplyVolumeAsync(uint8_t value)
 {
   tasks_.Push([this, value] {
     auto player = SnapshotPlayer();
@@ -2096,6 +2121,7 @@ void NosonBackend::DeleteAlarm(const std::string& alarm_id)
 void NosonBackend::PreviewAlarmSound(const std::string& room_uuid, unsigned sound_index)
 {
   tasks_.Push([this, room_uuid, sound_index] {
+    constexpr int kAlarmPreviewSeconds = 8;
     if (sound_index == 0 || sound_index == kKeepExistingAlarmSound)
       return;
 
@@ -2118,6 +2144,19 @@ void NosonBackend::PreviewAlarmSound(const std::string& room_uuid, unsigned soun
       EnsureServiceDesc(*system_, item);
       NSROOT::Player roomPlayer(target);
       ok = roomPlayer.SetCurrentURI(item) && roomPlayer.Play();
+      if (ok)
+      {
+        // A genuine preview, not something left playing until the user
+        // manually stops it — sleeping right here on this same
+        // TaskQueue task (rather than a separate timer) means any other
+        // action the user takes on this room meanwhile simply queues up
+        // behind this one and runs after, the same ordering guarantee
+        // every other TaskQueue task already relies on, instead of a
+        // cross-thread timer that could fire after the room moved on to
+        // playing something else entirely.
+        std::this_thread::sleep_for(std::chrono::seconds(kAlarmPreviewSeconds));
+        roomPlayer.Stop();
+      }
     }
 
     if (!ok)
@@ -2303,6 +2342,11 @@ void NosonBackend::RefreshNowPlayingLocked()
   // explicit substring check, not just "field is non-empty".
   np.shuffle_supported = prop.r_CurrentValidPlayModes.find("SHUFFLE") != std::string::npos;
   np.repeat_supported = prop.r_CurrentValidPlayModes.find("REPEAT") != std::string::npos;
+  np.can_go_next = prop.CurrentTransportActions.find("Next") != std::string::npos;
+  np.can_go_previous = prop.CurrentTransportActions.find("Previous") != std::string::npos;
+  np.can_pause = prop.CurrentTransportActions.find("Pause") != std::string::npos;
+  np.transport_status_ok = prop.TransportStatus.empty() || prop.TransportStatus == "OK";
+  np.alarm_running = prop.r_AlarmRunning == "1";
   // CurrentTrack/AVTransportURI are unreliable for a brief moment during a
   // track change — TransportState == TRANSITIONING is UPnP's own signal
   // that this snapshot is mid-update and nothing derived from it should be
@@ -2408,6 +2452,20 @@ bool NosonBackend::GetRoomVolume(const std::string& player_uuid, uint8_t& out_vo
 }
 
 void NosonBackend::SetRoomVolume(const std::string& player_uuid, uint8_t value)
+{
+  // Debounced per-room, same reasoning as SetVolume() above — the
+  // grouping popover has one of these sliders per room, each needing its
+  // own independent debounce timer.
+  room_volume_debounce_connections_[player_uuid].disconnect();
+  room_volume_debounce_connections_[player_uuid] = Glib::signal_timeout().connect(
+      [this, player_uuid, value] {
+        ApplyRoomVolumeAsync(player_uuid, value);
+        return false;  // one-shot
+      },
+      150);
+}
+
+void NosonBackend::ApplyRoomVolumeAsync(const std::string& player_uuid, uint8_t value)
 {
   tasks_.Push([this, player_uuid, value] {
     auto player = SnapshotPlayer();

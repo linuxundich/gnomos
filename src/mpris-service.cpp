@@ -182,10 +182,10 @@ void MprisService::OnNowPlayingChanged()
   changed["LoopStatus"] = Glib::Variant<Glib::ustring>::create(LoopStatusFor(np.repeat));
   changed["Shuffle"] = Glib::Variant<bool>::create(np.shuffle);
   changed["Metadata"] = BuildMetadata();
-  changed["CanGoNext"] = Glib::Variant<bool>::create(np.valid);
-  changed["CanGoPrevious"] = Glib::Variant<bool>::create(np.valid);
+  changed["CanGoNext"] = Glib::Variant<bool>::create(np.valid && np.can_go_next);
+  changed["CanGoPrevious"] = Glib::Variant<bool>::create(np.valid && np.can_go_previous);
   changed["CanPlay"] = Glib::Variant<bool>::create(np.valid);
-  changed["CanPause"] = Glib::Variant<bool>::create(np.valid);
+  changed["CanPause"] = Glib::Variant<bool>::create(np.valid && np.can_pause);
   changed["CanSeek"] = Glib::Variant<bool>::create(np.valid && np.duration > 0);
   changed["CanControl"] = Glib::Variant<bool>::create(np.valid);
   EmitPropertiesChanged(kPlayerInterface, changed);
@@ -369,13 +369,13 @@ void MprisService::OnGetProperty(Glib::VariantBase& property, const Glib::RefPtr
   else if (property_name == "MaximumRate")
     property = Glib::Variant<double>::create(1.0);
   else if (property_name == "CanGoNext")
-    property = Glib::Variant<bool>::create(np.valid);
+    property = Glib::Variant<bool>::create(np.valid && np.can_go_next);
   else if (property_name == "CanGoPrevious")
-    property = Glib::Variant<bool>::create(np.valid);
+    property = Glib::Variant<bool>::create(np.valid && np.can_go_previous);
   else if (property_name == "CanPlay")
     property = Glib::Variant<bool>::create(np.valid);
   else if (property_name == "CanPause")
-    property = Glib::Variant<bool>::create(np.valid);
+    property = Glib::Variant<bool>::create(np.valid && np.can_pause);
   else if (property_name == "CanSeek")
     property = Glib::Variant<bool>::create(np.valid && np.duration > 0);
   else if (property_name == "CanControl")

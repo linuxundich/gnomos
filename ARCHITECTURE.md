@@ -127,6 +127,37 @@ reordering would introduce a use-after-free.
   via `gdbus call ... org.freedesktop.DBus.Properties.GetAll` showing real
   `Shuffle`/`LoopStatus` values alongside the rest of the playing track's
   metadata.
+- **Transport action capability.** Same idea as shuffle/repeat above, for
+  `AVTProperty::CurrentTransportActions` ("Set, Play, Stop, Pause, Seek,
+  Next, Previous" or a subset) — some radio stations don't support Next/
+  Previous/Pause at all. `NowPlaying::can_go_next`/`can_go_previous`/
+  `can_pause` now gate both `PlayerBar`'s buttons and MPRIS's
+  `CanGoNext`/`CanGoPrevious`/`CanPause`, which previously just mirrored
+  `np.valid` regardless of what the source actually supported.
+- **Ringing-alarm detection.** `AVTProperty::r_AlarmRunning` was read by
+  nothing — an alarm going off was only ever noticeable by actually
+  hearing it. `GnomosWindow` now edge-triggers a toast ("Wecker klingelt")
+  with a "Stoppen" action (`win.stop-alarm`, wired to the same
+  `PauseOrStop()` the play/pause button uses) the moment it starts, and
+  separately toasts once if `AVTProperty::TransportStatus` ever reports
+  anything other than `"OK"`.
+- **Volume debounce.** Dragging the volume slider fired `SetVolume()`
+  many times a second, and each call was a full read-every-member-then-
+  scale-every-member round trip — every intermediate drag step queued its
+  own trip on `TaskQueue`, leaving the device visibly lagging behind the
+  slider for a while after the user had already stopped dragging.
+  `SetVolume()`/`SetRoomVolume()` now debounce through a short
+  (150ms) `Glib::signal_timeout()`, collapsing a drag into the single
+  final value.
+- **Alarm sound preview never stopped itself.** `PreviewAlarmSound()`
+  started playback and just left it running indefinitely — the "Wecker-Ton
+  testen" button's own name implies a brief preview, but nothing actually
+  made it brief. It now sleeps 8 seconds on the same `TaskQueue` task
+  before stopping the room itself, rather than a separate timer that could
+  fire after the room moved on to something else — the task ordering
+  guarantee `TaskQueue` already provides means any other action on that
+  room queues up behind it and only runs after, so this can't race a
+  meanwhile-started unrelated playback.
 
 ## Bugs found during hardware testing
 

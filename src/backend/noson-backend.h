@@ -72,6 +72,11 @@ public:
   void PauseOrStop();
   void Next();
   void Previous();
+  // Debounced — see the .cpp. Dragging the volume slider fires this many
+  // times a second; without debouncing, every intermediate step queued
+  // its own full read-every-member-then-scale-every-member round trip,
+  // leaving the device visibly lagging behind the slider for a while
+  // after the user had already stopped dragging.
   void SetVolume(uint8_t value);
   void SetMuted(bool muted);
   // Per-member volume within the current group, for the grouping popover's
@@ -83,6 +88,8 @@ public:
   // members (line-out to a fixed-volume amp) are never present here, same
   // as they're skipped in SetVolume()'s own scaling.
   bool GetRoomVolume(const std::string& player_uuid, uint8_t& out_volume) const;
+  // Also debounced per-room, same reasoning as SetVolume() above — the
+  // grouping popover has one of these sliders per room.
   void SetRoomVolume(const std::string& player_uuid, uint8_t value);
   // Both read the current AVTProperty::CurrentPlayMode and cycle it.
   // ToggleRepeat() cycles Off -> All -> One -> Off while not shuffling
@@ -300,6 +307,11 @@ private:
   void RefreshVolumeLocked();
   std::string ResolveArtUri(const std::string& uri) const;
 
+  // The actual (non-debounced) work SetVolume()/SetRoomVolume() defer to
+  // — see those two and their shared debounce members below.
+  void ApplyVolumeAsync(uint8_t value);
+  void ApplyRoomVolumeAsync(const std::string& player_uuid, uint8_t value);
+
   NSROOT::PlayerPtr SnapshotPlayer() const;
   NSROOT::ZonePtr SnapshotZone() const;
 
@@ -385,6 +397,13 @@ private:
   // this into the ordering rules below.
   Glib::RefPtr<Gio::DBus::Connection> system_bus_connection_;
   guint sleep_signal_subscription_id_ = 0;
+
+  // Debounce state for SetVolume()/SetRoomVolume() — main-thread only
+  // (Glib::signal_timeout(), like the D-Bus connection above, needs no
+  // locking and is explicitly disconnected in ~NosonBackend()'s body
+  // rather than relying on declaration order, same reasoning as above).
+  sigc::connection volume_debounce_connection_;
+  std::map<std::string, sigc::connection> room_volume_debounce_connections_;
 
   mutable std::mutex state_mutex_;
   std::map<std::string, NSROOT::ZonePtr> zones_by_uuid_;
