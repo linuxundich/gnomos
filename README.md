@@ -46,6 +46,9 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   widget and the lock screen all work with Gnomos like any other player
 - A "Gen 1" badge identifying original first-generation hardware in a room
 - Light/dark appearance override, adjustable cover art cache size
+- Keyboard shortcuts for play/pause, next/previous, volume and mute
+- A responsive window: both side panels tuck away behind a toggle button
+  once the window gets narrow
 
 ## Hardware support
 

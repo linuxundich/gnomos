@@ -14,7 +14,6 @@
 #include <gtkmm/label.h>
 #include <gtkmm/listbox.h>
 #include <gtkmm/menubutton.h>
-#include <gtkmm/paned.h>
 #include <gtkmm/popover.h>
 #include <gtkmm/scale.h>
 #include <gtkmm/scrolledwindow.h>
@@ -67,7 +66,11 @@ private:
   void ShowConfirmDialog(const std::string& heading, const std::string& body, const std::string& confirm_label,
                           std::function<void()> on_confirmed);
   void ShowTrackInfoDialog();
-  void ShowLibrarySearchDialog();
+  // prefill is pre-filled into the search entry (e.g. from the "Interpret
+  // suchen" button in the Track-Details dialog) but not auto-submitted —
+  // the dialog is shown either way, so the user can confirm or adjust the
+  // scope (local library vs. the currently linked service) before firing.
+  void ShowLibrarySearchDialog(const std::string& prefill = "");
   void OnServiceLinkReady(std::string url, std::string code);
 
   void OnDiscoveryDone(bool ok);
@@ -144,19 +147,19 @@ private:
   bool suppress_sound_signals_ = false;
 
   // Three-pane layout (sidebar | tab content | Now Playing panel), styled
-  // after Euphonica's — see PlayerBar's own header comment. The room
-  // sidebar sits in an AdwOverlaySplitView (split_view_) rather than a
-  // plain Gtk::Paned, so it can collapse behind sidebar_toggle_button_ on
-  // narrow windows via an AdwBreakpoint (see the constructor) — the
-  // adaptive behavior the README used to list as a known gap. Its content
-  // side is content_paned_, a plain Gtk::Paned splitting the tabbed
-  // content from player_bar_, now a wide side panel rather than a thin
-  // strip docked above the tabs; that inner split isn't adaptive, since
-  // collapsing two panes at once would need two independent breakpoints
-  // and was judged not worth the added complexity for this pass.
+  // after Euphonica's — see PlayerBar's own header comment. Both splits are
+  // AdwOverlaySplitViews, each with its own AdwBreakpoint (see the
+  // constructor) so they collapse independently as the window narrows:
+  // split_view_ (room sidebar, collapses under 900px) hides first, then
+  // content_split_view_ (the Now Playing panel, collapses under 700px) —
+  // below 700px both panels are hidden behind their own toggle buttons and
+  // only the tabbed content remains. Two separate widgets rather than one
+  // because AdwOverlaySplitView only ever has a sidebar and a content
+  // child, and both panels need their own independent collapse point.
   GtkWidget* split_view_ = nullptr;
   Gtk::ToggleButton sidebar_toggle_button_;
-  Gtk::Paned content_paned_;
+  GtkWidget* content_split_view_ = nullptr;
+  Gtk::ToggleButton now_playing_toggle_button_;
   Gtk::ListBox zones_list_box_;
   Gtk::ScrolledWindow zones_scroller_;
   Gtk::Label zones_placeholder_;

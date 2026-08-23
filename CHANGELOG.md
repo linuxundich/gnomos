@@ -8,6 +8,16 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.3.3] - 2026-08-23
+
+### Added
+- Keyboard shortcuts for volume up/down and mute.
+- A "jump to current track" button in the queue toolbar.
+- A button in the track details dialog to search the library for the
+  current artist.
+- The Now Playing panel now also collapses behind a toggle button on
+  narrow windows, alongside the room sidebar.
+
 ## [0.3.2] - 2026-08-23
 
 ### Changed

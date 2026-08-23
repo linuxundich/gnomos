@@ -47,7 +47,7 @@ PlayerBar::PlayerBar()
   // from the surrounding window chrome — visual separation matching
   // Euphonica's own Now Playing panel, which sits on a distinctly shaded
   // (there, image-derived) background from the rest of the window. Applied
-  // to `this` (which fills the whole panel area content_paned_ gives it)
+  // to `this` (which fills the whole panel area content_split_view_ gives it)
   // rather than to the centered content block below, so the shaded
   // background actually covers the full panel instead of just a
   // center-aligned island within it.

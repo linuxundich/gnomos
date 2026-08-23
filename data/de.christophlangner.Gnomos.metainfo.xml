@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.3.3" date="2026-08-23">
+      <description>
+        <p>Volume/mute keyboard shortcuts, a "jump to current track" queue
+        button, artist search from track details, and a fully collapsible
+        Now Playing panel.</p>
+      </description>
+    </release>
     <release version="0.3.2" date="2026-08-23">
       <description>
         <p>Confirmation dialogs, Settings and keyboard shortcuts rebuilt on

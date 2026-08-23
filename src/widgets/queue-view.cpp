@@ -34,6 +34,15 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   save_playlist_button_.add_css_class("flat");
   save_playlist_button_.signal_clicked().connect([this] { signal_save_playlist_requested_.emit(); });
   toolbar->append(save_playlist_button_);
+  jump_to_current_button_.set_icon_name("go-jump-symbolic");
+  jump_to_current_button_.set_tooltip_text("Zur aktuellen Wiedergabe springen");
+  jump_to_current_button_.add_css_class("flat");
+  jump_to_current_button_.set_sensitive(false);
+  jump_to_current_button_.signal_clicked().connect([this] {
+    if (auto* row = list_box_.get_row_at_index(current_index_))
+      row->grab_focus();
+  });
+  toolbar->append(jump_to_current_button_);
   clear_button_.set_icon_name("user-trash-symbolic");
   clear_button_.set_tooltip_text("Warteschlange leeren");
   clear_button_.add_css_class("flat");
@@ -160,6 +169,7 @@ void QueueView::SetCurrentIndex(int index)
   current_index_ = index;
   for (size_t i = 0; i < now_playing_icons_.size(); ++i)
     now_playing_icons_[i]->set_visible(static_cast<int>(i) == index);
+  jump_to_current_button_.set_sensitive(index >= 0);
 }
 
 void QueueView::Clear()

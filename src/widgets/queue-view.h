@@ -46,6 +46,10 @@ public:
 private:
   Gtk::Button clear_button_;
   Gtk::Button save_playlist_button_;
+  // Scrolls/focuses the currently-playing row — only sensitive while
+  // current_index_ >= 0, i.e. something in *this* queue is actually
+  // playing (see SetCurrentIndex()'s own header comment).
+  Gtk::Button jump_to_current_button_;
   Gtk::Label count_label_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;

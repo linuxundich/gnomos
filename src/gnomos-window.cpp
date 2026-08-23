@@ -73,6 +73,15 @@ GnomosWindow::GnomosWindow()
   primary_menu_button_.set_menu_model(primary_menu);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(primary_menu_button_.gobj()));
 
+  // Now Playing panel toggle — only ever visible once content_split_view_
+  // has collapsed it behind a breakpoint on narrow windows, same
+  // "collapsed"-bound-to-"visible" pattern as sidebar_toggle_button_ (see
+  // the constructor further down for where content_split_view_ exists).
+  now_playing_toggle_button_.set_icon_name("sidebar-show-right-symbolic");
+  now_playing_toggle_button_.set_tooltip_text("Wiedergabe ein-/ausblenden");
+  now_playing_toggle_button_.set_visible(false);
+  adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(now_playing_toggle_button_.gobj()));
+
   discovery_spinner_.set_margin_start(6);
   discovery_spinner_.set_margin_end(6);
   refresh_button_.set_icon_name("view-refresh-symbolic");
@@ -317,7 +326,7 @@ GnomosWindow::GnomosWindow()
   zones_scroller_.set_vexpand(true);
 
   // --- Content: queue/favorites/alarms/library tabs. The Now Playing
-  // panel (player_bar_) is no longer docked here — see content_paned_
+  // panel (player_bar_) is no longer docked here — see content_split_view_
   // below, which gives it its own wide side pane instead. ---
   view_stack_ = adw_view_stack_new();
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(queue_view_.gobj()), "queue",
@@ -370,7 +379,7 @@ GnomosWindow::GnomosWindow()
   library_view_.SetBackVisible(false);
   library_view_.signal_entry_activated().connect(sigc::mem_fun(*this, &GnomosWindow::OnLibraryEntryActivated));
   library_view_.signal_back_requested().connect(sigc::mem_fun(*this, &GnomosWindow::OnLibraryBackRequested));
-  library_view_.signal_search_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowLibrarySearchDialog));
+  library_view_.signal_search_requested().connect([this] { ShowLibrarySearchDialog(); });
   library_view_.signal_add_to_queue_requested().connect(
       [this](unsigned index) { backend_->AddLibraryItemToQueue(index); });
   library_view_.signal_play_next_requested().connect(
@@ -401,16 +410,23 @@ GnomosWindow::GnomosWindow()
   queue_view_.signal_reorder_requested().connect(
       [this](unsigned from, unsigned to) { backend_->ReorderQueueItem(from, to); });
 
-  // player_bar_ (the Now Playing panel) keeps its own natural width via
-  // its set_size_request() in the PlayerBar constructor; not resizing it
-  // here mirrors how split_view_ itself already treats the room sidebar
-  // below.
-  content_paned_.set_start_child(content_box_);
-  content_paned_.set_end_child(player_bar_);
-  content_paned_.set_resize_end_child(false);
-  content_paned_.set_shrink_end_child(false);
-  content_paned_.set_vexpand(true);
-  content_paned_.set_hexpand(true);
+  // --- Now Playing panel as a second AdwOverlaySplitView, not a plain
+  // Gtk::Paned — lets it collapse behind now_playing_toggle_button_ on
+  // narrow windows too (see the AdwBreakpoint below), the same treatment
+  // split_view_ (the room sidebar) already gets. player_bar_ is the
+  // "sidebar" here, pinned to the END so it keeps sitting on the right
+  // like before; its min/max width mirror its own set_size_request(280, -1).
+  content_split_view_ = adw_overlay_split_view_new();
+  adw_overlay_split_view_set_sidebar_position(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), GTK_PACK_END);
+  adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), GTK_WIDGET(player_bar_.gobj()));
+  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), GTK_WIDGET(content_box_.gobj()));
+  adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), 280);
+  adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), 360);
+  adw_overlay_split_view_set_show_sidebar(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), true);
+  g_object_bind_property(now_playing_toggle_button_.gobj(), "active", content_split_view_, "show-sidebar",
+                          static_cast<GBindingFlags>(G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE));
+  g_object_bind_property(content_split_view_, "collapsed", now_playing_toggle_button_.gobj(), "visible",
+                          G_BINDING_SYNC_CREATE);
 
   // --- Room sidebar as an AdwOverlaySplitView, not a plain Gtk::Paned —
   // lets it collapse behind sidebar_toggle_button_ on narrow windows (see
@@ -419,7 +435,7 @@ GnomosWindow::GnomosWindow()
   // position this replaced.
   split_view_ = adw_overlay_split_view_new();
   adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(zones_scroller_.gobj()));
-  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(content_paned_.gobj()));
+  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), content_split_view_);
   adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 220);
   adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 320);
   adw_overlay_split_view_set_show_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), true);
@@ -447,14 +463,25 @@ GnomosWindow::GnomosWindow()
   // shrink to 0x0. 360x400 is a sane practical floor for this UI.
   gtk_widget_set_size_request(breakpoint_bin, 360, 400);
   adw_breakpoint_bin_set_child(ADW_BREAKPOINT_BIN(breakpoint_bin), split_view_);
-  AdwBreakpoint* breakpoint =
+
+  // Two independent breakpoints on the same bin: below 900px the room
+  // sidebar collapses; below 700px the Now Playing panel *also* collapses
+  // (both conditions are true at once for anything under 700px, so both
+  // setters apply together there) — a progressive collapse from three
+  // panes down to one, rather than an all-or-nothing jump.
+  AdwBreakpoint* sidebar_breakpoint =
       adw_breakpoint_new(adw_breakpoint_condition_new_length(ADW_BREAKPOINT_CONDITION_MAX_WIDTH, 900, ADW_LENGTH_UNIT_PX));
   GValue collapsed_value = G_VALUE_INIT;
   g_value_init(&collapsed_value, G_TYPE_BOOLEAN);
   g_value_set_boolean(&collapsed_value, TRUE);
-  adw_breakpoint_add_setter(breakpoint, G_OBJECT(split_view_), "collapsed", &collapsed_value);
+  adw_breakpoint_add_setter(sidebar_breakpoint, G_OBJECT(split_view_), "collapsed", &collapsed_value);
+  adw_breakpoint_bin_add_breakpoint(ADW_BREAKPOINT_BIN(breakpoint_bin), sidebar_breakpoint);
+
+  AdwBreakpoint* now_playing_breakpoint =
+      adw_breakpoint_new(adw_breakpoint_condition_new_length(ADW_BREAKPOINT_CONDITION_MAX_WIDTH, 700, ADW_LENGTH_UNIT_PX));
+  adw_breakpoint_add_setter(now_playing_breakpoint, G_OBJECT(content_split_view_), "collapsed", &collapsed_value);
+  adw_breakpoint_bin_add_breakpoint(ADW_BREAKPOINT_BIN(breakpoint_bin), now_playing_breakpoint);
   g_value_unset(&collapsed_value);
-  adw_breakpoint_bin_add_breakpoint(ADW_BREAKPOINT_BIN(breakpoint_bin), breakpoint);
 
   // --- Toast overlay wraps everything, for error feedback ---
   toast_overlay_ = adw_toast_overlay_new();
@@ -896,6 +923,24 @@ bool GnomosWindow::OnKeyPressed(guint keyval, guint /*keycode*/, Gdk::ModifierTy
     }
     case GDK_KEY_n: backend_->Next(); return true;
     case GDK_KEY_p: backend_->Previous(); return true;
+    case GDK_KEY_Up:
+    {
+      VolumeInfo volume = backend_->GetVolume();
+      backend_->SetVolume(static_cast<uint8_t>(std::min(100, static_cast<int>(volume.volume) + 5)));
+      return true;
+    }
+    case GDK_KEY_Down:
+    {
+      VolumeInfo volume = backend_->GetVolume();
+      backend_->SetVolume(static_cast<uint8_t>(std::max(0, static_cast<int>(volume.volume) - 5)));
+      return true;
+    }
+    case GDK_KEY_m:
+    {
+      VolumeInfo volume = backend_->GetVolume();
+      backend_->SetMuted(!volume.muted);
+      return true;
+    }
     default: return false;
   }
 }
@@ -1421,6 +1466,9 @@ void GnomosWindow::ShowShortcutsDialog()
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Play/Pause", "space"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Nächster Titel", "n"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Vorheriger Titel", "p"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Lauter", "Up"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Leiser", "Down"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Stumm schalten", "m"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), section);
 
   AdwShortcutsSection* general = adw_shortcuts_section_new("Allgemein");
@@ -1743,6 +1791,19 @@ void GnomosWindow::ShowTrackInfoDialog()
   copy_button->signal_clicked().connect([this, clipboard_text] { get_clipboard()->set_text(clipboard_text); });
   button_box->append(*copy_button);
 
+  if (!np.artist.empty())
+  {
+    auto* search_artist_button = Gtk::make_managed<Gtk::Button>();
+    search_artist_button->set_icon_name("system-search-symbolic");
+    search_artist_button->set_tooltip_text("Interpret in der Bibliothek suchen");
+    std::string artist = np.artist;
+    search_artist_button->signal_clicked().connect([this, dialog, artist] {
+      dialog->close();
+      ShowLibrarySearchDialog(artist);
+    });
+    button_box->append(*search_artist_button);
+  }
+
   auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
   close_button->signal_clicked().connect([dialog] { dialog->close(); });
   button_box->append(*close_button);
@@ -1814,7 +1875,7 @@ void GnomosWindow::ShowDeleteAlarmConfirmDialog(std::string alarm_id)
                      [this, alarm_id] { backend_->DeleteAlarm(alarm_id); });
 }
 
-void GnomosWindow::ShowLibrarySearchDialog()
+void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill)
 {
   std::vector<std::string> categories = backend_->GetActiveServiceSearchCategories();
   // Empty categories means we're not inside a linked service (SMAPI) — fall
@@ -1857,6 +1918,8 @@ void GnomosWindow::ShowLibrarySearchDialog()
 
   auto* entry = Gtk::make_managed<Gtk::Entry>();
   entry->set_activates_default(true);
+  if (!prefill.empty())
+    entry->set_text(prefill);
   content->append(*entry);
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
