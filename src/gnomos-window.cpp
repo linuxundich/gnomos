@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <tuple>
 
 #include <gdk/gdkkeysyms.h>
 #include <gdkmm/texture.h>
@@ -43,9 +44,9 @@ namespace gnomos
 GnomosWindow::GnomosWindow()
 {
   set_title("Gnomos");
-  // Room sidebar + tab content; player_bar_ is a fixed-height bottom bar,
-  // not a factor in width — overridden by LoadWindowState() below if a
-  // size was saved from a previous run.
+  // Section sidebar + page content; player_bar_ is a fixed-height bottom
+  // bar, not a factor in width — overridden by LoadWindowState() below if
+  // a size was saved from a previous run.
   set_default_size(1000, 760);
   LoadWindowState();
   signal_close_request().connect(sigc::mem_fun(*this, &GnomosWindow::OnCloseRequest), false);
@@ -57,13 +58,29 @@ GnomosWindow::GnomosWindow()
   adw_header_bar_set_title_widget(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(window_title_.gobj()));
 
   // Sidebar toggle — only ever visible once the AdwOverlaySplitView below
-  // has collapsed the room sidebar behind a breakpoint on narrow windows;
-  // bound to split_view_'s own "collapsed"/"show-sidebar" properties once
-  // split_view_ exists further down this constructor.
+  // has collapsed the section sidebar behind a breakpoint on narrow
+  // windows; bound to split_view_'s own "collapsed"/"show-sidebar"
+  // properties once split_view_ exists further down this constructor.
   sidebar_toggle_button_.set_icon_name("sidebar-show-symbolic");
-  sidebar_toggle_button_.set_tooltip_text("Räume ein-/ausblenden");
+  sidebar_toggle_button_.set_tooltip_text("Bereiche ein-/ausblenden");
   sidebar_toggle_button_.set_visible(false);
   adw_header_bar_pack_start(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(sidebar_toggle_button_.gobj()));
+
+  // --- Room/zone picker — see room_button_'s own header comment for why
+  // this replaced a second permanent sidebar. Popover content
+  // (zones_scroller_/zones_list_box_) is built further down, where the
+  // room list used to live; this just packs the button itself.
+  // AdwButtonContent gives the button both the speaker icon and a text
+  // label showing the current room name (UpdateRoomButtonLabel()) — a
+  // plain icon-only button would leave the room invisible without
+  // opening the popover. ---
+  room_button_content_ = adw_button_content_new();
+  adw_button_content_set_icon_name(ADW_BUTTON_CONTENT(room_button_content_), "audio-speakers-symbolic");
+  adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), "Kein Raum");
+  room_button_.set_child(*Glib::wrap(room_button_content_));
+  room_button_.set_tooltip_text("Raum wählen");
+  room_button_.set_popover(room_popover_);
+  adw_header_bar_pack_start(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(room_button_.gobj()));
 
   // --- Primary menu (Help / About) — packed first so it ends up as the
   // rightmost header bar item; pack_end() adds each new widget to the left
@@ -325,7 +342,12 @@ GnomosWindow::GnomosWindow()
 
   set_titlebar(*Glib::wrap(header_bar_));
 
-  // --- Sidebar: zone/room list ---
+  // --- Room/zone list — now room_popover_'s content instead of a
+  // permanent sidebar (see room_button_'s own comment). Sized like a
+  // popover (fixed width, capped+scrollable height), the same pattern
+  // grouping_popover_'s own room list already uses, rather than the
+  // set_vexpand(true)/set_min_content_width() sizing appropriate for a
+  // permanent panel this used to have. ---
   zones_placeholder_.set_text("Keine Sonos-Geräte gefunden.\nKlicke auf Aktualisieren.");
   zones_placeholder_.set_wrap(true);
   zones_placeholder_.set_justify(Gtk::Justification::CENTER);
@@ -340,10 +362,52 @@ GnomosWindow::GnomosWindow()
   zones_list_box_.signal_row_selected().connect(sigc::mem_fun(*this, &GnomosWindow::OnZoneRowSelected));
 
   zones_scroller_.set_child(zones_list_box_);
-  zones_scroller_.set_min_content_width(220);
-  zones_scroller_.set_vexpand(true);
+  zones_scroller_.set_size_request(260, -1);
+  zones_scroller_.set_max_content_height(400);
+  zones_scroller_.set_propagate_natural_height(true);
+  room_popover_.set_child(zones_scroller_);
 
-  // --- Content: queue/favorites/alarms/library tabs. The Now Playing
+  // --- Section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/
+  // Bibliothek) — replaces the AdwViewSwitcher this app used to have as a
+  // top tab bar, styled after noson-app's own left-hand navigation and
+  // matching zones_list_box_'s own icon-row look (see nav_list_box_'s
+  // header comment). Built from the same (page-name, title, icon) tuples
+  // view_stack_'s pages themselves use, so the two can never drift apart. ---
+  static const std::array<std::tuple<const char*, const char*, const char*>, 5> kNavPages = {{
+      {"queue", "Warteschlange", "view-list-symbolic"},
+      {"favorites", "Favoriten", "starred-symbolic"},
+      {"alarms", "Alarme", "alarm-symbolic"},
+      {"history", "Verlauf", "document-open-recent-symbolic"},
+      {"library", "Bibliothek", "folder-music-symbolic"},
+  }};
+  nav_list_box_.set_selection_mode(Gtk::SelectionMode::SINGLE);
+  nav_list_box_.add_css_class("navigation-sidebar");
+  nav_list_box_.signal_row_selected().connect(sigc::mem_fun(*this, &GnomosWindow::OnNavRowSelected));
+  for (const auto& [name, title, icon] : kNavPages)
+  {
+    auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+    row_box->set_margin_top(8);
+    row_box->set_margin_bottom(8);
+    row_box->set_margin_start(8);
+    row_box->set_margin_end(8);
+    auto* row_icon = Gtk::make_managed<Gtk::Image>();
+    row_icon->set_from_icon_name(icon);
+    row_icon->add_css_class("dim-label");
+    row_box->append(*row_icon);
+    auto* row_label = Gtk::make_managed<Gtk::Label>(title);
+    row_label->set_halign(Gtk::Align::START);
+    row_box->append(*row_label);
+    // Data-only, never displayed: OnNavRowSelected() reads this back via
+    // get_index() into kNavPages, same index-into-a-parallel-array
+    // pattern OnZoneRowSelected() already uses for current_zones_.
+    nav_list_box_.append(*row_box);
+  }
+  auto* nav_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
+  nav_scroller->set_child(nav_list_box_);
+  nav_scroller->set_min_content_width(200);
+  nav_scroller->set_vexpand(true);
+
+  // --- Content: queue/favorites/alarms/library pages. The Now Playing
   // panel (player_bar_) is docked separately, as a bottom bar spanning
   // the whole window rather than living inside this content area — see
   // root_box further down this constructor. ---
@@ -358,17 +422,6 @@ GnomosWindow::GnomosWindow()
                                        "Verlauf", "document-open-recent-symbolic");
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(library_view_.gobj()), "library",
                                        "Bibliothek", "folder-music-symbolic");
-
-  GtkWidget* view_switcher = adw_view_switcher_new();
-  adw_view_switcher_set_stack(ADW_VIEW_SWITCHER(view_switcher), ADW_VIEW_STACK(view_stack_));
-  adw_view_switcher_set_policy(ADW_VIEW_SWITCHER(view_switcher), ADW_VIEW_SWITCHER_POLICY_WIDE);
-  Gtk::Widget* wrapped_switcher = Glib::wrap(view_switcher);
-  wrapped_switcher->set_margin_top(6);
-  wrapped_switcher->set_margin_bottom(6);
-  wrapped_switcher->set_halign(Gtk::Align::CENTER);
-
-  content_box_.append(*wrapped_switcher);
-  content_box_.append(*Glib::wrap(view_stack_));
 
   favorites_view_.signal_item_activated().connect([this](unsigned index) { backend_->PlayFavorite(index); });
   favorites_view_.signal_add_to_queue_requested().connect([this](unsigned index) {
@@ -449,16 +502,19 @@ GnomosWindow::GnomosWindow()
   queue_view_.signal_reorder_requested().connect(
       [this](unsigned from, unsigned to) { backend_->ReorderQueueItem(from, to); });
 
-  // --- Room sidebar as an AdwOverlaySplitView, not a plain Gtk::Paned —
+  // --- Section sidebar as an AdwOverlaySplitView, not a plain Gtk::Paned —
   // lets it collapse behind sidebar_toggle_button_ on narrow windows (see
   // the AdwBreakpoint below), the adaptive behavior the README used to
   // list as a known gap. min/max width mirror the fixed 240px paned
-  // position this replaced.
+  // position this replaced. nav_scroller (built above, wrapping
+  // nav_list_box_) is the sidebar now; view_stack_ is used directly as the
+  // content, since content_box_ no longer exists — it only ever wrapped
+  // view_stack_ together with the now-removed AdwViewSwitcher.
   split_view_ = adw_overlay_split_view_new();
-  adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(zones_scroller_.gobj()));
-  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(content_box_.gobj()));
-  adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 220);
-  adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 320);
+  adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(nav_scroller->gobj()));
+  adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(view_stack_));
+  adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 200);
+  adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 260);
   // sidebar_toggle_button_ only needs to exist (and be shown) once the
   // split view has actually collapsed the sidebar into an overlay —
   // above that width it's docked side-by-side and the button would be
@@ -580,6 +636,34 @@ void GnomosWindow::OnZoneRowSelected(Gtk::ListBoxRow* row)
   selected_group_id_ = zone.group_id;
   backend_->SelectZone(selected_group_id_);
   SaveLastRoom(zone.coordinator_uuid);
+  UpdateRoomButtonLabel();
+  room_popover_.popdown();
+}
+
+void GnomosWindow::OnNavRowSelected(Gtk::ListBoxRow* row)
+{
+  if (!row || !view_stack_)
+    return;
+  static const std::array<const char*, 5> kNavPageNames = {"queue", "favorites", "alarms", "history", "library"};
+  int index = row->get_index();
+  if (index < 0 || static_cast<size_t>(index) >= kNavPageNames.size())
+    return;
+  adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), kNavPageNames[static_cast<size_t>(index)]);
+}
+
+void GnomosWindow::UpdateRoomButtonLabel()
+{
+  if (!room_button_content_)
+    return;
+  for (const ZoneInfo& zone : current_zones_)
+  {
+    if (zone.group_id == selected_group_id_)
+    {
+      adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), zone.display_name.c_str());
+      return;
+    }
+  }
+  adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), "Kein Raum");
 }
 
 namespace
@@ -789,6 +873,10 @@ void GnomosWindow::OnZonesChanged()
     if (Gtk::ListBoxRow* row = zones_list_box_.get_row_at_index(select_index))
       zones_list_box_.select_row(*row);
   }
+  // Covers the no-zones-at-all case: select_row() above (and the
+  // OnZoneRowSelected() it triggers) never runs then, which would
+  // otherwise leave room_button_'s label stuck on a stale room name.
+  UpdateRoomButtonLabel();
 
   // A topology change (e.g. our own join/remove action taking effect) may
   // have happened while the grouping popover was open; keep it truthful.

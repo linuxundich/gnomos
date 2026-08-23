@@ -57,9 +57,12 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Light/dark appearance override, adjustable cover art cache size
 - Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
   and repeat
-- A responsive window: the room sidebar tucks away behind a toggle button
-  once the window gets narrow, and both the window's and the sidebar's
-  size are remembered across restarts
+- A section sidebar (Warteschlange, Favoriten, Alarme, Verlauf, Bibliothek)
+  in the style of noson-app's own navigation, plus a compact room/zone
+  picker in the header bar
+- A responsive window: the section sidebar tucks away behind a toggle
+  button once the window gets narrow, and both the window's and the
+  sidebar's size are remembered across restarts
 - Optional desktop notifications on track change
 
 ## Hardware support

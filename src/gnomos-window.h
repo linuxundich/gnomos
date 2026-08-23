@@ -49,6 +49,16 @@ private:
   void SaveLastRoom(const std::string& coordinator_uuid) const;
   std::string LoadLastRoomUuid() const;
   void RebuildGroupingPopover();
+  // room_button_'s own label — the current room name, so it still reads
+  // correctly without opening room_popover_. Called after every zone
+  // selection and every zones_list_box_ rebuild (a topology change can
+  // rename the selected zone, e.g. joining/leaving a group).
+  void UpdateRoomButtonLabel();
+  // nav_list_box_ (the section sidebar: Warteschlange/Favoriten/Alarme/
+  // Verlauf/Bibliothek) replaced the old top AdwViewSwitcher — this just
+  // sets view_stack_'s visible child to match the row clicked, the same
+  // job AdwViewSwitcher used to do internally.
+  void OnNavRowSelected(Gtk::ListBoxRow* row);
   void ShowAddAlarmDialog();
   void ShowAlarmDialog(const AlarmInfo* existing);
   void OnAlarmEditRequested(std::string alarm_id);
@@ -153,6 +163,23 @@ private:
   Gtk::Button refresh_button_;
   Gtk::MenuButton primary_menu_button_;
 
+  // Room/zone picker — a header-bar popover now, not a permanent sidebar
+  // (see split_view_'s own comment for what replaced it there). Reuses
+  // zones_list_box_/zones_scroller_'s exact row-building logic
+  // (OnZonesChanged()) and selection handling (OnZoneRowSelected()); only
+  // where they're displayed changed. room_button_'s own label always
+  // shows the current room name (UpdateRoomButtonLabel()), so the room
+  // stays visible without opening the popover.
+  Gtk::MenuButton room_button_;
+  // AdwButtonContent (raw C API, same reasoning as header_bar_/
+  // toast_overlay_ — no gtkmm binding exists) — gives room_button_ an
+  // icon *and* a text label together (the current room name), which
+  // Gtk::MenuButton's own set_icon_name()/set_label() can't combine on
+  // their own. Kept as a member so UpdateRoomButtonLabel() can update the
+  // label after construction.
+  GtkWidget* room_button_content_ = nullptr;
+  Gtk::Popover room_popover_;
+
   Gtk::MenuButton grouping_button_;
   Gtk::Popover grouping_popover_;
   Gtk::ListBox grouping_list_box_;
@@ -172,19 +199,37 @@ private:
   Gtk::Switch nightmode_switch_;
   bool suppress_sound_signals_ = false;
 
-  // Room sidebar | tab content, with player_bar_ docked as its own
-  // fixed-height bar along the bottom of the whole window (see the
-  // constructor's root_box) — not part of this split at all. split_view_
-  // is an AdwOverlaySplitView (not a plain Gtk::Paned) so the sidebar can
-  // collapse behind sidebar_toggle_button_ via an AdwBreakpoint on narrow
-  // windows.
+  // Section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/Bibliothek,
+  // noson-app-style — see nav_list_box_'s own comment) | tab content, with
+  // player_bar_ docked as its own fixed-height bar along the bottom of
+  // the whole window (see the constructor's root_box) — not part of this
+  // split at all. split_view_ is an AdwOverlaySplitView (not a plain
+  // Gtk::Paned) so the sidebar can collapse behind sidebar_toggle_button_
+  // via an AdwBreakpoint on narrow windows. Room/zone selection used to
+  // live in this same slot as a second, permanent sidebar; moved to
+  // room_button_'s popover instead (see its own comment) — a Sonos
+  // household only ever needs occasional room switching, not a
+  // permanently-docked panel for it, and it freed this slot for section
+  // navigation instead.
   GtkWidget* split_view_ = nullptr;
   Gtk::ToggleButton sidebar_toggle_button_;
+  // Icon+label rows for the five view_stack_ pages, replacing the
+  // AdwViewSwitcher this app used to have as a top tab bar — styled after
+  // noson-app's own left-hand navigation (Meine Dienste/Mein
+  // Musikverzeichnis/Meine Radiosender/Favoriten/Wiedergabelisten/Wecker/
+  // Dieses Gerät). Selecting a row just sets view_stack_'s visible child
+  // (OnNavRowSelected()); each page still owns its own content and any
+  // further internal navigation (e.g. LibraryView's own back button)
+  // exactly as before.
+  Gtk::ListBox nav_list_box_;
+
+  // Room/zone list — see room_button_'s own comment on where it's shown
+  // now; this pair of widgets is unchanged from when it was the permanent
+  // sidebar, just re-parented into room_popover_ instead of split_view_.
   Gtk::ListBox zones_list_box_;
   Gtk::ScrolledWindow zones_scroller_;
   Gtk::Label zones_placeholder_;
 
-  Gtk::Box content_box_{Gtk::Orientation::VERTICAL, 0};
   PlayerBar player_bar_;
   QueueView queue_view_;
   FavoritesView favorites_view_;

@@ -268,6 +268,54 @@ toggle:
   (`LibraryView::SetEntries()` again) — no new network fetch, since this
   is purely a rendering choice, not a data one.
 
+### Section sidebar replaces the room sidebar; room picking moved to a popover
+
+The permanent left sidebar used to be a room/zone list — one `AdwOverlaySplitView`
+slot, occupied by `zones_scroller_`, with page navigation (Warteschlange/
+Favoriten/Alarme/Verlauf/Bibliothek) handled separately by a top
+`AdwViewSwitcher` tab bar. Reorganized after the user pointed at noson-app's
+own left-hand navigation (Meine Dienste/Mein Musikverzeichnis/Meine
+Radiosender/Favoriten/Wiedergabelisten/Wecker/Dieses Gerät) as the model to
+follow instead:
+
+- The sidebar slot in `split_view_` is now `nav_list_box_`, a
+  `navigation-sidebar`-styled `Gtk::ListBox` with one icon+label row per
+  `view_stack_` page, built from the same five `(name, title, icon)` tuples
+  `adw_view_stack_add_titled_with_icon()` already uses — so the two can't
+  drift apart. Selecting a row (`OnNavRowSelected()`) just calls
+  `adw_view_stack_set_visible_child_name()`, the same job the removed
+  `AdwViewSwitcher` used to do internally. `view_stack_` is now
+  `split_view_`'s content directly — the `content_box_` wrapper that used to
+  hold `view_switcher` + `view_stack_` together no longer has a reason to
+  exist and was removed from `GnomosWindow`'s member list entirely.
+- Room/zone selection moved out of the permanent sidebar into a header-bar
+  `room_button_` (an `AdwButtonContent`-based `Gtk::MenuButton`, same
+  reasoning as `grouping_button_`: no gtkmm binding for `AdwButtonContent`
+  exists, so it's built via the raw C API and wrapped) with a `room_popover_`
+  popover. The popover's content is the *exact same* `zones_scroller_` /
+  `zones_list_box_` pair the permanent sidebar used to own — same
+  `OnZoneRowSelected()`/`OnZonesChanged()` row-building logic, just
+  re-parented and re-sized for a popover (`set_size_request(260, -1)` +
+  `set_max_content_height(400)` + `set_propagate_natural_height(true)`,
+  mirroring `grouping_popover_`'s own room list, instead of the
+  `set_vexpand(true)`/`set_min_content_width(220)` sizing appropriate for a
+  permanent docked panel).
+- `room_button_`'s own label always shows the current room name — a
+  button that only carried an icon would leave the room invisible without
+  opening the popover. `UpdateRoomButtonLabel()` looks up
+  `current_zones_` for the entry matching `selected_group_id_` and calls
+  `adw_button_content_set_label()`, falling back to "Kein Raum" when
+  nothing is selected; called from both `OnZoneRowSelected()` (after a
+  manual pick) and `OnZonesChanged()` (after a topology refresh, including
+  the empty-zone-list case where `OnZoneRowSelected()` is never triggered).
+  `OnZoneRowSelected()` also closes the popover (`room_popover_.popdown()`)
+  after a pick, matching how a `Gtk::DropDown` or menu item closes itself
+  on selection.
+- A Sonos household only ever needs *occasional* room switching, not a
+  permanently-docked panel for it — freeing the sidebar slot for section
+  navigation instead directly mirrors how noson-app itself splits these two
+  concerns into a left nav list and a separate room switcher.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real
