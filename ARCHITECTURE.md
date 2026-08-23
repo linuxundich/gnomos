@@ -106,6 +106,27 @@ reordering would introduce a use-after-free.
   existing "restore the previously selected room" handling. Best-effort:
   if the system bus or logind aren't reachable, this silently does
   nothing rather than failing startup.
+- **Repeat-one.** `PlayMode_t` has a `PlayMode_REPEAT_ONE` value that
+  nothing previously ever produced or read — `ToggleRepeat()` only cycled
+  Off/All. `NowPlaying::repeat` is now a tri-state `RepeatMode` (Off/All/
+  One) instead of a bool, `ToggleRepeat()` cycles all three, and
+  `SetRepeatMode()`/`SetShuffle()` (absolute-value counterparts, for
+  MPRIS) reconcile the two independent dimensions into Sonos's single
+  combined `PlayMode_t` — there's no shuffle+repeat-one combination on the
+  device, so requesting one falls back to shuffle+repeat-all rather than
+  silently dropping the request.
+- **Shuffle/repeat button sensitivity.** Not every source supports
+  shuffle/repeat (radio, line-in) — `AVTProperty::r_CurrentValidPlayModes`
+  reports which modes are actually valid for what's currently playing, and
+  `PlayerBar` now disables the corresponding button when the device says a
+  mode isn't supported, instead of leaving it clickable and silently
+  failing.
+- **MPRIS `Shuffle`/`LoopStatus`.** Previously not exposed on the MPRIS
+  interface at all, not even read-only. Both are now full read-write
+  properties, backed by `SetShuffle()`/`SetRepeatMode()` — confirmed live
+  via `gdbus call ... org.freedesktop.DBus.Properties.GetAll` showing real
+  `Shuffle`/`LoopStatus` values alongside the rest of the playing track's
+  metadata.
 
 ## Bugs found during hardware testing
 

@@ -259,7 +259,16 @@ void PlayerBar::Update(const NowPlaying& now_playing)
   // (see the header comment on signal_shuffle_clicked()), so no suppress
   // flag is needed here the way volume_scale_ needs one.
   shuffle_button_.set_active(now_playing.shuffle);
-  repeat_button_.set_active(now_playing.repeat);
+  repeat_button_.set_active(now_playing.repeat != RepeatMode::Off);
+  repeat_button_.set_icon_name(now_playing.repeat == RepeatMode::One ? "media-playlist-repeat-song-symbolic"
+                                                                      : "media-playlist-repeat-symbolic");
+  repeat_button_.set_tooltip_text(now_playing.repeat == RepeatMode::One ? "Titel wiederholen" : "Wiederholen");
+  // Not every source supports shuffle/repeat at all (radio, line-in) —
+  // see NowPlaying::shuffle_supported/repeat_supported's own comment.
+  // Independent of SetEnabled()'s blanket on/off, which only ever runs
+  // once when a zone becomes ready, before any real track is playing yet.
+  shuffle_button_.set_sensitive(now_playing.shuffle_supported);
+  repeat_button_.set_sensitive(now_playing.repeat_supported);
 
   LoadArt(now_playing.art_uri);
 }

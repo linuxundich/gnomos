@@ -60,6 +60,18 @@ enum class TransportState
   Unknown,
 };
 
+// Sonos's PlayMode_t has no combined "shuffle + repeat one" mode (only
+// NORMAL, REPEAT_ALL, REPEAT_ONE, SHUFFLE [= shuffle + repeat all], and
+// SHUFFLE_NOREPEAT), so repeat-one is only ever reachable while shuffle is
+// off — see NosonBackend::SetRepeatMode()/SetShuffle() for how the two
+// dimensions get reconciled into a single device PlayMode_t.
+enum class RepeatMode
+{
+  Off,
+  All,
+  One,
+};
+
 struct NowPlaying
 {
   bool valid = false;
@@ -69,7 +81,13 @@ struct NowPlaying
   std::string album;
   std::string art_uri;      // resolved to an absolute http(s) URL, or empty
   bool shuffle = false;     // AVTProperty::CurrentPlayMode == SHUFFLE or SHUFFLE_NOREPEAT
-  bool repeat = false;      // AVTProperty::CurrentPlayMode == REPEAT_ALL, REPEAT_ONE, or SHUFFLE
+  RepeatMode repeat = RepeatMode::Off;  // AVTProperty::CurrentPlayMode == REPEAT_ALL/REPEAT_ONE/SHUFFLE
+  // AVTProperty::r_CurrentValidPlayModes ("SHUFFLE,REPEAT,CROSSFADE" or a
+  // subset) — not every source supports shuffle/repeat at all (radio,
+  // line-in), so the shuffle/repeat buttons are only sensitive when the
+  // device itself reports the mode as valid for what's currently playing.
+  bool shuffle_supported = true;
+  bool repeat_supported = true;
   // Seconds; 0 means a live stream (radio/line-in) or unknown, not "just
   // started" — mirrors noson-app's own postulate (player.cpp,
   // setCurrentMeta()). Pushed via AVTProperty::CurrentTrackDuration, unlike

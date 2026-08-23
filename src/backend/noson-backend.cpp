@@ -600,9 +600,15 @@ void NosonBackend::ToggleRepeat()
       return;
     const std::string mode = player->GetTransportProperty().CurrentPlayMode;
     NSROOT::PlayMode_t target;
+    // Off -> All -> One -> Off while not shuffling — REPEAT_ONE has no
+    // Sonos-side combination with shuffle (see RepeatMode's own comment in
+    // noson-types.h), so while shuffling this still only toggles the
+    // SHUFFLE/SHUFFLE_NOREPEAT pair, same as before.
     if (mode == "NORMAL")
       target = NSROOT::PlayMode_REPEAT_ALL;
-    else if (mode == "REPEAT_ALL" || mode == "REPEAT_ONE")
+    else if (mode == "REPEAT_ALL")
+      target = NSROOT::PlayMode_REPEAT_ONE;
+    else if (mode == "REPEAT_ONE")
       target = NSROOT::PlayMode_NORMAL;
     else if (mode == "SHUFFLE")
       target = NSROOT::PlayMode_SHUFFLE_NOREPEAT;
@@ -610,6 +616,50 @@ void NosonBackend::ToggleRepeat()
       target = NSROOT::PlayMode_SHUFFLE;
     else
       return;
+    player->SetPlayMode(target);
+  });
+}
+
+void NosonBackend::SetRepeatMode(RepeatMode mode)
+{
+  tasks_.Push([this, mode] {
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+    const std::string current = player->GetTransportProperty().CurrentPlayMode;
+    bool shuffling = (current == "SHUFFLE" || current == "SHUFFLE_NOREPEAT");
+    NSROOT::PlayMode_t target;
+    if (shuffling)
+      // REPEAT_ONE has no shuffle-combined Sonos mode — RepeatMode::One is
+      // treated the same as RepeatMode::All here rather than silently
+      // failing or dropping shuffle, since "some repeat" is a closer match
+      // to the caller's intent than ignoring the request outright.
+      target = mode == RepeatMode::Off ? NSROOT::PlayMode_SHUFFLE_NOREPEAT : NSROOT::PlayMode_SHUFFLE;
+    else
+      target = mode == RepeatMode::Off   ? NSROOT::PlayMode_NORMAL
+                : mode == RepeatMode::All ? NSROOT::PlayMode_REPEAT_ALL
+                                           : NSROOT::PlayMode_REPEAT_ONE;
+    player->SetPlayMode(target);
+  });
+}
+
+void NosonBackend::SetShuffle(bool shuffle)
+{
+  tasks_.Push([this, shuffle] {
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+    const std::string current = player->GetTransportProperty().CurrentPlayMode;
+    bool repeat_all = (current == "REPEAT_ALL" || current == "SHUFFLE");
+    bool repeat_one = (current == "REPEAT_ONE");
+    NSROOT::PlayMode_t target;
+    if (shuffle)
+      // REPEAT_ONE has no shuffle-combined mode — dropped in favor of
+      // shuffle itself when turning shuffle on, same reasoning as
+      // SetRepeatMode()'s shuffling branch above.
+      target = repeat_all || repeat_one ? NSROOT::PlayMode_SHUFFLE : NSROOT::PlayMode_SHUFFLE_NOREPEAT;
+    else
+      target = repeat_one ? NSROOT::PlayMode_REPEAT_ONE : repeat_all ? NSROOT::PlayMode_REPEAT_ALL : NSROOT::PlayMode_NORMAL;
     player->SetPlayMode(target);
   });
 }
@@ -2244,8 +2294,15 @@ void NosonBackend::RefreshNowPlayingLocked()
   np.valid = true;
   np.state = ParseTransportState(prop.TransportState);
   np.shuffle = (prop.CurrentPlayMode == "SHUFFLE" || prop.CurrentPlayMode == "SHUFFLE_NOREPEAT");
-  np.repeat = (prop.CurrentPlayMode == "REPEAT_ALL" || prop.CurrentPlayMode == "REPEAT_ONE" ||
-               prop.CurrentPlayMode == "SHUFFLE");
+  np.repeat = prop.CurrentPlayMode == "REPEAT_ONE" ? RepeatMode::One
+              : (prop.CurrentPlayMode == "REPEAT_ALL" || prop.CurrentPlayMode == "SHUFFLE") ? RepeatMode::All
+                                                                                             : RepeatMode::Off;
+  // Comma-separated capability list (e.g. "SHUFFLE,REPEAT,CROSSFADE"), empty
+  // for a source that supports neither (radio, line-in). Absence of the
+  // field entirely (defaults true) would wrongly enable both, so this is an
+  // explicit substring check, not just "field is non-empty".
+  np.shuffle_supported = prop.r_CurrentValidPlayModes.find("SHUFFLE") != std::string::npos;
+  np.repeat_supported = prop.r_CurrentValidPlayModes.find("REPEAT") != std::string::npos;
   // CurrentTrack/AVTransportURI are unreliable for a brief moment during a
   // track change — TransportState == TRANSITIONING is UPnP's own signal
   // that this snapshot is mid-update and nothing derived from it should be

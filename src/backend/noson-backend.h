@@ -84,13 +84,19 @@ public:
   // as they're skipped in SetVolume()'s own scaling.
   bool GetRoomVolume(const std::string& player_uuid, uint8_t& out_volume) const;
   void SetRoomVolume(const std::string& player_uuid, uint8_t value);
-  // Both read the current AVTProperty::CurrentPlayMode and cycle it —
-  // mirrors noson-app's Player::toggleShuffle()/toggleRepeat() (player.cpp)
-  // exactly, including that a bare REPEAT_ONE isn't reachable through these
-  // two toggles alone (matches upstream; not implemented as a separate
-  // control here either).
+  // Both read the current AVTProperty::CurrentPlayMode and cycle it.
+  // ToggleRepeat() cycles Off -> All -> One -> Off while not shuffling
+  // (noson-app's own Player::toggleRepeat(), player.cpp, only ever
+  // toggles Off/All — repeat-one is a Gnomos addition); while shuffling,
+  // both still just flip the SHUFFLE/SHUFFLE_NOREPEAT pair, since Sonos
+  // has no shuffle+repeat-one combination — see RepeatMode's own comment.
   void ToggleShuffle();
   void ToggleRepeat();
+  // Absolute-value counterparts to the two toggles above, for callers that
+  // want to set a specific state rather than cycle it (MPRIS's Shuffle/
+  // LoopStatus properties are read-write, not "toggle" actions).
+  void SetShuffle(bool shuffle);
+  void SetRepeatMode(RepeatMode mode);
   // Adds whatever is currently playing to Favorites (System::AddURIToFavorites,
   // which internally attaches a <desc> service token itself, same as
   // Favorites created via the Sonos app — no EnsureServiceDesc() needed

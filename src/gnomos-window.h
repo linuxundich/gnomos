@@ -114,6 +114,11 @@ private:
   // the app at, instead of always reopening at the fixed default_size().
   void LoadWindowState();
   bool OnCloseRequest();
+  // sidebar_width_fraction for split_view_/content_split_view_, same
+  // state.ini [window] group as LoadWindowState() — separate function
+  // since it must run after both split views exist (LoadWindowState()
+  // runs early in the constructor, before either does).
+  void LoadSplitFractions();
   bool OnKeyPressed(guint keyval, guint keycode, Gdk::ModifierType state);
 
   void ShowToast(const std::string& message);

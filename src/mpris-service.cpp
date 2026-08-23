@@ -61,7 +61,9 @@ const char* const kIntrospectionXml = R"XML(
       <arg name="Position" type="x"/>
     </signal>
     <property name="PlaybackStatus" type="s" access="read"/>
+    <property name="LoopStatus" type="s" access="readwrite"/>
     <property name="Rate" type="d" access="read"/>
+    <property name="Shuffle" type="b" access="readwrite"/>
     <property name="Metadata" type="a{sv}" access="read"/>
     <property name="Volume" type="d" access="readwrite"/>
     <property name="Position" type="x" access="read"/>
@@ -89,6 +91,21 @@ const char* PlaybackStatusFor(const NowPlaying& np)
       return "Paused";
     default:
       return "Stopped";
+  }
+}
+
+// MPRIS's three LoopStatus values map directly onto RepeatMode — "Track"
+// is the spec's name for repeat-one, "Playlist" for repeat-all.
+const char* LoopStatusFor(RepeatMode mode)
+{
+  switch (mode)
+  {
+    case RepeatMode::One:
+      return "Track";
+    case RepeatMode::All:
+      return "Playlist";
+    default:
+      return "None";
   }
 }
 
@@ -162,6 +179,8 @@ void MprisService::OnNowPlayingChanged()
   NowPlaying np = backend_.GetNowPlaying();
   std::map<Glib::ustring, Glib::VariantBase> changed;
   changed["PlaybackStatus"] = Glib::Variant<Glib::ustring>::create(PlaybackStatusFor(np));
+  changed["LoopStatus"] = Glib::Variant<Glib::ustring>::create(LoopStatusFor(np.repeat));
+  changed["Shuffle"] = Glib::Variant<bool>::create(np.shuffle);
   changed["Metadata"] = BuildMetadata();
   changed["CanGoNext"] = Glib::Variant<bool>::create(np.valid);
   changed["CanGoPrevious"] = Glib::Variant<bool>::create(np.valid);
@@ -333,8 +352,12 @@ void MprisService::OnGetProperty(Glib::VariantBase& property, const Glib::RefPtr
   NowPlaying np = backend_.GetNowPlaying();
   if (property_name == "PlaybackStatus")
     property = Glib::Variant<Glib::ustring>::create(PlaybackStatusFor(np));
+  else if (property_name == "LoopStatus")
+    property = Glib::Variant<Glib::ustring>::create(LoopStatusFor(np.repeat));
   else if (property_name == "Rate")
     property = Glib::Variant<double>::create(1.0);
+  else if (property_name == "Shuffle")
+    property = Glib::Variant<bool>::create(np.shuffle);
   else if (property_name == "Metadata")
     property = BuildMetadata();
   else if (property_name == "Volume")
@@ -363,10 +386,25 @@ bool MprisService::OnSetProperty(const Glib::RefPtr<Gio::DBus::Connection>&, con
                                   const Glib::ustring&, const Glib::ustring& interface_name,
                                   const Glib::ustring& property_name, const Glib::VariantBase& value)
 {
-  if (interface_name == kPlayerInterface && property_name == "Volume")
+  if (interface_name != kPlayerInterface)
+    return false;
+
+  if (property_name == "Volume")
   {
     double volume = value.get_dynamic<double>();
     backend_.SetVolume(static_cast<uint8_t>(std::clamp(volume, 0.0, 1.0) * 100.0));
+    return true;
+  }
+  if (property_name == "Shuffle")
+  {
+    backend_.SetShuffle(value.get_dynamic<bool>());
+    return true;
+  }
+  if (property_name == "LoopStatus")
+  {
+    Glib::ustring status = value.get_dynamic<Glib::ustring>();
+    RepeatMode mode = status == "Track" ? RepeatMode::One : status == "Playlist" ? RepeatMode::All : RepeatMode::Off;
+    backend_.SetRepeatMode(mode);
     return true;
   }
   return false;

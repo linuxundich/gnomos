@@ -511,6 +511,8 @@ GnomosWindow::GnomosWindow()
   adw_breakpoint_bin_add_breakpoint(ADW_BREAKPOINT_BIN(breakpoint_bin), now_playing_breakpoint);
   g_value_unset(&collapsed_value);
 
+  LoadSplitFractions();
+
   // --- Toast overlay wraps everything, for error feedback ---
   toast_overlay_ = adw_toast_overlay_new();
   adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), breakpoint_bin);
@@ -646,6 +648,27 @@ void GnomosWindow::LoadWindowState()
   }
 }
 
+void GnomosWindow::LoadSplitFractions()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    double sidebar_fraction = keyfile->get_double("window", "sidebar_fraction");
+    if (sidebar_fraction > 0.0 && sidebar_fraction < 1.0)
+      adw_overlay_split_view_set_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(split_view_), sidebar_fraction);
+    double now_playing_fraction = keyfile->get_double("window", "now_playing_fraction");
+    if (now_playing_fraction > 0.0 && now_playing_fraction < 1.0)
+      adw_overlay_split_view_set_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(content_split_view_),
+                                                          now_playing_fraction);
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no saved fraction yet, min/max_sidebar_width's own defaults apply
+  }
+}
+
 bool GnomosWindow::OnCloseRequest()
 {
   const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
@@ -668,6 +691,14 @@ bool GnomosWindow::OnCloseRequest()
     keyfile->set_integer("window", "width", width);
     keyfile->set_integer("window", "height", height);
   }
+  // Saved even while collapsed — AdwOverlaySplitView keeps tracking a
+  // sidebar-width-fraction internally either way, it just isn't visible
+  // until show-sidebar is true again.
+  keyfile->set_double("window", "sidebar_fraction",
+                       adw_overlay_split_view_get_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(split_view_)));
+  keyfile->set_double(
+      "window", "now_playing_fraction",
+      adw_overlay_split_view_get_sidebar_width_fraction(ADW_OVERLAY_SPLIT_VIEW(content_split_view_)));
   try
   {
     keyfile->save_to_file(StateFilePath());
@@ -1092,6 +1123,8 @@ bool GnomosWindow::OnKeyPressed(guint keyval, guint /*keycode*/, Gdk::ModifierTy
       backend_->SetMuted(!volume.muted);
       return true;
     }
+    case GDK_KEY_s: backend_->ToggleShuffle(); return true;
+    case GDK_KEY_r: backend_->ToggleRepeat(); return true;
     default: return false;
   }
 }
@@ -1620,6 +1653,8 @@ void GnomosWindow::ShowShortcutsDialog()
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Lauter", "Up"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Leiser", "Down"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Stumm schalten", "m"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Zufallswiedergabe", "s"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Wiederholen", "r"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), section);
 
   AdwShortcutsSection* general = adw_shortcuts_section_new("Allgemein");

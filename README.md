@@ -33,6 +33,8 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Discovery of Sonos zones on the local network
 - Playback controls, volume and mute — aware of multi-room groups, not just
   a single speaker
+- Shuffle and repeat, including repeat-one, with both greyed out on
+  sources that don't support them (radio, line-in)
 - Zone grouping and ungrouping, with a per-room volume slider
 - Now playing view with cover art, a seek bar, and track details
 - Queue management: reordering, removing tracks, saving as a Sonos playlist
@@ -44,12 +46,15 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Third-party services (Spotify, bonob and other SMAPI-based services)
   through Sonos's own account-linking flow
 - MPRIS2 integration, so GNOME's media keys, the Quick Settings player
-  widget and the lock screen all work with Gnomos like any other player
+  widget and the lock screen all work with Gnomos like any other player,
+  including setting shuffle/repeat from there
 - A "Gen 1" badge identifying original first-generation hardware in a room
 - Light/dark appearance override, adjustable cover art cache size
-- Keyboard shortcuts for play/pause, next/previous, volume and mute
+- Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
+  and repeat
 - A responsive window: both side panels tuck away behind a toggle button
-  once the window gets narrow, and remembers its size across restarts
+  once the window gets narrow, and remembers its size and panel widths
+  across restarts
 - Optional desktop notifications on track change
 
 ## Hardware support
