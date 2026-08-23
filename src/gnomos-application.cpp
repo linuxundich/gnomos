@@ -4,6 +4,11 @@
 
 #include <adwaita.h>
 
+#include <gdkmm/display.h>
+#include <glibmm/fileutils.h>
+#include <glibmm/miscutils.h>
+#include <gtkmm/icontheme.h>
+
 #include "config.h"
 
 namespace gnomos
@@ -24,6 +29,19 @@ void GnomosApplication::on_startup()
   // Must run after GTK itself is initialized (i.e. after the base
   // on_startup()) and before any Adw widget is constructed.
   adw_init();
+
+  // Lets the icon theme resolve APPLICATION_ID by name (used by
+  // AdwAboutDialog's application-icon and, once installed, the .desktop
+  // file's own Icon=) when running straight from the build tree, where
+  // data/icons/ was never installed to a standard icon theme path. A real
+  // installed/Flatpak build already finds it there instead, so this is a
+  // harmless no-op — file_test() guards against SOURCE_ROOT not existing
+  // at all in that case. add_search_path() wants the directory that
+  // *contains* hicolor/, not hicolor/ itself (confirmed live — pointing at
+  // hicolor/ directly made has_icon() return false).
+  std::string icon_dir = Glib::build_filename(SOURCE_ROOT, "data", "icons");
+  if (Glib::file_test(icon_dir, Glib::FileTest::IS_DIR))
+    Gtk::IconTheme::get_for_display(Gdk::Display::get_default())->add_search_path(icon_dir);
 }
 
 void GnomosApplication::on_activate()

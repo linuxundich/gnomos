@@ -407,6 +407,48 @@ initial fetch and any later change (a service gets linked/unlinked).
   two bulk buttons while its search filter is empty, so "play all" can
   never be misread as "play the filtered results".
 
+### Application icon
+
+Replaced the placeholder icon (a plain blue circle-in-a-square) with a
+proper one, combining three references the user pointed at directly:
+
+- **Shape**: GNOME Decibels' own icon template — its background path
+  turned out to already *be* a rounded play-triangle silhouette (confirmed
+  by rendering it in isolation), not a generic squircle, which fits "a
+  streaming music player" perfectly on its own. Reused verbatim from the
+  provided source rather than freehand-approximated, since exact bezier
+  reproduction by hand is exactly the kind of thing that goes subtly wrong
+  without visual verification.
+- **Color**: solid black shape, white inner glyph, no gradients — the
+  Sonos wordmark's own palette, and a deliberate departure from Decibels'
+  own multi-stop color gradient and soft bevel/highlight rendering (which
+  would have fought with "take the Sonos colors" — Sonos' actual brand
+  identity is flat and high-contrast, not soft).
+- **Inner glyph**: three nested white arcs (a wifi/broadcast-wave motif),
+  clipped to the black shape so they can never bleed past its edges —
+  since the outer silhouette already reads as "play", a second nested
+  play triangle would have been redundant; the arcs alone complete "play →
+  broadcasting/streaming" without repeating the same glyph twice. Checked
+  down to 48px (SVG rendered to PNG at multiple sizes and inspected) before
+  finalizing — the arcs blur together below that, same trade-off
+  Decibels' own multi-bar equalizer glyph makes at small sizes.
+
+The new SVG replaces `data/icons/hicolor/scalable/apps/de.christophlangner.Gnomos.svg`
+directly — everywhere it's referenced (the `.desktop` file's `Icon=`,
+`AdwAboutDialog`'s `adw_about_dialog_set_application_icon(APPLICATION_ID)`)
+already resolved it purely by icon name, so no other code needed to change
+for those. One real gap it exposed: running straight from the build tree
+(never `meson install`'d) had **never** actually been able to resolve the
+icon at all, since `data/icons/` was never on the icon theme's search
+path — confirmed live via `Gtk::IconTheme::has_icon()` returning `false`
+before the fix (and a first attempt at the fix itself got the path wrong:
+`add_search_path()` wants the directory that *contains* `hicolor/`, not
+`hicolor/` itself — also confirmed live, the same way). Fixed in
+`GnomosApplication::on_startup()` by adding `$SOURCE_ROOT/data/icons` (a
+new `meson.build`-injected `config.h` define) as an extra search path,
+guarded by `Glib::file_test()` so it's a harmless no-op for an installed
+or Flatpak build where that path doesn't exist.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

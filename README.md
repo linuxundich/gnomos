@@ -129,9 +129,8 @@ details.
 
 This is a personal project, developed and tested against the author's own
 first-generation Sonos household. It works well there, but hasn't seen
-broad testing across different Sonos setups, and the application icon is
-still a placeholder. Bug reports, especially from different Sonos hardware
-generations, are welcome via the issue tracker.
+broad testing across different Sonos setups. Bug reports, especially from
+different Sonos hardware generations, are welcome via the issue tracker.
 
 For implementation notes, design decisions, and a log of bugs found during
 hardware testing, see [ARCHITECTURE.md](ARCHITECTURE.md). For the version

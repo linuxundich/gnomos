@@ -1,15 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Placeholder application icon — replace with a proper GNOME HIG icon
-     (see https://developer.gnome.org/hig/guidelines/app-icons.html). -->
+<!-- Gnomos application icon. Shape borrowed from GNOME Decibels' own icon
+     template (a rounded play-triangle silhouette) — it reads as a play
+     button already, so no separate triangle glyph was needed inside it.
+     Colors from the Sonos wordmark (pure black/white, no gradients).
+     The three nested arcs read as streaming/broadcast waves radiating from
+     the play shape, for "a streaming music player" specifically rather
+     than a generic media player. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3584e4"/>
-      <stop offset="1" stop-color="#1c71d8"/>
-    </linearGradient>
+    <path id="shape" d="m 32.378906 8.007812 c -8.984375 -0.210937 -16.378906 7.007813 -16.378906 15.992188 v 41.898438 c 0.003906 0.011718 0.007812 0.019531 0.015625 0.03125 c -0.023437 10.65625 -0.003906 21.3125 -0.015625 31.96875 c -0.148438 8.054687 6.601562 15.429687 14.648438 15.933593 c 3.203124 0.355469 6.304687 -0.539062 9.128906 -1.972656 c 0.074218 -0.035156 0.148437 -0.0625 0.222656 -0.101563 l 0.265625 -0.152343 c 0.589844 -0.316407 1.171875 -0.648438 1.734375 -1 c 0 -0.003907 0 -0.003907 0.003906 -0.003907 l 61.996094 -35.851562 c 7.046875 -3.894531 10.058594 -13.429688 6.472656 -20.652344 c -1.640625 -3.742187 -4.9375 -6.351562 -8.472656 -8.214844 c -0.082031 -0.03125 -0.164062 -0.058593 -0.246094 -0.085937 l -61.753906 -35.652344 c -2.320312 -1.339843 -4.941406 -2.074219 -7.621094 -2.136719 z m 0 0"/>
+    <clipPath id="clip">
+      <use href="#shape"/>
+    </clipPath>
   </defs>
-  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)"/>
-  <circle cx="64" cy="64" r="34" fill="none" stroke="#ffffff" stroke-width="6"/>
-  <circle cx="64" cy="64" r="18" fill="none" stroke="#ffffff" stroke-width="6"/>
-  <circle cx="64" cy="64" r="5" fill="#ffffff"/>
+  <use href="#shape" fill="#000000"/>
+  <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" clip-path="url(#clip)">
+    <path d="M 78.36,54.04 A 13,13 0 0 1 78.36,73.96"/>
+    <path d="M 84.14,47.15 A 22,22 0 0 1 84.14,80.85"/>
+    <path d="M 89.93,40.25 A 31,31 0 0 1 89.93,87.75"/>
+  </g>
 </svg>

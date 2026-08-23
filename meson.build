@@ -18,6 +18,7 @@ conf = configuration_data()
 conf.set_quoted('PACKAGE_NAME', meson.project_name())
 conf.set_quoted('PACKAGE_VERSION', meson.project_version())
 conf.set_quoted('APPLICATION_ID', application_id)
+conf.set_quoted('SOURCE_ROOT', meson.project_source_root())
 config_h = configure_file(output: 'config.h', configuration: conf)
 # add_project_arguments() must run before any build target is declared
 # (i.e. before subdir('noson-meson'), which defines the noson static_library).
