@@ -12,11 +12,11 @@
 namespace gnomos
 {
 
-CoverThumbnail::CoverThumbnail(int pixel_size) : pixel_size_(pixel_size)
+CoverThumbnail::CoverThumbnail(int pixel_size)
+: pixel_size_(pixel_size), fallback_pixel_size_(pixel_size * 3 / 5)
 {
-  set_from_icon_name("audio-x-generic-symbolic");
-  set_pixel_size(pixel_size);
   add_css_class("card");
+  ShowFallback();
 }
 
 CoverThumbnail::~CoverThumbnail()
@@ -26,11 +26,17 @@ CoverThumbnail::~CoverThumbnail()
     cancellable_->cancel();
 }
 
+void CoverThumbnail::ShowFallback()
+{
+  set_pixel_size(fallback_pixel_size_);
+  set_from_icon_name(fallback_icon_name_);
+}
+
 void CoverThumbnail::SetFallbackIconName(const std::string& icon_name)
 {
   fallback_icon_name_ = icon_name.empty() ? "audio-x-generic-symbolic" : icon_name;
   if (current_uri_.empty())
-    set_from_icon_name(fallback_icon_name_);
+    ShowFallback();
 }
 
 void CoverThumbnail::LoadArtistImage(const std::string& artist_name)
@@ -60,7 +66,7 @@ void CoverThumbnail::SetArtUri(const std::string& uri)
 
   if (uri.empty())
   {
-    set_from_icon_name(fallback_icon_name_);
+    ShowFallback();
     return;
   }
 
@@ -105,21 +111,21 @@ void CoverThumbnail::OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib
         if (auto scaled = ArtCache::Instance().GetScaled(current_uri_, pixel_size_))
           set(scaled);
         else
-          set_from_icon_name(fallback_icon_name_);
+          ShowFallback();
       }
       else
       {
-        set_from_icon_name(fallback_icon_name_);
+        ShowFallback();
       }
     }
     else
     {
-      set_from_icon_name(fallback_icon_name_);
+      ShowFallback();
     }
   }
   catch (const Glib::Error&)
   {
-    set_from_icon_name(fallback_icon_name_);
+    ShowFallback();
   }
 }
 

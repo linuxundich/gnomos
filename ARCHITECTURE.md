@@ -701,6 +701,24 @@ themselves are unchanged — `PlayerBar`'s own (single, larger) art image
 had no such problem to fix, so only `CoverThumbnail` switched to the new
 method.
 
+**Follow-up, reported live against the same screenshot after the above
+was already in place**: the *fallback* icon itself (the generic note
+glyph shown for entries with neither real art nor a more specific
+`icon_name`) was still visibly bigger than neighboring tiles — the fix
+above only addressed real downloaded textures, which was a different
+class of "too big" from this one. Root cause here is closer to an icon
+*design* mismatch than a sizing bug: `set_pixel_size()` was doing exactly
+what it's documented to do (constrain the icon to that many pixels), but
+`"audio-x-generic-symbolic"`'s own glyph fills nearly its entire square
+canvas, unlike a more generously-padded icon (an avatar silhouette, a
+disc), so the *same* pixel size still reads as visually larger. Fixed by
+giving `CoverThumbnail` a `fallback_pixel_size_` distinct from
+`pixel_size_` — 3/5 of it — used only for `set_from_icon_name()` calls
+(a new `ShowFallback()` helper wraps every one of them, so the smaller
+size can't accidentally get skipped at one call site); real texture
+content (`set(scaled)`) is completely unaffected by `pixel_size`, so
+still displays at the *full* `pixel_size_` via `GetScaled()` as before.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

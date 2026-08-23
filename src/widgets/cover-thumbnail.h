@@ -49,6 +49,12 @@ public:
 
 private:
   void OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::RefPtr<Gio::File>& file, unsigned generation);
+  // Switches to fallback_icon_name_ at fallback_pixel_size_ — every
+  // "nothing to show" case (empty uri, failed load) goes through this
+  // rather than calling set_from_icon_name() directly, so the smaller
+  // fallback size (see fallback_pixel_size_'s own comment) can't
+  // accidentally get skipped at one of the call sites.
+  void ShowFallback();
 
   // Constructor's own pixel_size argument, kept for ArtCache::GetScaled()
   // calls later — a plain Gdk::Texture set via Gtk::Image::set() has no
@@ -57,6 +63,15 @@ private:
   // ask ArtCache to decode already scaled to this, rather than relying on
   // the widget to shrink an arbitrarily-sized source image on its own.
   int pixel_size_ = 40;
+  // Smaller than pixel_size_ on purpose — confirmed live: a symbolic
+  // fallback icon (e.g. "audio-x-generic-symbolic", whose glyph fills
+  // most of its own square canvas) rendered at the *full* pixel_size_
+  // reads as visibly larger than a neighboring tile showing real
+  // downloaded art or a more generously-padded icon (an avatar silhouette,
+  // say), even though both are the exact same pixel_size_ box. Icons meant
+  // to sit inside a fixed-size thumbnail slot need their own margin, the
+  // same way a padded icon already carries one built into its own SVG.
+  int fallback_pixel_size_ = 24;
   std::string fallback_icon_name_ = "audio-x-generic-symbolic";
   std::string current_uri_;
   unsigned generation_ = 0;
