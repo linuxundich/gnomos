@@ -2262,6 +2262,8 @@ void GnomosWindow::ShowAboutDialog()
              "Generation (ZP80, ZP90, ZP100, ZP120, CR100), die von Sonos' eigenen aktuellen Apps nicht mehr "
              "unterstützt werden.");
   adw_about_dialog_set_copyright(about, "© 2026 Christoph Langner");
+  adw_about_dialog_set_website(about, "https://github.com/linuxundich/gnomos");
+  adw_about_dialog_set_issue_url(about, "https://github.com/linuxundich/gnomos/issues");
 
   // Gnomos links libnoson (GPL-3.0-or-later) statically, so the combined
   // work is bound to those terms — see LICENSE and README.md.
@@ -2273,6 +2275,11 @@ void GnomosWindow::ShowAboutDialog()
   // field on add_legal_section itself).
   const char* libraries[] = {"libnoson (Jean-Luc Barriere) https://github.com/janbar/noson", nullptr};
   adw_about_dialog_add_acknowledgement_section(about, "Bibliotheken", libraries);
+
+  // Radio-Browser (see RadioBrowserService's own header) — the public
+  // directory the "Radiosender hinzufügen" dialog's search is built on.
+  const char* services[] = {"Radio Browser https://www.radio-browser.info", nullptr};
+  adw_about_dialog_add_acknowledgement_section(about, "Dienste", services);
 
   const char* developers[] = {"Christoph Langner", nullptr};
   adw_about_dialog_set_developers(about, developers);
@@ -2953,7 +2960,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
   // that only *looks* like it adds something (relying on the row beneath
   // it to fire instead) silently does nothing when clicked directly.
   auto add_station = [this](const RadioBrowserStation& station) {
-    backend_->AddRadioStation(station.name, station.url);
+    backend_->AddRadioStation(station.name, station.url, station.favicon);
     // Same reasoning as ShowDeleteLibraryEntryConfirmDialog()'s own
     // re-browse — AddRadioStation() is queued first on the same serial
     // worker.

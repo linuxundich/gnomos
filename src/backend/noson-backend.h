@@ -259,7 +259,15 @@ public:
   // implementation — it creates the object under the same ContentSearch
   // root "R:0/0" already browses). streamURL must be an http(s) URL —
   // System::CreateRadio() itself validates and rejects anything else.
-  void AddRadioStation(const std::string& title, const std::string& stream_url);
+  // favicon_url is never sent to Sonos at all — CreateRadio() has no icon
+  // parameter, so a custom station never gets real cover art the way a
+  // built-in TuneIn one does (Sonos's own directory already carries a
+  // upnp:albumArtURI for those). When non-empty (radio-browser.info's own
+  // search results carry one; the manual name/URL fallback has nothing to
+  // offer here), it's persisted locally instead — see SaveRadioFavicon()'s
+  // own comment — and looked back up the next time "R:0/0" is browsed.
+  void AddRadioStation(const std::string& title, const std::string& stream_url,
+                        const std::string& favicon_url = "");
 
   // Third-party service linking (Spotify, bonob, ...). AppLink/DeviceLink
   // services need this before they'll browse — see the "Third-party
@@ -392,6 +400,20 @@ private:
   // instead of serving a stale cached copy for up to the TTL. Worker-
   // thread only, like library_cache_ itself.
   void InvalidateLibraryCache();
+
+  // Local-only persistence for a custom radio station's favicon (see
+  // AddRadioStation()'s own comment for why this can't just be sent to
+  // Sonos and read back via upnp:albumArtURI like every other entry's
+  // art). Keyed by the SHA-256 of the station's stream URL (same "hash an
+  // arbitrary URI into something safe to use as an identifier" idea
+  // ArtCache::PathFor() already uses, just as a KeyFile key here instead
+  // of a filename) — matched against a browsed item's own res value
+  // (item->GetValue("res"), the DIDL resource URI) in BrowseLibraryAsync()'s
+  // local branch. Loaded fresh (not cached across calls) since it's only
+  // ever read once per "R:0/0" browse, a rare, non-performance-sensitive
+  // path.
+  void SaveRadioFavicon(const std::string& stream_url, const std::string& favicon_url);
+  std::map<std::string, std::string> LoadRadioFavicons() const;
 
   NSROOT::PlayerPtr SnapshotPlayer() const;
   NSROOT::ZonePtr SnapshotZone() const;

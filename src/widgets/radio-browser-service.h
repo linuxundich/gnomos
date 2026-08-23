@@ -16,6 +16,12 @@ struct RadioBrowserStation
   std::string tags;
   std::string codec;
   int bitrate = 0;
+  // A station-provided logo URL — often empty even when the station
+  // itself is otherwise complete (a directory entry, not something every
+  // submitter bothers to set). Passed straight through to
+  // NosonBackend::AddRadioStation() when adding this result; see that
+  // method's own comment for why it isn't sent to Sonos itself.
+  std::string favicon;
 };
 
 struct RadioBrowserCountry

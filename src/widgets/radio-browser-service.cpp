@@ -57,6 +57,7 @@ std::vector<RadioBrowserStation> ParseStations(const std::string& body)
       station.countrycode = StringMember(entry, "countrycode");
       station.tags = StringMember(entry, "tags");
       station.codec = StringMember(entry, "codec");
+      station.favicon = StringMember(entry, "favicon");
       if (json_object_has_member(entry, "bitrate"))
         station.bitrate = static_cast<int>(json_object_get_int_member(entry, "bitrate"));
       if (!station.name.empty() && !station.url.empty())

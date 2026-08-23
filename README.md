@@ -67,9 +67,10 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   playlist), a live filter for narrowing down a long list as you type,
   "play all"/"add all to queue" for a track listing, adding a custom
   internet radio station (searched for by name/country against
-  radio-browser.info's public directory, with manual name+URL entry as a
-  fallback) and deleting one, deleting a saved Sonos playlist, adding a
-  track to an existing saved playlist and reordering its tracks, and a
+  radio-browser.info's public directory, complete with a thumbnail where
+  available, with manual name+URL entry as a fallback) and deleting one,
+  deleting a saved Sonos playlist, adding a track to an existing saved
+  playlist and reordering its tracks, and a
   cache so revisiting a level doesn't refetch it over the network every
   time
 - Optional real artist photos in the library, looked up by name against

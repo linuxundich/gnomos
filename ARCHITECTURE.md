@@ -1165,6 +1165,76 @@ gained a `show_play_all_action` parameter, `GnomosWindow` passing
 `!is_radio_level` same as the others, so both bulk buttons are now
 excluded from the Radiosender level symmetrically.
 
+### About dialog: GitHub link, and a Radio Browser acknowledgement
+
+Two small, explicitly requested additions to `ShowAboutDialog()`:
+`adw_about_dialog_set_website()`/`set_issue_url()` pointing at the GitHub
+repo and its issue tracker (the same two links README.md itself already
+points people to for bug reports), and a new "Dienste" acknowledgement
+section crediting Radio Browser (radio-browser.info), alongside the
+existing "Bibliotheken" section that already credits libnoson.
+
+### Radio station thumbnails for custom-added stations
+
+Requested directly: show a real thumbnail for a station added via the
+new Radio-Browser search, the same way a built-in TuneIn station already
+does. The built-in ones work already — Sonos's own local radio directory
+carries a real `upnp:albumArtURI` for those, picked up by the exact same
+`ResolveArtUri(item->GetValue("upnp:albumArtURI"))` call every other
+library entry already goes through. A *custom* station never can, though:
+`System::CreateRadio()` (sonossystem.cpp) takes no icon parameter at
+all — there's nothing to send Sonos in the first place, unlike
+`upnp:albumArtURI`, which the device populates itself from its own
+TuneIn integration.
+
+Radio-Browser's own station objects do carry a `favicon` URL (now parsed
+into `RadioBrowserStation::favicon`), so the fix stores that locally
+instead — `NosonBackend::AddRadioStation()` gained an optional
+`favicon_url` parameter (the manual-entry fallback has nothing to pass;
+the radio-browser dialog's `add_station` lambda passes
+`station.favicon`), persisted via `SaveRadioFavicon()` to a small
+`radio-favicons.ini` (mirroring `art-cache.ini`'s own load-modify-save
+pattern) keyed by a hash of the station's stream URL. `BrowseLibraryAsync()`'s
+local branch loads that map once per "R:0/0" browse
+(`LoadRadioFavicons()`) and fills in `entry.art_uri` from it whenever
+`upnp:albumArtURI` came back empty — CoverThumbnail/ArtCache then fetch,
+cache and decode that favicon URL exactly like any other art URI, no new
+image-loading code needed at all.
+
+The one real trap here, caught by reading `System::CreateRadio()`'s own
+implementation rather than assuming: it does **not** store `streamURL`
+verbatim. It strips the `http(s)` scheme and prepends Sonos's own
+`x-rincon-mp3radio:` protocol, keeping only the `"://host/path"` suffix
+— so a browsed entry's own `res` value never textually matches the
+original URL `AddRadioStation()` was called with. Hashing the *full*
+original URL (an earlier version of this fix) would have silently
+matched nothing, ever. Fixed by extracting and hashing only the common
+`"://..."` suffix (`RadioStreamMatchKey()`) on *both* sides — saving and
+lookup — so the scheme-prefix difference stops mattering.
+
+### Fixed: switching radio stations showed the generic icon in PlayerBar
+
+Reported live, right after the thumbnail fix above shipped: the library
+listing showed the right thumbnail per station, but switching to one
+still showed the generic fallback in the bottom Now Playing bar. Same
+root cause, second location: `RefreshNowPlayingLocked()` sets
+`NowPlaying::art_uri` for a live stream strictly from Sonos's own
+`CurrentTrackMetaData`'s `upnp:albumArtURI`, which is empty for any
+custom station for the exact same reason the library listing's own copy
+was (`System::CreateRadio()` never gave Sonos an icon to report back in
+the first place).
+
+Fixed the same way, applied a second time: when that field comes back
+empty, fall back to `radio-favicons.ini` via the same
+`RadioStreamMatchKey()`, matched against `AVTProperty::AVTransportURI`
+this time rather than a browsed item's `res` value — confirmed by
+reading `Player::SetCurrentURI()`'s own implementation
+(`m_AVTransport->SetCurrentURI(item->GetValue("res"), ...)`) that this
+is exactly the same value verbatim, just reflected back once played
+rather than read from a directory listing, so the identical scheme-
+rewrite reasoning (and the identical matching function) applies
+unchanged.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

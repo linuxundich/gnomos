@@ -14,6 +14,7 @@
 
 #include <giomm/file.h>
 #include <glib.h>
+#include <glibmm/checksum.h>
 #include <glibmm/keyfile.h>
 #include <glibmm/miscutils.h>
 
@@ -117,6 +118,28 @@ std::string IconNameForSubType(NSROOT::DigitalItem::SubType_t subtype)
     default:
       return "";
   }
+}
+
+std::string RadioFaviconsPath()
+{
+  return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "radio-favicons.ini");
+}
+
+// System::CreateRadio() (sonossystem.cpp) does NOT store streamURL
+// verbatim — it strips the "http(s)" scheme and prepends Sonos's own
+// "x-rincon-mp3radio:" protocol instead, keeping only the "://host/path"
+// suffix (streamURL.substr(streamURL.find("://"))). A browsed entry's own
+// res value (item->GetValue("res")) therefore never matches the original
+// stream_url passed to AddRadioStation() — only that common suffix does,
+// which is what both SaveRadioFavicon() and the "R:0/0" browse loop below
+// hash instead of the full URL, so the two sides actually agree on a key.
+// Confirmed by reading CreateRadio()'s own implementation directly, not
+// assumed — an earlier version of this hashed the full original URL,
+// which would have silently never matched anything.
+std::string RadioStreamMatchKey(const std::string& url)
+{
+  size_t p = url.find("://");
+  return Glib::Checksum::compute_checksum(Glib::Checksum::Type::SHA256, p != std::string::npos ? url.substr(p) : url);
 }
 
 }  // namespace
@@ -1865,6 +1888,13 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
     // depends on the level's own object_id.
     bool grid_eligible_prefix = object_id.compare(0, 7, "A:ALBUM") == 0;
 
+    // Only ever populated for "R:0/0" — see SaveRadioFavicon()'s own
+    // comment for why a custom station's thumbnail can't come from Sonos
+    // itself the way a built-in TuneIn one's upnp:albumArtURI does.
+    std::map<std::string, std::string> radio_favicons;
+    if (object_id == "R:0/0")
+      radio_favicons = LoadRadioFavicons();
+
     std::vector<LibraryEntry> entries;
     std::vector<NSROOT::DigitalItemPtr> raw;
     entries.reserve(browser.table().size());
@@ -1878,6 +1908,16 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       if (!entry.is_container)
         entry.subtitle = item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
+      if (entry.art_uri.empty() && !radio_favicons.empty())
+      {
+        const std::string res = item->GetValue("res");
+        if (!res.empty())
+        {
+          auto it = radio_favicons.find(RadioStreamMatchKey(res));
+          if (it != radio_favicons.end())
+            entry.art_uri = it->second;
+        }
+      }
       entry.icon_name = IconNameForSubType(item->subType());
       entry.display_as_grid = grid_eligible_prefix && entry.is_container;
       entries.push_back(std::move(entry));
@@ -2660,9 +2700,10 @@ void NosonBackend::RefreshLibraryIndex()
   });
 }
 
-void NosonBackend::AddRadioStation(const std::string& title, const std::string& stream_url)
+void NosonBackend::AddRadioStation(const std::string& title, const std::string& stream_url,
+                                    const std::string& favicon_url)
 {
-  tasks_.Push([this, title, stream_url] {
+  tasks_.Push([this, title, stream_url, favicon_url] {
     if (!system_->CreateRadio(stream_url, title))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
@@ -2677,8 +2718,58 @@ void NosonBackend::AddRadioStation(const std::string& title, const std::string& 
       // (queued right after this call on the same serial tasks_ worker)
       // hit the cached pre-add "R:0/0" listing instead of fetching fresh.
       InvalidateLibraryCache();
+      // See AddRadioStation()'s own header comment for why this can't go
+      // to Sonos itself — only worth persisting once the station actually
+      // exists, and only if the caller (the radio-browser search results;
+      // the manual entry fallback has no favicon to offer) actually has one.
+      if (!favicon_url.empty())
+        SaveRadioFavicon(stream_url, favicon_url);
     }
   });
+}
+
+void NosonBackend::SaveRadioFavicon(const std::string& stream_url, const std::string& favicon_url)
+{
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(RadioFaviconsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first custom station with a favicon this install has ever added
+  }
+  keyfile->set_string("favicons", RadioStreamMatchKey(stream_url), favicon_url);
+  try
+  {
+    keyfile->save_to_file(RadioFaviconsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — the station still got added, it just won't have a
+    // thumbnail next time "R:0/0" is browsed
+  }
+}
+
+std::map<std::string, std::string> NosonBackend::LoadRadioFavicons() const
+{
+  std::map<std::string, std::string> result;
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (keyfile->load_from_file(RadioFaviconsPath()))
+      for (const Glib::ustring& key : keyfile->get_keys("favicons"))
+        result[key] = keyfile->get_string("favicons", key);
+  }
+  catch (const Glib::Error&)
+  {
+    // no favicons saved yet, or the file is otherwise unreadable — same
+    // as "none saved" either way
+  }
+  return result;
 }
 
 void NosonBackend::RefreshAlarmsAsync()
@@ -3093,6 +3184,24 @@ void NosonBackend::RefreshNowPlayingLocked()
     }
     if (prop.CurrentTrackMetaData)
       np.art_uri = ResolveArtUri(prop.CurrentTrackMetaData->GetValue("upnp:albumArtURI"));
+    if (np.art_uri.empty())
+    {
+      // A custom radio station has no upnp:albumArtURI from Sonos itself
+      // at all (System::CreateRadio() has no icon parameter — see
+      // SaveRadioFavicon()'s own comment) — confirmed live: switching to
+      // one showed the generic fallback in PlayerBar instead of its own
+      // thumbnail, the same gap BrowseLibraryAsync()'s "R:0/0" branch
+      // already closes for the library listing itself. Player::SetCurrentURI()
+      // passes item->GetValue("res") straight through to
+      // AVTransport::SetCurrentURI(), so AVTransportURI read back here is
+      // exactly that same value — matched against radio-favicons.ini the
+      // same way, via the same RadioStreamMatchKey() (the x-rincon-mp3radio:
+      // scheme-prefix rewrite CreateRadio() does applies here too).
+      std::map<std::string, std::string> radio_favicons = LoadRadioFavicons();
+      auto it = radio_favicons.find(RadioStreamMatchKey(prop.AVTransportURI));
+      if (it != radio_favicons.end())
+        np.art_uri = it->second;
+    }
   }
   else if (prop.CurrentTrackMetaData)
   {
