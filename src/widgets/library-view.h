@@ -9,6 +9,7 @@
 #include <gtkmm/label.h>
 #include <gtkmm/listbox.h>
 #include <gtkmm/scrolledwindow.h>
+#include <gtkmm/togglebutton.h>
 #include <sigc++/sigc++.h>
 
 #include "../backend/noson-types.h"
@@ -20,23 +21,33 @@ namespace gnomos
 // Hierarchical browser for the music library: a header row with a back
 // button + current level title, and either a list or a cover-art grid of
 // entries below. Whether activating an entry means "go deeper" or "play
-// it" depends on LibraryEntry::is_container, and whether to show a grid
-// at all is decided by GnomosWindow (it's the one that knows whether the
-// current object_id is under the Albums/Artists namespace — see
-// SetEntries()) — this widget only reports which index was activated.
+// it" depends on LibraryEntry::is_container. Whether a grid is even an
+// option for the current level is a single, uniform signal now —
+// LibraryEntry::display_as_grid, which both the local library and
+// third-party services populate (via their own, different underlying
+// heuristics — see that field's own comment) — so GnomosWindow itself no
+// longer branches on where the level came from; it just checks whether
+// *any* entry wants a grid. Whether to actually render one *when
+// available* is the user's own choice, via view_mode_button_.
 class LibraryView : public Gtk::Box
 {
 public:
   LibraryView();
 
-  // grid: cover-art tiles (Euphonica-style, https://github.com/htkhiem/euphonica)
-  // instead of the plain list — meant for Albums/Artists levels, where
-  // every entry has its own distinct, meaningful cover. Grid tiles never
-  // get the add-to-queue/play-next buttons list rows do (see those
-  // signals' own comments): GnomosWindow only ever asks for a grid when
-  // entries are containers (albums/artists to browse into), never leaf
-  // tracks those buttons would apply to.
-  void SetEntries(const std::vector<LibraryEntry>& entries, bool grid);
+  // grid_available: whether this level has any grid-eligible entries at
+  // all (LibraryEntry::display_as_grid) — controls whether
+  // view_mode_button_ is shown; a level of plain leaf tracks or local
+  // Genres/Playlists never offers the choice in the first place.
+  // grid_active: whether to actually render as a grid right now (only
+  // meaningful when grid_available is true) — GnomosWindow decides this
+  // by combining grid_available with the user's own persisted preference.
+  // Cover-art tiles are styled after Euphonica's own Albums/Artists grid
+  // (https://github.com/htkhiem/euphonica). Grid tiles never get the
+  // add-to-queue/play-next buttons list rows do (see those signals' own
+  // comments) — a grid is only ever offered for containers (albums/
+  // artists/playlists to browse into), never leaf tracks those buttons
+  // would apply to.
+  void SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active);
   void SetLevelTitle(const std::string& title);
   void SetBackVisible(bool visible);
   void Clear();
@@ -57,6 +68,13 @@ public:
   // neither signal carries an index.
   sigc::signal<void()>& signal_play_all_requested() { return signal_play_all_requested_; }
   sigc::signal<void()>& signal_queue_all_requested() { return signal_queue_all_requested_; }
+  // Fires on user click only (Gtk::Button::signal_clicked(), not
+  // ToggleButton's own signal_toggled(), which also fires for the
+  // programmatic set_active() SetEntries() itself makes) — GnomosWindow
+  // decides the new grid/list state itself and calls SetEntries() again
+  // with it, the same "caller decides, this widget just reports the
+  // click" split every other toggle in this app already uses.
+  sigc::signal<void()>& signal_view_mode_toggled() { return signal_view_mode_toggled_; }
 
 private:
   void BuildList(const std::vector<LibraryEntry>& entries);
@@ -67,6 +85,7 @@ private:
   Gtk::Label count_label_;
   Gtk::Button play_all_button_;
   Gtk::Button queue_all_button_;
+  Gtk::ToggleButton view_mode_button_;
   Gtk::Button search_button_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
@@ -79,6 +98,7 @@ private:
   sigc::signal<void(unsigned)> signal_play_next_requested_;
   sigc::signal<void()> signal_play_all_requested_;
   sigc::signal<void()> signal_queue_all_requested_;
+  sigc::signal<void()> signal_view_mode_toggled_;
 };
 
 }  // namespace gnomos

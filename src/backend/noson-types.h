@@ -206,11 +206,17 @@ struct LibraryEntry
   // shift positions in the existing brace-init lists that build the static
   // root category entries (BrowseLibraryAsync()).
   std::string art_uri;  // resolved to an absolute http(s) URL, or empty
-  // SMAPIItem::displayType == Grid (see BrowseActiveServiceLocked()) —
-  // third-party services (Spotify, bonob, ...) say themselves whether an
-  // item belongs in a cover-art grid, unlike the local library, which has
-  // no such hint and falls back to an object_id-prefix heuristic in
-  // GnomosWindow instead. Always false for local-library entries.
+  // Whether this entry is well suited to cover-art grid display — the
+  // single, uniform signal GnomosWindow::OnLibraryChanged() checks
+  // (std::any_of over a level's entries) regardless of where the level
+  // came from, so it never needs to branch on local-vs-service itself.
+  // The two sources populating it use different underlying signals, since
+  // they're genuinely different protocols: third-party services
+  // (Spotify, bonob, ...) say so directly via SMAPIItem::displayType ==
+  // Grid (see BrowseActiveServiceLocked()); the local library has no such
+  // per-item hint, so BrowseLibraryAsync() derives it from the level's
+  // object_id prefix ("A:ALBUM"/"A:ALBUMARTIST") combined with
+  // is_container instead.
   bool display_as_grid = false;
 };
 

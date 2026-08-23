@@ -52,6 +52,17 @@ LibraryView::LibraryView()
   queue_all_button_.signal_clicked().connect([this] { signal_queue_all_requested_.emit(); });
   header->append(queue_all_button_);
 
+  // Only ever shown when the current level has at least one grid-eligible
+  // entry (LibraryEntry::display_as_grid) — see SetEntries(). Icon
+  // reflects the mode switching *to*, matching the convention every other
+  // view-mode toggle in GNOME uses (e.g. Nautilus's own grid/list button).
+  view_mode_button_.set_icon_name("view-grid-symbolic");
+  view_mode_button_.add_css_class("flat");
+  view_mode_button_.set_tooltip_text("Als Raster/Liste anzeigen");
+  view_mode_button_.set_visible(false);
+  view_mode_button_.signal_clicked().connect([this] { signal_view_mode_toggled_.emit(); });
+  header->append(view_mode_button_);
+
   search_button_.set_icon_name("system-search-symbolic");
   search_button_.add_css_class("flat");
   search_button_.set_tooltip_text("Suchen");
@@ -110,17 +121,24 @@ LibraryView::LibraryView()
   append(scroller_);
 }
 
-void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid)
+void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active)
 {
   Clear();
   count_label_.set_text(entries.empty()      ? ""
                          : entries.size() == 1 ? "1 Eintrag"
                                                 : std::to_string(entries.size()) + " Einträge");
+  bool grid = grid_available && grid_active;
   scroller_.set_child(grid ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_));
   if (grid)
     BuildGrid(entries);
   else
     BuildList(entries);
+
+  view_mode_button_.set_visible(grid_available);
+  // Icon/tooltip reflect the mode a click switches *to*, not the current
+  // one.
+  view_mode_button_.set_icon_name(grid ? "view-list-symbolic" : "view-grid-symbolic");
+  view_mode_button_.set_tooltip_text(grid ? "Als Liste anzeigen" : "Als Raster anzeigen");
 
   // "Play all"/"queue all" only make sense once every entry at this level
   // is a leaf track — never for a grid (always containers to browse into)

@@ -416,6 +416,13 @@ GnomosWindow::GnomosWindow()
     backend_->AddAllLibraryItemsToQueue();
     ShowToast("Zur Warteschlange hinzugefügt");
   });
+  // Re-renders the already-fetched current_library_entries_ with the
+  // flipped preference — no need to ask NosonBackend for anything again,
+  // this is purely a local rendering choice.
+  library_view_.signal_view_mode_toggled().connect([this] {
+    SetPreferGridView(!prefer_grid_view_);
+    OnLibraryChanged();
+  });
 
   player_bar_.signal_play_pause().connect([this] {
     NowPlaying np = backend_->GetNowPlaying();
@@ -541,6 +548,7 @@ GnomosWindow::GnomosWindow()
 
   LoadColorScheme();
   LoadNotificationSetting();
+  LoadLibraryViewPreference();
 
   // Space = play/pause — see OnKeyPressed()'s header comment for why a
   // focused-Editable check is needed alongside the keyval check.
@@ -1013,6 +1021,47 @@ void GnomosWindow::ApplyColorScheme(const std::string& scheme)
   }
 }
 
+void GnomosWindow::LoadLibraryViewPreference()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    prefer_grid_view_ = keyfile->get_boolean("library", "prefer_grid");
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no preference saved yet, stays at the true default
+  }
+}
+
+void GnomosWindow::SetPreferGridView(bool prefer_grid)
+{
+  prefer_grid_view_ = prefer_grid;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_boolean("library", "prefer_grid", prefer_grid);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the preference won't be remembered next launch
+  }
+}
+
 void GnomosWindow::LoadNotificationSetting()
 {
   auto keyfile = Glib::KeyFile::create();
@@ -1174,48 +1223,18 @@ void GnomosWindow::OnLibraryChanged()
   current_library_entries_ = backend_->GetLibraryEntries();
 
   // Grid view (cover-art tiles, like Euphonica's own Albums/Artists grid —
-  // https://github.com/htkhiem/euphonica). Two different signals depending
-  // on where we are, since they're two fairly different systems:
-  //
-  // - Inside a third-party service (Spotify, bonob, ...): SMAPIItem itself
-  //   carries a displayType (GRID/LIST/HERO/EDITORIAL) straight from the
-  //   service's own SMAPI response — trust that directly rather than
-  //   guessing. "Inside a service" is checked via library_stack_[1] (the
-  //   breadcrumb entry right after the true root), which is always that
-  //   service's own root object_id (kServiceRootPrefix-prefixed) for as
-  //   long as we're anywhere under it — NOT the current level's own
-  //   object_id, which only carries that prefix at the service's own root
-  //   and is the service's internal (unprefixed) id at any deeper level.
-  //   Deliberately not backend_->GetActiveServiceSearchCategories().empty():
-  //   that's empty for services with no search support (bonob, confirmed
-  //   live) even while genuinely inside one, so it can't tell "inside a
-  //   service" apart from "in the local library" here.
-  // - Local library: no such hint exists, so this falls back to an
-  //   object_id-prefix heuristic instead — both "A:ALBUM" (the root album
-  //   list) and "A:ALBUMARTIST" (the root artist list, and an artist's own
-  //   album list once you browse into one) use this prefix. Gated on the
-  //   entries actually being containers too, since browsing all the way
-  //   down into a real album swaps the entries for that album's individual
-  //   tracks — a grid of identical repeated cover art for every track
-  //   would be worse than the plain list those get instead.
-  bool in_service = library_stack_.size() > 1 &&
-                     library_stack_[1].first.compare(0, std::string(kServiceRootPrefix).size(), kServiceRootPrefix) ==
-                         0;
-  bool grid;
-  if (in_service)
-  {
-    grid = std::any_of(current_library_entries_.begin(), current_library_entries_.end(),
-                        [](const LibraryEntry& entry) { return entry.display_as_grid; });
-  }
-  else
-  {
-    const std::string& object_id = library_stack_.back().first;
-    grid = object_id.compare(0, 7, "A:ALBUM") == 0 &&
-           std::any_of(current_library_entries_.begin(), current_library_entries_.end(),
-                       [](const LibraryEntry& entry) { return entry.is_container; });
-  }
+  // https://github.com/htkhiem/euphonica) is available whenever any entry
+  // at this level says so — LibraryEntry::display_as_grid is populated
+  // uniformly by NosonBackend regardless of whether the level came from
+  // the local library or a third-party service (see that field's own
+  // comment for the two different underlying heuristics), so this no
+  // longer needs to branch on where we are the way it used to. Whether to
+  // actually *render* one when available is the user's own choice
+  // (prefer_grid_view_, toggled via view_mode_button_), not decided here.
+  bool grid_available = std::any_of(current_library_entries_.begin(), current_library_entries_.end(),
+                                     [](const LibraryEntry& entry) { return entry.display_as_grid; });
 
-  library_view_.SetEntries(current_library_entries_, grid);
+  library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_);
   library_view_.SetLevelTitle(library_stack_.back().second);
   library_view_.SetBackVisible(library_stack_.size() > 1);
 }

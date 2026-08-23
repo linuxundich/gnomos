@@ -1540,6 +1540,18 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
     NSROOT::ContentBrowser browser(libraryDirectory, object_id, 200);
     ExhaustBrowser(browser);
 
+    // Local ContentDirectory has no per-item hint like SMAPI's own
+    // displayType (see BrowseActiveServiceLocked()'s identical field) —
+    // both "A:ALBUM" (the root album list) and "A:ALBUMARTIST" (the root
+    // artist list, and an artist's own album list once you browse into
+    // one) use this object_id prefix, gated on the entry actually being a
+    // container too: browsing all the way down into a real album swaps
+    // the entries for that album's individual tracks, which should fall
+    // back to the plain list rather than a grid of identical repeated
+    // cover art. Computed once per level (not per entry) since it only
+    // depends on the level's own object_id.
+    bool grid_eligible_prefix = object_id.compare(0, 7, "A:ALBUM") == 0;
+
     std::vector<LibraryEntry> entries;
     std::vector<NSROOT::DigitalItemPtr> raw;
     entries.reserve(browser.table().size());
@@ -1553,6 +1565,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       if (!entry.is_container)
         entry.subtitle = item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
+      entry.display_as_grid = grid_eligible_prefix && entry.is_container;
       entries.push_back(std::move(entry));
       raw.push_back(item);
     }

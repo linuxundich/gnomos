@@ -228,6 +228,38 @@ reordering would introduce a use-after-free.
   the previous (correct) value on screen until a settled event confirms
   the real one, rather than ever showing a known-wrong intermediate value.
 
+### Library grid/list: one signal, user-togglable
+
+Album/Artist grid display used to be decided by two different code paths
+in `GnomosWindow::OnLibraryChanged()`, branching on whether the current
+level was inside a third-party service or the local library, with no way
+for the user to override either. Unified into one signal and a real
+toggle:
+
+- `LibraryEntry::display_as_grid` is now populated for **every** entry,
+  regardless of source, not just SMAPI ones. Third-party services still
+  set it from `SMAPIItem::displayType == Grid`, straight from the
+  service's own response (`BrowseActiveServiceLocked()`); the local
+  library still has no such per-item hint, so `BrowseLibraryAsync()`
+  derives it from the level's own object_id prefix
+  (`"A:ALBUM"`/`"A:ALBUMARTIST"`) combined with `is_container`, computed
+  once per level and applied to every entry in it. Two different
+  underlying heuristics, because they're genuinely different protocols —
+  but one uniform field to consume.
+- `OnLibraryChanged()` no longer branches on where the level came from at
+  all: it just checks `std::any_of(entries, [](e){ return
+  e.display_as_grid; })` to decide whether a grid is *available* for this
+  level, unconditionally.
+- Whether to actually *render* one when available is now the user's own
+  choice: `LibraryView` gained `view_mode_button_` (only shown when
+  `grid_available` is true), and `GnomosWindow::prefer_grid_view_` (a
+  single global preference, not per-level — simpler to reason about and
+  persist, and matches how a single on/off toggle button reads) persisted
+  to `state.ini`'s `[library]` group. Toggling it re-renders the
+  already-fetched `current_library_entries_` locally
+  (`LibraryView::SetEntries()` again) — no new network fetch, since this
+  is purely a rendering choice, not a data one.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

@@ -116,6 +116,10 @@ private:
   void LoadNotificationSetting();
   void SetNotifyOnTrackChange(bool enabled);
   void SendTrackChangeNotification(const NowPlaying& now_playing);
+  // [library] prefer_grid in state.ini — see prefer_grid_view_'s own
+  // comment.
+  void LoadLibraryViewPreference();
+  void SetPreferGridView(bool prefer_grid);
   // Window width/height/maximized, persisted to state.ini's [window] group
   // alongside last_room_uuid — restores the size the user actually left
   // the app at, instead of always reopening at the fixed default_size().
@@ -202,6 +206,16 @@ private:
   // comment.
   bool last_alarm_running_ = false;
   bool last_transport_status_ok_ = true;
+  // User override for grid-eligible library levels (Albums/Artists and
+  // similar) — OnLibraryChanged() only ever shows a grid at all when
+  // LibraryEntry::display_as_grid says the level supports one; this is
+  // just whether the user currently *wants* that when it's available, so
+  // they can switch back to a plain list for the same levels a grid would
+  // otherwise apply to. Global rather than per-level: simpler to reason
+  // about and persist, and matches how the toggle button itself reads
+  // (one on/off control, not a per-level memory). Persisted to
+  // state.ini's [library] group.
+  bool prefer_grid_view_ = true;
   // (object_id, display title) from root to current level; back() is the
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;
