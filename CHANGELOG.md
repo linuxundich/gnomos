@@ -8,6 +8,44 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.3.5] - 2026-08-23
+
+### Added
+- Repeat-one, alongside the existing off/repeat-all toggle.
+- MPRIS `Shuffle`/`LoopStatus` are now exposed as real, read-write
+  properties (previously not exposed at all), so external media controls
+  can read and set them too.
+- Suspend/resume resilience: a subscription renewal and a fresh discovery
+  are forced right after the system wakes up, instead of waiting out
+  libnoson's own renewal timers.
+- A ringing alarm now shows a toast with a "Stoppen" action, and a
+  device-reported transport error shows one too — both previously had no
+  visible indication at all.
+- A cache for library browsing: revisiting an already-opened level (local
+  library or a third-party service) is now served instantly instead of
+  refetching over the network every time — by far the biggest fix for
+  navigation feeling sluggish.
+
+### Changed
+- The shuffle/repeat/next/previous buttons, and their MPRIS counterparts,
+  are now only enabled when the device itself reports the source supports
+  them (some radio stations don't support Next/Previous at all, for
+  example).
+- Volume changes are now debounced, instead of sending a full round trip
+  for every intermediate step while dragging the slider.
+- "Wecker-Ton testen" now actually stops itself after a few seconds
+  instead of playing indefinitely until manually stopped.
+
+### Fixed
+- Local library/queue/favorites browsing and search only ever fetched a
+  single page — a queue, playlist, or library folder larger than that
+  silently lost its tail end. Now paginated properly, local and
+  third-party services alike.
+- Three more places had the same false "failed to load" error already
+  fixed for the queue in 0.2.2: an empty favorites list, an empty library
+  level, and searching an empty level all previously showed a bogus error
+  instead of just being empty.
+
 ## [0.3.4] - 2026-08-23
 
 ### Added
