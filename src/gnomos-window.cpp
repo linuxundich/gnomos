@@ -26,6 +26,7 @@
 #include <gtkmm/dropdown.h>
 #include <gtkmm/editable.h>
 #include <gtkmm/entry.h>
+#include <gtkmm/expander.h>
 #include <gtkmm/grid.h>
 #include <gtkmm/image.h>
 #include <gtkmm/linkbutton.h>
@@ -40,6 +41,7 @@
 #include "config.h"
 #include "widgets/art-cache.h"
 #include "widgets/cover-thumbnail.h"
+#include "widgets/radio-browser-service.h"
 
 namespace gnomos
 {
@@ -350,6 +352,49 @@ GnomosWindow::GnomosWindow()
 
   sound_box->append(*Gtk::make_managed<Gtk::Separator>());
 
+  auto* autoplay_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  auto* autoplay_label = Gtk::make_managed<Gtk::Label>("Autoplay (Line-In)");
+  autoplay_label->set_halign(Gtk::Align::START);
+  autoplay_label->set_hexpand(true);
+  autoplay_row->append(*autoplay_label);
+  autoplay_switch_.set_valign(Gtk::Align::CENTER);
+  autoplay_switch_.set_tooltip_text(
+      "Startet automatisch die Wiedergabe hier, sobald ein Line-In-Signal an diesem Gerät anliegt");
+  autoplay_switch_.signal_state_set().connect(
+      [this](bool state) -> bool {
+        backend_->SetAutoplay(state);
+        return true;
+      },
+      false);
+  autoplay_row->append(autoplay_switch_);
+  sound_box->append(*autoplay_row);
+
+  auto* autoplay_volume_switch_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  auto* autoplay_volume_switch_label = Gtk::make_managed<Gtk::Label>("Eigene Autoplay-Lautstärke");
+  autoplay_volume_switch_label->set_halign(Gtk::Align::START);
+  autoplay_volume_switch_label->set_hexpand(true);
+  autoplay_volume_switch_row->append(*autoplay_volume_switch_label);
+  autoplay_use_volume_switch_.set_valign(Gtk::Align::CENTER);
+  autoplay_use_volume_switch_.signal_state_set().connect(
+      [this](bool state) -> bool {
+        backend_->SetUseAutoplayVolume(state);
+        return true;
+      },
+      false);
+  autoplay_volume_switch_row->append(autoplay_use_volume_switch_);
+  sound_box->append(*autoplay_volume_switch_row);
+
+  add_sound_label("Autoplay-Lautstärke");
+  autoplay_volume_scale_.set_range(0, 100);
+  autoplay_volume_scale_.set_digits(0);
+  autoplay_volume_scale_.signal_value_changed().connect([this] {
+    if (!suppress_sound_signals_)
+      backend_->SetAutoplayVolume(static_cast<uint8_t>(autoplay_volume_scale_.get_value()));
+  });
+  sound_box->append(autoplay_volume_scale_);
+
+  sound_box->append(*Gtk::make_managed<Gtk::Separator>());
+
   // Plain buttons, not a switch: libnoson has no GetLEDState() to show a
   // true current value with (unlike loudness/night mode above, which get
   // corrected via RefreshSoundSettingsAsync() after every use) — a switch
@@ -527,8 +572,18 @@ GnomosWindow::GnomosWindow()
     ShowToast("Zu Favoriten hinzugefügt");
   });
   library_view_.signal_delete_requested().connect(
-      sigc::mem_fun(*this, &GnomosWindow::ShowDeletePlaylistConfirmDialog));
+      sigc::mem_fun(*this, &GnomosWindow::ShowDeleteLibraryEntryConfirmDialog));
   library_view_.signal_add_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowAddRadioStationDialog));
+  library_view_.signal_add_to_playlist_requested().connect(
+      sigc::mem_fun(*this, &GnomosWindow::ShowAddToPlaylistDialog));
+  library_view_.signal_reorder_requested().connect([this](unsigned from, unsigned to) {
+    const std::string& current_object_id = library_stack_.back().first;
+    backend_->ReorderLibraryPlaylistTrack(current_object_id, from, to);
+    // ReorderLibraryPlaylistTrack() is queued first on the same serial
+    // tasks_ worker this browse gets queued on — same reasoning as
+    // ShowDeleteLibraryEntryConfirmDialog()'s own re-browse.
+    backend_->BrowseLibraryAsync(current_object_id);
+  });
   library_view_.signal_play_all_requested().connect([this] { backend_->PlayAllLibraryItemsAsync(); });
   library_view_.signal_queue_all_requested().connect([this] {
     backend_->AddAllLibraryItemsToQueue();
@@ -705,8 +760,22 @@ void GnomosWindow::OnZoneRowSelected(Gtk::ListBoxRow* row)
   if (index < 0 || static_cast<size_t>(index) >= current_zones_.size())
     return;
   const ZoneInfo& zone = current_zones_[static_cast<size_t>(index)];
+  // Confirmed live: OnZonesChanged() tears down and rebuilds every row in
+  // zones_list_box_ from scratch on *every* signal_zones_changed_ (which
+  // fires more than once during startup, as the household's topology
+  // settles across a few real ZGTopologyChanged events) — re-selecting the
+  // still-current room there means calling select_row() on a brand-new
+  // Gtk::ListBoxRow object each time, which fires row-selected again even
+  // though nothing actually changed. backend_->SelectZone() itself has no
+  // dedup (it always opens a fresh player connection and re-fetches
+  // now-playing/volume), so without this check, every one of those
+  // redundant topology events cascaded into a full RefreshQueueAsync() and
+  // QueueView rebuild — the actual cause of the cover art briefly flashing
+  // back to the fallback icon a few times right after launch.
+  bool room_changed = zone.group_id != selected_group_id_;
   selected_group_id_ = zone.group_id;
-  backend_->SelectZone(selected_group_id_);
+  if (room_changed)
+    backend_->SelectZone(selected_group_id_);
   SaveLastRoom(zone.coordinator_uuid);
   UpdateRoomButtonLabel();
 }
@@ -1654,12 +1723,31 @@ void GnomosWindow::OnLibraryChanged()
                                      [](const LibraryEntry& entry) { return entry.display_as_grid; });
 
   // Favoriting only offered below the true root — "Interpreten"/"Alben"/...
-  // are static categories, not real content Sonos has anything to favorite.
-  // Deletion only offered browsing "SQ:" itself, where every entry really
-  // is a destroyable saved playlist.
+  // are static categories, not real content Sonos has anything to
+  // favorite. Deletion only offered browsing "SQ:" or "R:0/0" themselves,
+  // where every entry really is a destroyable saved playlist or custom
+  // radio station. Add-to-playlist offered below the true root too, but
+  // *not* while browsing "R:0/0" — confirmed live: a saved Sonos playlist
+  // is conceptually a list of tracks, and adding a live radio stream to
+  // one via AddURIToSavedQueue() reads as nonsensical there even though
+  // nothing stops the SOAP call itself from accepting it. Reordering only
+  // offered while viewing a *specific* playlist's own tracks (an
+  // "SQ:<id>" level, not "SQ:" itself).
   const std::string& current_object_id = library_stack_.back().first;
-  library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_, library_stack_.size() > 1,
-                            current_object_id == "SQ:", load_artist_images_);
+  bool below_root = library_stack_.size() > 1;
+  bool is_radio_level = current_object_id == "R:0/0";
+  bool viewing_one_playlist =
+      current_object_id.compare(0, 3, "SQ:") == 0 && current_object_id != "SQ:";
+  // Bulk "play all"/"add all to queue" and the per-row "add to queue"/
+  // "play next" buttons are all excluded for "R:0/0", same underlying
+  // reason as add-to-playlist above — see show_play_all_action's/
+  // show_queue_all_action's/show_queue_actions's own comments in
+  // library-view.h (a per-row "play now" button takes the place of the
+  // latter two there instead).
+  library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_, below_root,
+                            current_object_id == "SQ:" || is_radio_level, below_root && !is_radio_level,
+                            viewing_one_playlist, !is_radio_level, !is_radio_level, !is_radio_level,
+                            load_artist_images_);
   library_view_.SetLevelTitle(library_stack_.back().second);
   library_view_.SetBackVisible(library_stack_.size() > 1);
   library_view_.SetAddVisible(current_object_id == "R:0/0");
@@ -2118,6 +2206,8 @@ void GnomosWindow::OnSoundSettingsChanged()
   treble_scale_.set_value(settings.treble);
   sub_gain_scale_.set_sensitive(settings.sub_gain_supported);
   sub_gain_scale_.set_value(settings.sub_gain);
+  autoplay_volume_scale_.set_sensitive(settings.autoplay_supported && settings.autoplay_use_volume);
+  autoplay_volume_scale_.set_value(settings.autoplay_volume);
   suppress_sound_signals_ = false;
 
   // set_active()/set_state() called programmatically don't trigger
@@ -2134,6 +2224,13 @@ void GnomosWindow::OnSoundSettingsChanged()
   output_fixed_switch_.set_sensitive(settings.output_fixed_supported);
   output_fixed_switch_.set_active(settings.output_fixed);
   output_fixed_switch_.set_state(settings.output_fixed);
+
+  autoplay_switch_.set_sensitive(settings.autoplay_supported);
+  autoplay_switch_.set_active(settings.autoplay_enabled);
+  autoplay_switch_.set_state(settings.autoplay_enabled);
+  autoplay_use_volume_switch_.set_sensitive(settings.autoplay_supported);
+  autoplay_use_volume_switch_.set_active(settings.autoplay_use_volume);
+  autoplay_use_volume_switch_.set_state(settings.autoplay_use_volume);
 }
 
 void GnomosWindow::OnBackendError(std::string message)
@@ -2380,6 +2477,20 @@ void GnomosWindow::ShowSettingsDialog()
   deezer_link_button->set_valign(Gtk::Align::CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(deezer_terms_row), GTK_WIDGET(deezer_link_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), deezer_terms_row);
+
+  GtkWidget* refresh_index_row = adw_button_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(refresh_index_row), "Bibliothek neu einlesen");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(refresh_index_row),
+      "Lässt Sonos die eingebundene lokale Freigabe neu einlesen — etwa nach dem Hinzufügen neuer Dateien");
+  adw_button_row_set_start_icon_name(ADW_BUTTON_ROW(refresh_index_row), "view-refresh-symbolic");
+  auto* refresh_index_callback = new std::function<void()>([this] {
+    backend_->RefreshLibraryIndex();
+    ShowToast("Bibliotheks-Scan gestartet");
+  });
+  g_signal_connect_data(refresh_index_row, "activated", G_CALLBACK(OnButtonRowActivated), refresh_index_callback,
+                         DeleteVoidCallback, static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), refresh_index_row);
 
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(library_group));
 
@@ -2686,17 +2797,93 @@ void GnomosWindow::ShowDeleteFavoriteConfirmDialog(unsigned index)
                      [this, index] { backend_->DeleteFavorite(index); });
 }
 
-void GnomosWindow::ShowDeletePlaylistConfirmDialog(unsigned index)
+void GnomosWindow::ShowDeleteLibraryEntryConfirmDialog(unsigned index)
 {
+  bool is_radio = library_stack_.back().first == "R:0/0";
+  std::string default_title = is_radio ? "diesen Radiosender" : "diese Playlist";
   std::string title = index < current_library_entries_.size() && !current_library_entries_[index].title.empty()
                            ? current_library_entries_[index].title
-                           : "diese Playlist";
-  ShowConfirmDialog("Playlist löschen?", "„" + title + "“ wirklich löschen?", "Löschen", [this, index] {
-    backend_->DeleteLibraryPlaylist(index);
-    // DeleteLibraryPlaylist() runs on the same serial tasks_ worker this
-    // browse gets queued on, so it always executes first — see that
-    // method's own comment for why NosonBackend can't just do this itself.
+                           : default_title;
+  std::string heading = is_radio ? "Radiosender löschen?" : "Playlist löschen?";
+  ShowConfirmDialog(heading, "„" + title + "“ wirklich löschen?", "Löschen", [this, index, is_radio] {
+    if (is_radio)
+      backend_->DeleteLibraryRadioStation(index);
+    else
+      backend_->DeleteLibraryPlaylist(index);
+    // Both run on the same serial tasks_ worker this browse gets queued
+    // on, so the delete always executes first — see
+    // DeleteLibraryPlaylist()'s own comment for why NosonBackend can't
+    // just do this itself.
     backend_->BrowseLibraryAsync(library_stack_.back().first);
+  });
+}
+
+void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
+{
+  backend_->FetchSavedPlaylistsAsync();
+  // One-shot: FetchSavedPlaylistsAsync() is async (a real Browse() round
+  // trip), so the dialog can't be built until its result actually arrives
+  // — a std::shared_ptr<sigc::connection> captured by value lets the
+  // lambda disconnect itself from inside its own body once it's run once,
+  // same trick GnomosWindow uses nowhere else yet but sigc++ itself has no
+  // simpler built-in for "connect, fire once, auto-disconnect" outside
+  // Glib::signal_idle()'s own connect_once() (which is main-loop-idle
+  // specific, not applicable to a plain sigc::signal like this one).
+  auto connection = std::make_shared<sigc::connection>();
+  *connection = backend_->signal_saved_playlists_changed().connect([this, library_index, connection] {
+    connection->disconnect();
+    std::vector<LibraryEntry> playlists = backend_->GetSavedPlaylists();
+    if (playlists.empty())
+    {
+      ShowToast("Keine Playlisten vorhanden.");
+      return;
+    }
+
+    auto* dialog = new Gtk::Window();
+    dialog->set_title("Zu Playlist hinzufügen");
+    dialog->set_transient_for(*this);
+    dialog->set_modal(true);
+    dialog->set_default_size(360, -1);
+
+    auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+    content->set_margin_top(18);
+    content->set_margin_bottom(18);
+    content->set_margin_start(18);
+    content->set_margin_end(18);
+
+    auto* label = Gtk::make_managed<Gtk::Label>("Playlist");
+    label->set_halign(Gtk::Align::START);
+    content->append(*label);
+
+    std::vector<Glib::ustring> names;
+    names.reserve(playlists.size());
+    for (const LibraryEntry& entry : playlists)
+      names.push_back(entry.title.empty() ? "Unbenannt" : entry.title);
+    auto model = Gtk::StringList::create(names);
+    auto* dropdown = Gtk::make_managed<Gtk::DropDown>(model);
+    content->append(*dropdown);
+
+    auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+    button_box->set_halign(Gtk::Align::END);
+    button_box->set_margin_top(6);
+    auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+    cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
+    button_box->append(*cancel_button);
+    auto* confirm_button = Gtk::make_managed<Gtk::Button>("Hinzufügen");
+    confirm_button->add_css_class("suggested-action");
+    confirm_button->signal_clicked().connect([this, dialog, dropdown, playlists, library_index] {
+      guint selected = dropdown->get_selected();
+      if (selected == GTK_INVALID_LIST_POSITION || selected >= playlists.size())
+        return;
+      backend_->AddLibraryItemToPlaylist(library_index, playlists[selected].object_id);
+      ShowToast("Zu Playlist hinzugefügt");
+      dialog->close();
+    });
+    button_box->append(*confirm_button);
+    content->append(*button_box);
+
+    dialog->set_child(*content);
+    dialog->present();
   });
 }
 
@@ -2706,7 +2893,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
   dialog->set_title("Radiosender hinzufügen");
   dialog->set_transient_for(*this);
   dialog->set_modal(true);
-  dialog->set_default_size(360, -1);
+  dialog->set_default_size(420, 560);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
@@ -2714,40 +2901,201 @@ void GnomosWindow::ShowAddRadioStationDialog()
   content->set_margin_start(18);
   content->set_margin_end(18);
 
+  auto* disclosure_label = Gtk::make_managed<Gtk::Label>(
+      "Durchsucht das öffentliche Senderverzeichnis von radio-browser.info — "
+      "eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff.");
+  disclosure_label->set_halign(Gtk::Align::START);
+  disclosure_label->set_wrap(true);
+  disclosure_label->add_css_class("caption");
+  disclosure_label->add_css_class("dim-label");
+  content->append(*disclosure_label);
+
+  auto* search_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  auto* search_entry = Gtk::make_managed<Gtk::Entry>();
+  search_entry->set_placeholder_text("Sendername…");
+  search_entry->set_hexpand(true);
+  search_row->append(*search_entry);
+  // Populated once FetchCountries() resolves — "Alle Länder" (no filter) is
+  // always index 0 regardless, so search can fire before the country list
+  // itself has even loaded.
+  auto country_model = Gtk::StringList::create({"Alle Länder"});
+  auto* country_dropdown = Gtk::make_managed<Gtk::DropDown>(country_model);
+  search_row->append(*country_dropdown);
+  auto* search_button = Gtk::make_managed<Gtk::Button>();
+  search_button->set_icon_name("system-search-symbolic");
+  search_row->append(*search_button);
+  content->append(*search_row);
+
+  auto* results_list = Gtk::make_managed<Gtk::ListBox>();
+  results_list->set_selection_mode(Gtk::SelectionMode::NONE);
+  auto* results_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
+  results_scroller->set_child(*results_list);
+  results_scroller->set_vexpand(true);
+  results_scroller->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
+  content->append(*results_scroller);
+
+  // countrycodes[i] index-aligns with country_model — empty string at index
+  // 0 ("Alle Länder") means no country filter; shared_ptr since both the
+  // FetchCountries() callback and every later search need to read it.
+  auto countrycodes = std::make_shared<std::vector<std::string>>();
+  countrycodes->push_back("");
+  // Index-aligned with whatever's currently in results_list, same
+  // real-index convention every other list in this app already uses —
+  // rebuilt fresh on every search, so always valid for the results
+  // currently on screen.
+  auto results = std::make_shared<std::vector<RadioBrowserStation>>();
+
+  // Shared by both ways to add a result — clicking its own per-row "+"
+  // button, and activating the row itself (clicking anywhere else on it).
+  // Confirmed live these need to actually be the same code path: a
+  // Gtk::Button nested inside a Gtk::ListBoxRow consumes its own click
+  // rather than letting it propagate into row-activated, so a "+" button
+  // that only *looks* like it adds something (relying on the row beneath
+  // it to fire instead) silently does nothing when clicked directly.
+  auto add_station = [this](const RadioBrowserStation& station) {
+    backend_->AddRadioStation(station.name, station.url);
+    // Same reasoning as ShowDeleteLibraryEntryConfirmDialog()'s own
+    // re-browse — AddRadioStation() is queued first on the same serial
+    // worker.
+    backend_->BrowseLibraryAsync(library_stack_.back().first);
+    ShowToast("„" + station.name + "“ hinzugefügt");
+  };
+
+  auto run_search = [this, search_entry, country_dropdown, countrycodes, results, results_list, add_station] {
+    while (Gtk::Widget* child = results_list->get_first_child())
+      results_list->remove(*child);
+    std::string countrycode;
+    guint selected = country_dropdown->get_selected();
+    if (selected != GTK_INVALID_LIST_POSITION && selected < countrycodes->size())
+      countrycode = (*countrycodes)[selected];
+    RadioBrowserService::Instance().SearchStations(
+        search_entry->get_text(), countrycode,
+        [results, results_list, add_station](std::vector<RadioBrowserStation> stations) {
+          *results = std::move(stations);
+          if (results->empty())
+          {
+            auto* placeholder = Gtk::make_managed<Gtk::Label>("Keine Sender gefunden.");
+            placeholder->add_css_class("dim-label");
+            placeholder->set_margin_top(12);
+            placeholder->set_margin_bottom(12);
+            results_list->append(*placeholder);
+            return;
+          }
+          for (const RadioBrowserStation& station : *results)
+          {
+            auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+            row_box->set_margin_top(6);
+            row_box->set_margin_bottom(6);
+            row_box->set_margin_start(6);
+            row_box->set_margin_end(6);
+
+            auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
+            labels->set_hexpand(true);
+            auto* title = Gtk::make_managed<Gtk::Label>(station.name);
+            title->set_halign(Gtk::Align::START);
+            title->set_ellipsize(Pango::EllipsizeMode::END);
+            labels->append(*title);
+            std::string subtitle = station.countrycode;
+            if (!station.codec.empty())
+              subtitle += (subtitle.empty() ? "" : " · ") + station.codec;
+            if (station.bitrate > 0)
+              subtitle += " · " + std::to_string(station.bitrate) + " kbps";
+            if (!subtitle.empty())
+            {
+              auto* subtitle_label = Gtk::make_managed<Gtk::Label>(subtitle);
+              subtitle_label->set_halign(Gtk::Align::START);
+              subtitle_label->set_ellipsize(Pango::EllipsizeMode::END);
+              subtitle_label->add_css_class("dim-label");
+              subtitle_label->add_css_class("caption");
+              labels->append(*subtitle_label);
+            }
+            row_box->append(*labels);
+
+            auto* add_button = Gtk::make_managed<Gtk::Button>();
+            add_button->set_icon_name("list-add-symbolic");
+            add_button->add_css_class("flat");
+            add_button->set_valign(Gtk::Align::CENTER);
+            add_button->set_tooltip_text("Hinzufügen");
+            add_button->signal_clicked().connect([add_station, station] { add_station(station); });
+            row_box->append(*add_button);
+
+            results_list->append(*row_box);
+          }
+        });
+  };
+  search_button->signal_clicked().connect(run_search);
+  search_entry->signal_activate().connect(run_search);
+
+  // Row-add wiring needs `results` (index-aligned with whatever's on
+  // screen right now) resolved at *click* time, not capture time — done via
+  // results_list's own row-activated-equivalent below instead of per-row
+  // signal_clicked() connections, since Gtk::ListBox already gives a
+  // reliable index via get_index() the same way LibraryView's own rows do.
+  results_list->signal_row_activated().connect([results, add_station](Gtk::ListBoxRow* row) {
+    if (!row)
+      return;
+    int index = row->get_index();
+    if (index < 0 || static_cast<size_t>(index) >= results->size())
+      return;
+    add_station((*results)[static_cast<size_t>(index)]);
+  });
+  // Rows aren't buttons themselves, but ListBox rows are activatable by
+  // default on click — the per-row add_button above is purely a visual
+  // affordance (same "the whole row already does this" pattern the rest of
+  // the app uses for is_container rows' chevron).
+  results_list->set_activate_on_single_click(true);
+
+  RadioBrowserService::Instance().FetchCountries(
+      [country_model, countrycodes](std::vector<RadioBrowserCountry> countries) {
+        std::sort(countries.begin(), countries.end(),
+                  [](const RadioBrowserCountry& a, const RadioBrowserCountry& b) { return a.name < b.name; });
+        for (const RadioBrowserCountry& country : countries)
+        {
+          if (country.countrycode.empty())
+            continue;  // no usable filter value for this entry — skip it
+          country_model->append(country.name + " (" + std::to_string(country.station_count) + ")");
+          countrycodes->push_back(country.countrycode);
+        }
+      });
+
+  auto* manual_expander = Gtk::make_managed<Gtk::Expander>("Manuell eingeben (Name und Stream-URL)");
+  auto* manual_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 6);
+  manual_box->set_margin_top(6);
+
   auto* title_label = Gtk::make_managed<Gtk::Label>("Name");
   title_label->set_halign(Gtk::Align::START);
-  content->append(*title_label);
+  manual_box->append(*title_label);
   auto* title_entry = Gtk::make_managed<Gtk::Entry>();
-  content->append(*title_entry);
+  manual_box->append(*title_entry);
 
   auto* url_label = Gtk::make_managed<Gtk::Label>("Stream-URL");
   url_label->set_halign(Gtk::Align::START);
-  content->append(*url_label);
+  manual_box->append(*url_label);
   auto* url_entry = Gtk::make_managed<Gtk::Entry>();
   url_entry->set_placeholder_text("http://...");
-  content->append(*url_entry);
+  manual_box->append(*url_entry);
 
-  auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  button_box->set_halign(Gtk::Align::END);
-  button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
-  cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  button_box->append(*cancel_button);
-  auto* confirm_button = Gtk::make_managed<Gtk::Button>("Hinzufügen");
-  confirm_button->add_css_class("suggested-action");
-  confirm_button->signal_clicked().connect([this, dialog, title_entry, url_entry] {
+  auto* manual_add_button = Gtk::make_managed<Gtk::Button>("Hinzufügen");
+  manual_add_button->set_halign(Gtk::Align::END);
+  manual_add_button->signal_clicked().connect([this, dialog, title_entry, url_entry] {
     std::string title = title_entry->get_text();
     std::string url = url_entry->get_text();
     if (title.empty() || url.empty())
       return;
     backend_->AddRadioStation(title, url);
-    // Same reasoning as ShowDeletePlaylistConfirmDialog()'s own re-browse —
-    // AddRadioStation() is queued first on the same serial worker.
     backend_->BrowseLibraryAsync(library_stack_.back().first);
     dialog->close();
   });
-  button_box->append(*confirm_button);
-  content->append(*button_box);
+  manual_box->append(*manual_add_button);
+
+  manual_expander->set_child(*manual_box);
+  content->append(*manual_expander);
+
+  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
+  close_button->set_halign(Gtk::Align::END);
+  close_button->set_margin_top(6);
+  close_button->signal_clicked().connect([dialog] { dialog->close(); });
+  content->append(*close_button);
 
   dialog->set_child(*content);
   dialog->present();

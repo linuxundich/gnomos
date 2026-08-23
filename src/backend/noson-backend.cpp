@@ -132,6 +132,7 @@ NosonBackend::NosonBackend()
   favorites_dispatcher_.connect([this] { signal_favorites_changed_.emit(); });
   alarms_dispatcher_.connect([this] { signal_alarms_changed_.emit(); });
   library_dispatcher_.connect([this] { signal_library_changed_.emit(); });
+  saved_playlists_dispatcher_.connect([this] { signal_saved_playlists_changed_.emit(); });
   sleep_timer_dispatcher_.connect([this] { signal_sleep_timer_changed_.emit(); });
   sound_settings_dispatcher_.connect([this] { signal_sound_settings_changed_.emit(); });
   service_link_ready_dispatcher_.connect([this] {
@@ -552,6 +553,7 @@ void NosonBackend::SelectZone(const std::string& coordinator_uuid)
       std::lock_guard<std::mutex> lock(state_mutex_);
       player_ = player;
       current_zone_ = zone;
+      last_zone_select_at_ = std::chrono::steady_clock::now();
       RefreshNowPlayingLocked();
       RefreshVolumeLocked();
     }
@@ -1013,6 +1015,23 @@ void NosonBackend::RefreshSoundSettingsAsync()
     if (settings.sub_gain_supported)
       settings.sub_gain = sub_gain;
 
+    // Autoplay is a property of *this* device (Player::GetAutoplay() takes
+    // no uuid — see SoundSettings::autoplay_* comment), unlike bass/treble/
+    // loudness/nightmode/output_fixed/sub_gain above, which all apply to
+    // uuid (the selected zone's coordinator) — same reasoning
+    // PlayLineIn()/PlayDigitalIn() already use `player` directly rather
+    // than a coordinator uuid.
+    std::string autoplay_roomuuid;
+    settings.autoplay_supported = player->GetAutoplay(autoplay_roomuuid);
+    if (settings.autoplay_supported)
+      settings.autoplay_enabled = !autoplay_roomuuid.empty();
+    uint8_t autoplay_use = 0;
+    if (player->GetUseAutoplayVolume(&autoplay_use))
+      settings.autoplay_use_volume = autoplay_use != 0;
+    uint8_t autoplay_vol = 0;
+    if (player->GetAutoplayVolume(&autoplay_vol))
+      settings.autoplay_volume = autoplay_vol;
+
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       sound_settings_ = settings;
@@ -1127,6 +1146,48 @@ void NosonBackend::SetSubGain(int16_t value)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       pending_error_ = "Sub-Pegel konnte nicht geändert werden.";
+      error_dispatcher_.emit();
+    }
+    RefreshSoundSettingsAsync();
+  });
+}
+
+void NosonBackend::SetAutoplay(bool enabled)
+{
+  tasks_.Push([this, enabled] {
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+    if (!player->SetAutoplay(enabled))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Automatische Wiedergabe konnte nicht geändert werden.";
+      error_dispatcher_.emit();
+    }
+    RefreshSoundSettingsAsync();
+  });
+}
+
+void NosonBackend::SetAutoplayVolume(uint8_t value)
+{
+  tasks_.Push([this, value] {
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+    player->SetAutoplayVolume(value);
+  });
+}
+
+void NosonBackend::SetUseAutoplayVolume(bool enabled)
+{
+  tasks_.Push([this, enabled] {
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+    if (!player->SetUseAutoplayVolume(enabled ? 1 : 0))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Einstellung konnte nicht geändert werden.";
       error_dispatcher_.emit();
     }
     RefreshSoundSettingsAsync();
@@ -2436,14 +2497,166 @@ void NosonBackend::DeleteLibraryPlaylist(unsigned index)
       pending_error_ = "Playlist konnte nicht gelöscht werden.";
       error_dispatcher_.emit();
     }
-    // Refresh either way — a stale library_entries_ that still lists an
-    // already-deleted playlist is worse than one more redundant fetch on
-    // the rare failure path. GnomosWindow follows up with its own
+    // Unconditional, success or not — same reasoning as the invalidation
+    // comment on InvalidateLibraryCache() itself: the real
+    // ContentDirectoryChanged event this change also triggers arrives
+    // asynchronously and reliably loses the race against GnomosWindow's
+    // own immediate BrowseLibraryAsync(library_stack_.back().first) right
+    // after this call (queued on the same tasks_ serial worker, so it
+    // always runs next) — without this, that re-browse hits the *old*
+    // cached "SQ:" listing (up to kLibraryCacheTtl old) instead of
+    // fetching fresh, and the deleted entry keeps showing. Confirmed live:
+    // this exact race is what made a freshly-added radio station never
+    // appear (see DeleteLibraryRadioStation()/AddRadioStation() below).
+    InvalidateLibraryCache();
+    // GnomosWindow follows up with its own
     // BrowseLibraryAsync(library_stack_.back().first) call right after
     // this one (queued on the same tasks_ serial worker, so this delete
     // always runs first) — see its own comment for why the backend can't
     // do that itself (it has no notion of "the level currently browsed",
     // only GnomosWindow's library_stack_ does).
+  });
+}
+
+void NosonBackend::DeleteLibraryRadioStation(unsigned index)
+{
+  tasks_.Push([this, index] {
+    std::string object_id;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (index >= library_entries_.size())
+        return;
+      object_id = library_entries_[index].object_id;
+    }
+    if (!system_->DestroyRadio(object_id))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Radiosender konnte nicht gelöscht werden.";
+      error_dispatcher_.emit();
+    }
+    // Same "refresh either way" reasoning as DeleteLibraryPlaylist() — see
+    // its own comment.
+    InvalidateLibraryCache();
+  });
+}
+
+void NosonBackend::FetchSavedPlaylistsAsync()
+{
+  tasks_.Push([this] {
+    NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    NSROOT::ContentBrowser browser(libraryDirectory, "SQ:", 200);
+    ExhaustBrowser(browser);
+
+    std::vector<LibraryEntry> entries;
+    entries.reserve(browser.table().size());
+    for (const auto& item : browser.table())
+    {
+      LibraryEntry entry;
+      entry.object_id = item->GetObjectID();
+      entry.title = item->GetValue("dc:title");
+      entry.is_container = item->IsContainer();
+      entries.push_back(std::move(entry));
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      saved_playlists_ = std::move(entries);
+    }
+    saved_playlists_dispatcher_.emit();
+  });
+}
+
+std::vector<LibraryEntry> NosonBackend::GetSavedPlaylists() const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  return saved_playlists_;
+}
+
+void NosonBackend::AddLibraryItemToPlaylist(unsigned library_index, const std::string& playlist_object_id)
+{
+  tasks_.Push([this, library_index, playlist_object_id] {
+    NSROOT::DigitalItemPtr item;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (library_index >= library_raw_.size())
+        return;
+      item = library_raw_[library_index];
+    }
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+
+    // AddURIToSavedQueue() needs the target playlist's own current
+    // containerUpdateID — a single-item Browse() just to read it back
+    // fresh, rather than trusting a value from whenever the playlist was
+    // last browsed (which might not even be this session, or might be
+    // stale if it changed since). Same reasoning
+    // ReorderLibraryPlaylistTrack() below applies for its own call.
+    NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    NSROOT::ContentBrowser browser(libraryDirectory, playlist_object_id, 1);
+    bool queueable = NSROOT::System::CanQueueItem(item);
+    bool ok = queueable && browser.Browse(0, 1) &&
+              player->AddURIToSavedQueue(playlist_object_id, item, browser.GetUpdateID()) > 0;
+    if (!ok)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = queueable ? "Titel konnte nicht zur Playlist hinzugefügt werden."
+                                  : "Dieser Titel kann nicht zu einer Playlist hinzugefügt werden.";
+      error_dispatcher_.emit();
+    }
+    else
+    {
+      // See DeleteLibraryPlaylist()'s own comment for why this can't wait
+      // for the real ContentDirectoryChanged event — a later visit to
+      // playlist_object_id within the cache TTL would otherwise miss the
+      // track just added.
+      InvalidateLibraryCache();
+    }
+  });
+}
+
+void NosonBackend::ReorderLibraryPlaylistTrack(const std::string& playlist_object_id, unsigned from, unsigned to)
+{
+  tasks_.Push([this, playlist_object_id, from, to] {
+    auto player = SnapshotPlayer();
+    if (!player)
+      return;
+
+    NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    NSROOT::ContentBrowser browser(libraryDirectory, playlist_object_id, 1);
+    // Same 1-based UPnP position convention as ReorderTracksInQueue(), and
+    // the same "moving forward needs the target shifted by one" reasoning
+    // — see ReorderQueueItem()'s own comment.
+    unsigned insert_before = to;
+    if (from < to)
+      ++insert_before;
+    bool ok = browser.Browse(0, 1) &&
+              player->ReorderTracksInSavedQueue(playlist_object_id, std::to_string(from + 1),
+                                                 std::to_string(insert_before + 1), browser.GetUpdateID());
+    if (!ok)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Playlist konnte nicht umsortiert werden.";
+      error_dispatcher_.emit();
+    }
+    // Same reasoning as DeleteLibraryPlaylist()'s own comment — without
+    // this, GnomosWindow's own immediate follow-up
+    // BrowseLibraryAsync(playlist_object_id) (queued right after this call
+    // on the same serial tasks_ worker) would hit the pre-reorder cached
+    // listing instead of fetching the new order.
+    InvalidateLibraryCache();
+  });
+}
+
+void NosonBackend::RefreshLibraryIndex()
+{
+  tasks_.Push([this] {
+    if (!system_->RefreshShareIndex())
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Bibliotheks-Scan konnte nicht gestartet werden.";
+      error_dispatcher_.emit();
+    }
   });
 }
 
@@ -2455,6 +2668,15 @@ void NosonBackend::AddRadioStation(const std::string& title, const std::string& 
       std::lock_guard<std::mutex> lock(state_mutex_);
       pending_error_ = "Radiosender konnte nicht hinzugefügt werden.";
       error_dispatcher_.emit();
+    }
+    else
+    {
+      // See DeleteLibraryPlaylist()'s own comment — reported live: without
+      // this, a freshly-added station never showed up, since
+      // GnomosWindow's own immediate follow-up BrowseLibraryAsync("R:0/0")
+      // (queued right after this call on the same serial tasks_ worker)
+      // hit the cached pre-add "R:0/0" listing instead of fetching fresh.
+      InvalidateLibraryCache();
     }
   });
 }
@@ -3064,7 +3286,13 @@ void NosonBackend::HandlePlayerEvent()
       RefreshVolumeLocked();
       volume_dirty = true;
     }
-    content_dirty = mask & NSROOT::SVCEvent_ContentDirectoryChanged;
+    // See last_zone_select_at_'s own comment — swallows the redundant
+    // "initial state" ContentDirectoryChanged echo GENA always delivers
+    // right after (re)subscribing to a freshly selected player, without
+    // suppressing a genuine mid-session queue change.
+    constexpr auto kZoneSelectGracePeriod = std::chrono::seconds(2);
+    content_dirty = (mask & NSROOT::SVCEvent_ContentDirectoryChanged) &&
+                     (std::chrono::steady_clock::now() - last_zone_select_at_ > kZoneSelectGracePeriod);
   }
 
   if (now_playing_dirty)

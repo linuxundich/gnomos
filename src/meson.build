@@ -14,6 +14,7 @@ gnomos_sources = files(
   'widgets/library-view.cpp',
   'widgets/player-bar.cpp',
   'widgets/queue-view.cpp',
+  'widgets/radio-browser-service.cpp',
 )
 
 executable(

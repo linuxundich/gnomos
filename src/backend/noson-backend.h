@@ -150,6 +150,13 @@ public:
   void SetNightmode(bool enabled);
   void SetOutputFixed(bool enabled);
   void SetSubGain(int16_t value);
+  // Line-in autoplay — see SoundSettings::autoplay_* for what each of
+  // these actually means; SetAutoplay(true) targets this same device (the
+  // only option Player::SetAutoplay() itself exposes), SetAutoplay(false)
+  // clears it.
+  void SetAutoplay(bool enabled);
+  void SetAutoplayVolume(uint8_t value);
+  void SetUseAutoplayVolume(bool enabled);
   // Write-only, like PlayLineIn()/PlayDigitalIn() — libnoson has no
   // GetLEDState() to show a current value with.
   void SetLedState(bool enabled);
@@ -216,6 +223,36 @@ public:
   // "Playlisten" root), where every entry's object_id really is a
   // destroyable saved-queue id, unlike any other library level.
   void DeleteLibraryPlaylist(unsigned index);
+  // System::DestroyRadio() — same idea as DeleteLibraryPlaylist(), but
+  // against library_entries_[index]'s object_id while browsing "R:0/0"
+  // ("Radiosender") instead of "SQ:". GnomosWindow gates the delete button
+  // on being at either of those two specific levels.
+  void DeleteLibraryRadioStation(unsigned index);
+  // Saved playlists, fetched independently of whatever level is currently
+  // browsed (library_entries_/library_raw_) — a picker dialog for "add
+  // this track to a playlist" needs the *list of playlists* regardless of
+  // where in the library the user actually is when they click that
+  // button, so this can't just reuse BrowseLibraryAsync("SQ:") without
+  // clobbering whatever the user is currently looking at.
+  void FetchSavedPlaylistsAsync();
+  std::vector<LibraryEntry> GetSavedPlaylists() const;
+  sigc::signal<void()>& signal_saved_playlists_changed() { return signal_saved_playlists_changed_; }
+  // library_raw_[library_index] into playlist_object_id (an SQ:<id> from
+  // GetSavedPlaylists()), via Player::AddURIToSavedQueue(). Fetches a
+  // fresh containerUpdateID for the target playlist itself right before
+  // the call — see its own comment for why that can't be cached from
+  // whenever the playlist was last browsed.
+  void AddLibraryItemToPlaylist(unsigned library_index, const std::string& playlist_object_id);
+  // 0-based positions within playlist_object_id's own current track
+  // listing (same convention as ReorderQueueItem()'s from/to) — only
+  // meaningful while GnomosWindow is showing that exact playlist's
+  // contents, not the "SQ:" listing of playlists itself.
+  void ReorderLibraryPlaylistTrack(const std::string& playlist_object_id, unsigned from, unsigned to);
+  // System::RefreshShareIndex() — asks Sonos to rescan whatever indexed
+  // local music share(s) it's configured with (e.g. after adding files to
+  // a NAS share). Fire-and-forget: libnoson has no way to observe when the
+  // scan itself finishes, only that the request was accepted.
+  void RefreshLibraryIndex();
   // System::CreateRadio() — adds a custom internet radio stream, which
   // then shows up browsing "R:0/0" ("Radiosender") alongside the built-in
   // directory, same namespace either way (confirmed in CreateRadio()'s own
@@ -414,6 +451,7 @@ private:
   Glib::Dispatcher favorites_dispatcher_;
   Glib::Dispatcher alarms_dispatcher_;
   Glib::Dispatcher library_dispatcher_;
+  Glib::Dispatcher saved_playlists_dispatcher_;
   Glib::Dispatcher sleep_timer_dispatcher_;
   Glib::Dispatcher sound_settings_dispatcher_;
   Glib::Dispatcher service_link_ready_dispatcher_;
@@ -428,6 +466,7 @@ private:
   sigc::signal<void()> signal_favorites_changed_;
   sigc::signal<void()> signal_alarms_changed_;
   sigc::signal<void()> signal_library_changed_;
+  sigc::signal<void()> signal_saved_playlists_changed_;
   sigc::signal<void(std::string, std::string)> signal_service_link_ready_;
   sigc::signal<void()> signal_sleep_timer_changed_;
   sigc::signal<void()> signal_sound_settings_changed_;
@@ -470,11 +509,30 @@ private:
   std::map<std::string, uint8_t> room_volumes_;
   std::vector<QueueItem> queue_;
   unsigned queue_update_id_ = 0;  // needed by Player::RemoveTrackFromQueue()
+  // Set at the end of SelectZone()'s own task, right when player_ is
+  // (re)assigned. Subscribing to a freshly selected player's own eventing
+  // channel reliably delivers an immediate "initial state" event for each
+  // evented service (standard UPnP GENA behavior — the first event after
+  // SUBSCRIBE echoes the current state, not an actual change) — without
+  // this, HandlePlayerEvent()'s own SVCEvent_ContentDirectoryChanged
+  // branch treated that echo as a genuine queue change and fired a second,
+  // fully redundant RefreshQueueAsync() a few dozen ms after the one
+  // SelectZone() → OnPlayerReady() already triggered, each one rebuilding
+  // every queue row's CoverThumbnail from scratch — confirmed live as (the
+  // last remaining bit of) a brief fallback-icon flicker right after
+  // launch. See HandlePlayerEvent()'s own use of this for the grace
+  // window — long enough to swallow that one echo, short enough that any
+  // real mid-session queue change (from this app or another controller)
+  // still refreshes normally.
+  std::chrono::steady_clock::time_point last_zone_select_at_;
   std::vector<FavoriteItem> favorites_;
   std::vector<NSROOT::DigitalItemPtr> favorites_raw_;  // index-aligned with favorites_
   std::vector<AlarmInfo> alarms_;
   std::vector<LibraryEntry> library_entries_;
   std::vector<NSROOT::DigitalItemPtr> library_raw_;  // index-aligned with library_entries_
+  // See FetchSavedPlaylistsAsync()'s own comment for why this is kept
+  // separate from library_entries_ rather than reusing it.
+  std::vector<LibraryEntry> saved_playlists_;
   std::string pending_link_url_;
   std::string pending_link_code_;
   // Cached (not read live from active_smapi_, which is worker-thread-only —

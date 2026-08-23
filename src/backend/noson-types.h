@@ -158,6 +158,17 @@ struct SoundSettings
   // the request).
   bool sub_gain_supported = false;
   int16_t sub_gain = 0;
+  // Line-in autoplay: when a line-in signal is detected on this device,
+  // should it start playing (into itself — Player::SetAutoplay()'s own
+  // simplified bool wrapper around DeviceProperties::SetAutoplayRoomUUID()
+  // only ever sets it to this device's own uuid or clears it, no arbitrary
+  // target room). autoplay_supported is inferred the same way
+  // nightmode_supported/sub_gain_supported are, from whether GetAutoplay()
+  // itself succeeds — not every model has a line-in at all.
+  bool autoplay_supported = false;
+  bool autoplay_enabled = false;
+  bool autoplay_use_volume = false;
+  uint8_t autoplay_volume = 0;  // 0..100, meaningful only when autoplay_use_volume
 };
 
 struct QueueItem

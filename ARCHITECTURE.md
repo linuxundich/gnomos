@@ -875,6 +875,296 @@ measurement from then on as a throwaway, disposable process — kill it
 immediately after use and relaunch a cleanly, normally-started instance
 for the user to actually look at.
 
+### Five more additions: delete a radio station, playlist add/reorder, line-in autoplay, rescan library
+
+Requested as an open-ended "5 new features" — surveyed libnoson (the
+`noson/` submodule) for already-linked capability the app didn't expose
+yet, rather than guessing at a feature list. Picked five backed by real,
+existing methods, no new protocol work needed:
+
+- **Delete a custom radio station** (`System::DestroyRadio()`) —
+  `NosonBackend::DeleteLibraryRadioStation()`, a near-exact mirror of the
+  already-existing `DeleteLibraryPlaylist()`. `LibraryView`'s
+  `show_delete_action` (previously gated on browsing `"SQ:"` only) now
+  also gates on `"R:0/0"`; `GnomosWindow::ShowDeleteLibraryEntryConfirmDialog()`
+  (renamed from `ShowDeletePlaylistConfirmDialog()`) branches on
+  `library_stack_.back().first` to call the right backend method and show
+  the right confirmation text either way.
+- **Add a library track to an existing saved playlist**
+  (`Player::AddURIToSavedQueue()`) — a new per-row "add to playlist"
+  button (`bookmark-new-symbolic`) on leaf tracks, gated the same way
+  `show_favorite_action` already is (below the true root). Needs the
+  target playlist's own current `containerUpdateID`, fetched fresh with a
+  single-item `Browse()` right before the call
+  (`NosonBackend::AddLibraryItemToPlaylist()`) rather than trusted from
+  whenever it was last browsed. The picker itself
+  (`GnomosWindow::ShowAddToPlaylistDialog()`) needs the full list of
+  saved playlists regardless of where in the library the user currently
+  is, which is why `NosonBackend::FetchSavedPlaylistsAsync()`/
+  `GetSavedPlaylists()` keep their own `saved_playlists_` storage instead
+  of reusing `library_entries_`/`library_raw_` (which track whatever
+  level is currently browsed) — same reasoning `favorites_`/`queue_` are
+  already kept separate from the library browse state.
+- **Reorder tracks within a saved playlist**
+  (`Player::ReorderTracksInSavedQueue()`) — per-row "move up"/"move down"
+  buttons (`go-up-symbolic`/`go-down-symbolic`), shown only while viewing
+  a *specific* playlist's own tracks (`"SQ:<id>"`, not `"SQ:"` itself,
+  which lists playlists) and only while unfiltered — a filtered subset's
+  on-screen neighbor isn't necessarily the real adjacent track, which
+  would make "up/down" silently do something other than what it visually
+  shows. Same 1-based UPnP position convention and "moving forward needs
+  the target index shifted by one" logic as the existing queue reorder
+  (`ReorderQueueItem()`), and the same fresh-`containerUpdateID`-per-call
+  reasoning as the playlist-add feature above.
+- **Line-in autoplay** (`Player::SetAutoplay()`/`GetAutoplay()`/
+  `Set|GetAutoplayVolume()`/`Set|GetUseAutoplayVolume()`) — whether this
+  device should start playing (into itself; `Player::SetAutoplay()`'s own
+  simplified bool wrapper offers no other target) when a line-in signal
+  is detected, at what volume. Unlike bass/treble/loudness/nightmode/
+  output_fixed/sub_gain (all keyed to the *selected zone's coordinator*
+  uuid), autoplay has no uuid parameter at all — it's inherently a
+  property of *this* specific device, same reasoning `PlayLineIn()`/
+  `PlayDigitalIn()` already use `SnapshotPlayer()` directly rather than a
+  coordinator uuid. Folded into the existing `SoundSettings` struct/
+  `RefreshSoundSettingsAsync()` round trip rather than a new dispatcher,
+  and a new "Autoplay (Line-In)" section in the sound popover, mirroring
+  the existing switch/scale sensitivity-toggle pattern (`sub_gain_scale_`'s
+  own). Confirmed live against the real household: `autoplay_supported`
+  came back `true` for the currently selected room (it does have a
+  line-in), and toggling `SetAutoplay()`/`SetUseAutoplayVolume()` via
+  `gdb` and reading the settings back confirmed both round-trip
+  correctly — restored to their original values (both off) immediately
+  after.
+- **Rescan the library share** (`System::RefreshShareIndex()`) — a
+  "Bibliothek neu einlesen" button row in Settings → Bibliothek, for
+  after adding files to an indexed local NAS share. Fire-and-forget:
+  libnoson has no way to observe when the scan itself finishes, only
+  that Sonos accepted the request.
+
+*Aside — verifying without touching real data*: `gdb`'s C++ expression
+evaluator in this environment cannot construct a `std::string` from a
+literal at all (constructor call, C-style cast, and `new`-expression all
+failed with a syntax/cast error) — every earlier live test this session
+that needed a *new* string value worked around it by referencing an
+already-live `std::string` lvalue instead (an existing entry's own
+`object_id`/`title`). That workaround doesn't help for genuinely new
+content (a disposable test radio station's title/URL, a track to insert
+into a playlist), and deliberately running the add/reorder/delete calls
+against the household's *real* saved playlists or radio stations to
+compensate would mean editing or deleting the user's actual data without
+asking — so those three were verified by code review (each mirrors an
+already-proven method almost line for line) rather than a live call,
+while everything reachable without a fresh string literal — `FetchSavedPlaylistsAsync()`
+(returned all 15 real saved playlists correctly), `RefreshLibraryIndex()`,
+and the full autoplay read/write round trip — was confirmed directly
+against the real household instead.
+
+### Radio-Browser.info search replaces typing in a name and URL by hand
+
+Two follow-ups, reported live right after the batch above shipped.
+
+First: the new per-row "add to playlist" button was showing up on radio
+station rows too (browsing "R:0/0"), which doesn't make sense — a saved
+Sonos playlist is conceptually a list of tracks, and `AddURIToSavedQueue()`
+happily accepting a live stream doesn't make that a sensible thing to
+offer. Fixed by excluding "R:0/0" from `show_add_to_playlist_action`'s
+gating in `GnomosWindow::OnLibraryChanged()`, alongside the existing
+`below_root` check.
+
+Second, a genuine feature request: replace typing in a station's name and
+stream URL by hand — the only way to add a custom radio station — with
+searching a real directory instead. `RadioBrowserService`
+(`src/widgets/radio-browser-service.h/.cpp`) is a thin client for the
+public [Radio-Browser API](https://www.radio-browser.info), structured
+like `ArtistImageFetcher`'s own Deezer client (same "genuine internet
+request, disclosed inline rather than behind a separate opt-in setting"
+reasoning — the difference being this one only ever fires from an
+explicit user action, never automatically in the background, so it
+doesn't need a persistent Settings toggle the way artist photos do; the
+"Radiosender hinzufügen" dialog just names the endpoint directly).
+`GnomosWindow::ShowAddRadioStationDialog()` was rewritten around a
+country dropdown + search field + results list (each result's `url` is
+`url_resolved` — the directory's own already-redirect-chased stream URL
+— falling back to the raw `url` field for the rare entry missing it); the
+original manual name/URL entry survives as a collapsed `Gtk::Expander`
+fallback for anything the directory doesn't carry.
+
+Hits `https://all.api.radio-browser.info` directly rather than resolving
+a specific mirror via the DNS SRV-based server discovery the project's
+own docs recommend for heavier clients — reasonable here given the
+usage pattern (occasional, one-off, stateless searches, no pagination
+continuity to keep consistent across requests), and considerably simpler
+than implementing SRV lookups just for that.
+
+Verified against the real API with a standalone test harness (same
+technique `ArtCache`'s decode pipeline was verified with earlier —
+compiled directly against `radio-browser-service.cpp` plus a bare
+`GMainLoop`, sidestepping `gdb`'s inability to construct a `std::string`
+argument *or* a callback for a live in-process test): `FetchCountries()`
+returned all 242 real countries with correct names/codes/counts (Germany
+→ "DE", 6184 stations), and `SearchStations("swr3", "DE")` returned 7
+real, correctly-parsed results with playable URLs, codecs and bitrates —
+confirming the JSON field names assumed while writing the parser
+(`iso_3166_1`, `url_resolved`, `countrycode`, `bitrate`, ...) actually
+match the live API rather than just my best recollection of its docs.
+
+### Fixed: adding a radio station (or editing a playlist) didn't show up
+
+Reported live: neither the new Radio-Browser search nor the original
+manual name/URL entry actually added a station — the three pre-existing
+ones kept showing, nothing new appeared.
+
+Root cause: `library_cache_` (a TTL-based cache of already-browsed
+levels, so revisiting one doesn't hit the network again) is checked
+*before* a fresh `ContentDirectory::Browse()` in `BrowseLibraryAsync()`'s
+local branch. It's invalidated wholesale on a real
+`SVCEvent_ContentDirectoryChanged` — which Sonos does send after
+`CreateRadio()`/`DestroySavedQueue()`/etc. actually change something —
+but that event arrives asynchronously, over a separate UPnP eventing
+channel, with no guaranteed ordering against GnomosWindow's own
+follow-up `BrowseLibraryAsync(library_stack_.back().first)` call (queued
+immediately after the mutating call, on the same serial `tasks_`
+worker). In practice the event reliably loses that race: the follow-up
+browse runs first, hits the *still-cached, pre-change* level, and the
+UI ends up showing exactly what it showed before — a real station
+successfully added server-side, silently invisible client-side for up
+to `kLibraryCacheTtl` (5 minutes).
+
+Fixed by having every backend method that mutates something
+`library_cache_` might have a stale copy of call the already-existing
+`InvalidateLibraryCache()` itself, synchronously, right after its own
+SOAP call succeeds — `AddRadioStation()`, `DeleteLibraryRadioStation()`,
+`DeleteLibraryPlaylist()`, `AddLibraryItemToPlaylist()`,
+`ReorderLibraryPlaylistTrack()`. Since this now happens on the same
+serial worker *before* the queued follow-up browse (rather than waiting
+on an independent, unordered event), there's no race left to lose —
+deterministic instead of "usually loses, occasionally wins if the event
+happens to arrive first." `DeleteLibraryPlaylist()`/`DeleteLibraryRadioStation()`
+had this same latent bug from the moment they shipped (a deleted entry
+staying visible), just not reported until the add-a-station case made it
+obvious.
+
+### Fixed: the Radio-Browser result row's own "+" button did nothing
+
+Reported live: a result could be added by clicking the row itself, but
+not by clicking its per-row "+" button specifically — that button was
+purely decorative, created but never wired to `signal_clicked()` at all.
+Root cause is a real GTK behavior, not just a missed connection: a
+`Gtk::Button` nested inside a `Gtk::ListBoxRow` consumes its own click
+rather than letting it propagate up into the row's `row-activated`, so
+even a correctly-styled "+" button silently does nothing unless it has
+its own handler. Fixed by extracting the add logic (already used by
+`signal_row_activated()`) into a shared `add_station` lambda, wired to
+*both* the row activation and the button's own `signal_clicked()`.
+
+### Removed: "add all to queue" for the Radiosender level
+
+Reported live: the bulk "+" button ("Alle zur Warteschlange hinzufügen")
+was showing up while browsing "R:0/0", since every radio station entry
+is technically a leaf (`LibraryView`'s `all_leaf` check has no way to
+tell "leaf" from "leaf that's a live stream"). Bulk-queuing a whole page
+of radio stations at once doesn't read as a sensible action the way it
+does for a page of real tracks — same judgment call as the earlier fix
+excluding "R:0/0" from the per-row "add to playlist" button. `LibraryView::SetEntries()`
+gained a `show_queue_all_action` parameter (`GnomosWindow` passes
+`!is_radio_level`) gating only `queue_all_button_`'s own visibility —
+`play_all_button_` ("Alle abspielen") is untouched, since playing
+through a page of stations sequentially is a plausible thing to want
+even if bulk-*queuing* them isn't.
+
+### Fixed: the play-next button on a radio row always errored
+
+Reported live: the skip-forward icon on a radio station row (mistaken
+for a "play" button — it's actually `NosonBackend::PlayLibraryItemNext()`,
+"insert as the next track") failed every time with "Dieser Titel kann
+nicht als nächster Titel eingefügt werden." Root cause: it (and the
+neighboring "add to queue" button) both go through
+`AVTransport::AddURIToQueue()`, which `NSROOT::System::CanQueueItem()`
+correctly reports as unsupported for a live radio stream — only a real,
+position-addressable track can be inserted into the queue at a specific
+spot; a stream can only be played directly. Both buttons were failing
+outright every time for every radio row, not just being unhelpful.
+Fixed the same way as the earlier per-row/bulk queue-button fixes:
+`LibraryView::SetEntries()` gained a `show_queue_actions` parameter
+(`GnomosWindow` passes `!is_radio_level`) that hides both buttons
+together for "R:0/0" — activating the row itself
+(`NosonBackend::PlayLibraryItem()`) is untouched, since its own
+non-queueable branch (`SetCurrentURI()` + `Play()`) is exactly the
+correct way to start a stream, and already worked correctly.
+
+### Fixed: cover art flickering between real art and the fallback icon at launch
+
+Reported live: thumbnails visibly flashed back and forth between the
+real cover art and the generic fallback icon a few times right after
+launch. Traced to two independent, stacking causes, both root-caused by
+instrumenting `NosonBackend::SelectZone()`/`RefreshQueueAsync()` with a
+temporary call counter during a real startup (removed once confirmed) —
+every `CoverThumbnail` constructor calls `ShowFallback()` immediately,
+so any full teardown-and-rebuild of a list (`LibraryView::Clear()` +
+rebuild, same for `QueueView`) makes every one of its tiles flash
+fallback-then-real-art again, however briefly; the fix in both cases
+below is to stop triggering the *rebuild* redundantly, not to touch
+`CoverThumbnail` itself.
+
+1. **`zones_list_box_` rebuilding on every topology-settling event.**
+   `GnomosWindow::OnZonesChanged()` (wired to `signal_zones_changed_`,
+   which fires on every real `SVCEvent_ZGTopologyChanged` — plural,
+   several of these typically arrive in the first few seconds as a
+   household's zone players finish responding) tears down and rebuilds
+   every row in `zones_list_box_` from scratch, then re-selects the
+   still-current room — but as a *brand-new* `Gtk::ListBoxRow` object,
+   which fires `row-selected` again even though nothing actually
+   changed. `NosonBackend::SelectZone()` itself has no dedup (it always
+   opens a fresh player connection), so each of those repeated topology
+   events cascaded into a full `RefreshQueueAsync()` and `QueueView`
+   rebuild. Confirmed via the call counter: `SelectZone()` went from
+   firing multiple times during a single startup to exactly once, just
+   by having `GnomosWindow::OnZoneRowSelected()` skip calling
+   `backend_->SelectZone()` when the newly selected zone's `group_id`
+   already matches `selected_group_id_`.
+2. **A second, independent redundant refresh, exposed once #1 was
+   fixed.** Even with `SelectZone()` down to one call,
+   `RefreshQueueAsync()` still fired twice, ~80ms apart — one from
+   `GnomosWindow::OnPlayerReady()` (triggered by `SelectZone()` itself),
+   one from `NosonBackend::HandlePlayerEvent()`'s own
+   `SVCEvent_ContentDirectoryChanged` branch. The second isn't a bug in
+   the usual sense: UPnP GENA eventing reliably delivers an immediate
+   "here's the current state" event for every evented service right
+   after (re-)subscribing, which is exactly what happens when
+   `SelectZone()` opens a fresh player connection — `HandlePlayerEvent()`
+   has no way to tell that echo apart from a genuine change using the
+   event data alone. Fixed with a 2-second grace window
+   (`last_zone_select_at_`, set at the end of `SelectZone()`'s own task):
+   `HandlePlayerEvent()` ignores a `ContentDirectoryChanged` event that
+   arrives within that window of the most recent zone selection, but
+   still reacts normally to one arriving later — a real mid-session
+   queue change (from this app or another controller) is unaffected.
+   Confirmed via the same call counter: back down to exactly one
+   `RefreshQueueAsync()` per launch.
+
+### A dedicated "play now" button replaces two removed bulk/per-row actions on radio rows
+
+Follow-up to the queue-action fixes above: once `show_queue_actions`
+hid add-to-queue/play-next for radio rows, a station's *only* way to
+play was clicking the row itself — with no dedicated per-row button, the
+whole-row-click affordance isn't as discoverable as an explicit icon.
+Requested directly: replace the two removed per-row buttons with a
+single "play now" (`media-playback-start-symbolic`) button in their
+place — `LibraryView::BuildList()`'s leaf branch now has an `else`
+alongside the existing `if (show_queue_actions)`, emitting
+`signal_entry_activated_` (the exact same signal activating the row
+itself already emits) rather than a new signal, since
+`NosonBackend::PlayLibraryItem()`'s existing non-queueable branch is
+already the correct way to start a stream.
+
+Also requested: `play_all_button_` ("Alle abspielen") — previously left
+alone when `queue_all_button_` was excluded from "R:0/0", on the
+reasoning that playing through a page of stations sequentially was at
+least plausible — turned out not to be wanted either. `LibraryView::SetEntries()`
+gained a `show_play_all_action` parameter, `GnomosWindow` passing
+`!is_radio_level` same as the others, so both bulk buttons are now
+excluded from the Radiosender level symmetrically.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

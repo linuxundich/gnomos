@@ -157,13 +157,20 @@ LibraryView::LibraryView()
 }
 
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
-                              bool show_favorite_action, bool show_delete_action, bool load_artist_images)
+                              bool show_favorite_action, bool show_delete_action, bool show_add_to_playlist_action,
+                              bool show_reorder_action, bool show_play_all_action, bool show_queue_all_action,
+                              bool show_queue_actions, bool load_artist_images)
 {
   all_entries_ = entries;
   grid_available_ = grid_available;
   grid_active_ = grid_active;
   show_favorite_action_ = show_favorite_action;
   show_delete_action_ = show_delete_action;
+  show_add_to_playlist_action_ = show_add_to_playlist_action;
+  show_reorder_action_ = show_reorder_action;
+  show_play_all_action_ = show_play_all_action;
+  show_queue_all_action_ = show_queue_all_action;
+  show_queue_actions_ = show_queue_actions;
   load_artist_images_ = load_artist_images;
 
   // A filter that made sense for the *previous* level shouldn't silently
@@ -208,7 +215,8 @@ void LibraryView::ApplyFilter()
   if (grid)
     BuildGrid(indices, load_artist_images_);
   else
-    BuildList(indices, show_favorite_action_, show_delete_action_, load_artist_images_);
+    BuildList(indices, show_favorite_action_, show_delete_action_, show_add_to_playlist_action_,
+              show_reorder_action_ && term.empty(), show_queue_actions_, load_artist_images_);
 
   // "Play all"/"queue all" only make sense once every entry at the (full,
   // unfiltered) level is a leaf track, and only while no filter is
@@ -217,11 +225,12 @@ void LibraryView::ApplyFilter()
   bool all_leaf =
       !grid && !all_entries_.empty() &&
       std::none_of(all_entries_.begin(), all_entries_.end(), [](const LibraryEntry& e) { return e.is_container; });
-  play_all_button_.set_visible(all_leaf && term.empty());
-  queue_all_button_.set_visible(all_leaf && term.empty());
+  play_all_button_.set_visible(all_leaf && term.empty() && show_play_all_action_);
+  queue_all_button_.set_visible(all_leaf && term.empty() && show_queue_all_action_);
 }
 
 void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
+                             bool show_add_to_playlist_action, bool show_reorder_action, bool show_queue_actions,
                              bool load_artist_images)
 {
   for (unsigned index : indices)
@@ -276,19 +285,44 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       row_box->append(*favorite_button);
     }
 
-    // Only ever true while browsing "SQ:" — see SetEntries()'s own
-    // comment. Every entry there is a container (a saved playlist), so
-    // this sits alongside the favorite button rather than inside the
-    // leaf-only branch below.
+    // Only ever true while browsing "SQ:" or "R:0/0" — see SetEntries()'s
+    // own comment. Every entry at either level is a container (a saved
+    // playlist or a radio station), so this sits alongside the favorite
+    // button rather than inside the leaf-only branch below.
     if (show_delete_action)
     {
       auto* delete_button = Gtk::make_managed<Gtk::Button>();
       delete_button->set_icon_name("user-trash-symbolic");
       delete_button->add_css_class("flat");
       delete_button->set_valign(Gtk::Align::CENTER);
-      delete_button->set_tooltip_text("Playlist löschen");
+      delete_button->set_tooltip_text("Löschen");
       delete_button->signal_clicked().connect([this, index] { signal_delete_requested_.emit(index); });
       row_box->append(*delete_button);
+    }
+
+    // Only while viewing a specific saved playlist's own track listing
+    // (and unfiltered — see SetEntries()'s own comment) — indices is then
+    // exactly 0..all_entries_.size()-1 in order, so index doubles as this
+    // row's real position for the edge checks below.
+    if (show_reorder_action)
+    {
+      auto* up_button = Gtk::make_managed<Gtk::Button>();
+      up_button->set_icon_name("go-up-symbolic");
+      up_button->add_css_class("flat");
+      up_button->set_valign(Gtk::Align::CENTER);
+      up_button->set_tooltip_text("Nach oben verschieben");
+      up_button->set_sensitive(index > 0);
+      up_button->signal_clicked().connect([this, index] { signal_reorder_requested_.emit(index, index - 1); });
+      row_box->append(*up_button);
+
+      auto* down_button = Gtk::make_managed<Gtk::Button>();
+      down_button->set_icon_name("go-down-symbolic");
+      down_button->add_css_class("flat");
+      down_button->set_valign(Gtk::Align::CENTER);
+      down_button->set_tooltip_text("Nach unten verschieben");
+      down_button->set_sensitive(index + 1 < all_entries_.size());
+      down_button->signal_clicked().connect([this, index] { signal_reorder_requested_.emit(index, index + 1); });
+      row_box->append(*down_button);
     }
 
     if (entry.is_container)
@@ -300,21 +334,55 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
     }
     else
     {
-      auto* add_button = Gtk::make_managed<Gtk::Button>();
-      add_button->set_icon_name("list-add-symbolic");
-      add_button->add_css_class("flat");
-      add_button->set_valign(Gtk::Align::CENTER);
-      add_button->set_tooltip_text("Zur Warteschlange hinzufügen");
-      add_button->signal_clicked().connect([this, index] { signal_add_to_queue_requested_.emit(index); });
-      row_box->append(*add_button);
+      // See SetEntries()'s own comment — both buttons back onto
+      // AVTransport::AddURIToQueue(), which fails outright for an entry
+      // System::CanQueueItem() reports as not queueable (e.g. a live
+      // radio stream); GnomosWindow turns this off for exactly those
+      // levels rather than showing two buttons guaranteed to error.
+      if (show_queue_actions)
+      {
+        auto* add_button = Gtk::make_managed<Gtk::Button>();
+        add_button->set_icon_name("list-add-symbolic");
+        add_button->add_css_class("flat");
+        add_button->set_valign(Gtk::Align::CENTER);
+        add_button->set_tooltip_text("Zur Warteschlange hinzufügen");
+        add_button->signal_clicked().connect([this, index] { signal_add_to_queue_requested_.emit(index); });
+        row_box->append(*add_button);
 
-      auto* play_next_button = Gtk::make_managed<Gtk::Button>();
-      play_next_button->set_icon_name("media-skip-forward-symbolic");
-      play_next_button->add_css_class("flat");
-      play_next_button->set_valign(Gtk::Align::CENTER);
-      play_next_button->set_tooltip_text("Als nächstes abspielen");
-      play_next_button->signal_clicked().connect([this, index] { signal_play_next_requested_.emit(index); });
-      row_box->append(*play_next_button);
+        auto* play_next_button = Gtk::make_managed<Gtk::Button>();
+        play_next_button->set_icon_name("media-skip-forward-symbolic");
+        play_next_button->add_css_class("flat");
+        play_next_button->set_valign(Gtk::Align::CENTER);
+        play_next_button->set_tooltip_text("Als nächstes abspielen");
+        play_next_button->signal_clicked().connect([this, index] { signal_play_next_requested_.emit(index); });
+        row_box->append(*play_next_button);
+      }
+      else
+      {
+        // See SetEntries()'s own comment — the entry that would otherwise
+        // get add-to-queue/play-next gets a single, explicit "play now"
+        // instead, emitting exactly what activating the row itself
+        // already would.
+        auto* play_now_button = Gtk::make_managed<Gtk::Button>();
+        play_now_button->set_icon_name("media-playback-start-symbolic");
+        play_now_button->add_css_class("flat");
+        play_now_button->set_valign(Gtk::Align::CENTER);
+        play_now_button->set_tooltip_text("Jetzt abspielen");
+        play_now_button->signal_clicked().connect([this, index] { signal_entry_activated_.emit(index); });
+        row_box->append(*play_now_button);
+      }
+
+      if (show_add_to_playlist_action)
+      {
+        auto* add_to_playlist_button = Gtk::make_managed<Gtk::Button>();
+        add_to_playlist_button->set_icon_name("bookmark-new-symbolic");
+        add_to_playlist_button->add_css_class("flat");
+        add_to_playlist_button->set_valign(Gtk::Align::CENTER);
+        add_to_playlist_button->set_tooltip_text("Zu Playlist hinzufügen");
+        add_to_playlist_button->signal_clicked().connect(
+            [this, index] { signal_add_to_playlist_requested_.emit(index); });
+        row_box->append(*add_to_playlist_button);
+      }
     }
 
     list_box_.append(*row_box);

@@ -89,10 +89,18 @@ private:
   void ShowClearQueueConfirmDialog();
   void ShowDeleteFavoriteConfirmDialog(unsigned index);
   void ShowDeleteAlarmConfirmDialog(std::string alarm_id);
-  void ShowDeletePlaylistConfirmDialog(unsigned index);
+  // Handles both cases LibraryView::signal_delete_requested() can mean —
+  // deleting a saved playlist (browsing "SQ:") or a custom radio station
+  // (browsing "R:0/0") — branching on library_stack_.back().first, since
+  // the signal itself only carries the row index either way.
+  void ShowDeleteLibraryEntryConfirmDialog(unsigned index);
   // Title + stream URL entry for NosonBackend::AddRadioStation() — reached
   // from LibraryView's add_button_, only visible while browsing "R:0/0".
   void ShowAddRadioStationDialog();
+  // Fetches the saved-playlist list fresh (NosonBackend::FetchSavedPlaylistsAsync())
+  // and shows a picker once it arrives — reached from LibraryView's
+  // per-row "add to playlist" button.
+  void ShowAddToPlaylistDialog(unsigned library_index);
   // Shared AdwAlertDialog wrapper for all three confirmations above — see
   // its header comment for why this replaced three hand-rolled Gtk::Window
   // dialogs.
@@ -239,6 +247,13 @@ private:
   // nightmode_switch_ above (not set_visible()), for a consistent, always
   // in the same place popover layout regardless of which room is selected.
   Gtk::Switch output_fixed_switch_;
+  // Line-in autoplay — see SoundSettings::autoplay_* for what each of
+  // these means. autoplay_volume_scale_ is only sensitive while
+  // autoplay_use_volume_switch_ is on, same "grey out the control that
+  // doesn't apply yet" idea as sub_gain_scale_'s own sensitivity toggle.
+  Gtk::Switch autoplay_switch_;
+  Gtk::Switch autoplay_use_volume_switch_;
+  Gtk::Scale autoplay_volume_scale_;
   bool suppress_sound_signals_ = false;
 
   // Section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/Bibliothek,

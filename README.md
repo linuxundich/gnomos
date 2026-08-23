@@ -66,14 +66,21 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   alike), consistent GNOME iconography per category (artist/album/genre/
   playlist), a live filter for narrowing down a long list as you type,
   "play all"/"add all to queue" for a track listing, adding a custom
-  internet radio station, deleting a saved Sonos playlist, and a cache so
-  revisiting a level doesn't refetch it over the network every time
+  internet radio station (searched for by name/country against
+  radio-browser.info's public directory, with manual name+URL entry as a
+  fallback) and deleting one, deleting a saved Sonos playlist, adding a
+  track to an existing saved playlist and reordering its tracks, and a
+  cache so revisiting a level doesn't refetch it over the network every
+  time
 - Optional real artist photos in the library, looked up by name against
   Deezer's public API — off by default, since it's the one thing in this
   app that leaves the local Sonos household (Settings → Bibliothek)
 - Fixed volume / line-out mode and sub gain, alongside bass, treble,
-  loudness and night mode, for a device feeding a receiver or amp with its
-  own volume control, or a paired Sonos Sub
+  loudness, night mode and line-in autoplay (with its own target volume),
+  for a device feeding a receiver or amp with its own volume control, or a
+  paired Sonos Sub
+- A "Bibliothek neu einlesen" action in Settings, for rescanning an
+  indexed local music share after adding files to it
 - A "Geräteinfo" dialog per room (IP, MAC, software version, model),
   reached from the room picker's popover
 - Third-party services (Spotify, bonob and other SMAPI-based services)

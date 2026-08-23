@@ -54,10 +54,46 @@ public:
   // root, where entries are real content rather than static categories
   // ("Interpreten", "Alben", ...) that Sonos has nothing to favorite.
   // show_delete_action: whether to show a per-row "delete" button — only
-  // ever true while browsing "SQ:" (the "Playlisten" root), where every
-  // entry really is a destroyable saved Sonos playlist, unlike any other
-  // library level (a local album, an artist, a service listing, ... none
-  // of those are things this app can delete).
+  // ever true while browsing "SQ:" (the "Playlisten" root, deletes a whole
+  // saved playlist) or "R:0/0" ("Radiosender", deletes a custom station) —
+  // every entry at either of those two specific levels really is
+  // destroyable, unlike any other library level (a local album, an
+  // artist, a service listing, ... none of those are things this app can
+  // delete).
+  // show_add_to_playlist_action: whether to show a per-row "add to
+  // playlist" button — GnomosWindow only offers this for a leaf track
+  // below the true root, mirroring show_favorite_action's own gating; a
+  // container (album/artist/genre/...) has nothing meaningful to add as a
+  // single saved-queue entry.
+  // show_reorder_action: whether to show per-row "move up"/"move down"
+  // buttons — only while browsing a *specific* saved playlist's own track
+  // listing (an "SQ:<id>" level, not "SQ:" itself, which lists playlists
+  // rather than tracks). Hidden whenever filter_entry_ has text, same as
+  // play_all_button_/queue_all_button_ — a filtered subset's on-screen
+  // neighbor isn't necessarily the real adjacent track, which would make
+  // "move up/down" do something other than what it visually looks like.
+  // show_play_all_action/show_queue_all_action: whether play_all_button_
+  // ("Alle abspielen") / queue_all_button_ ("+", bulk add to queue) may
+  // show at all once every entry at this level is a leaf — GnomosWindow
+  // turns both off specifically while browsing "R:0/0" ("Radiosender"):
+  // confirmed live, bulk-playing or bulk-queuing a whole page of live
+  // radio streams at once doesn't read as a sensible action the way it
+  // does for a page of real tracks (an album, a playlist).
+  // show_queue_actions: whether a leaf row's own per-row "add to queue"
+  // (list-add-symbolic) and "play next" (media-skip-forward-symbolic)
+  // buttons show at all, *instead of* a single "play now"
+  // (media-playback-start-symbolic) button — GnomosWindow turns this off
+  // for "R:0/0" too. Confirmed live: add-to-queue/play-next both back
+  // onto AVTransport::AddURIToQueue(), which NSROOT::System::CanQueueItem()
+  // reports false for a live radio stream (only a real position-addressable
+  // track can be queued, not an internet stream) — the buttons weren't
+  // just unhelpful there, they failed outright with an error every time.
+  // "Play now" instead emits signal_entry_activated_ — the exact same
+  // signal activating the row itself already emits, since
+  // NosonBackend::PlayLibraryItem()'s own non-queueable branch
+  // (SetCurrentURI() + Play()) is exactly the correct way to start a
+  // stream; the button is just a more discoverable, explicit affordance
+  // for what the row already does on its own.
   // load_artist_images: the user's own opt-in preference (see
   // GnomosWindow::load_artist_images_) — when true, an artist entry
   // (icon_name == "avatar-default-symbolic", see IconNameForSubType())
@@ -67,7 +103,9 @@ public:
   // *previous* level (e.g. "adele" while browsing Interpreten) shouldn't
   // silently keep hiding entries after navigating somewhere unrelated.
   void SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
-                  bool show_favorite_action, bool show_delete_action, bool load_artist_images);
+                  bool show_favorite_action, bool show_delete_action, bool show_add_to_playlist_action,
+                  bool show_reorder_action, bool show_play_all_action, bool show_queue_all_action,
+                  bool show_queue_actions, bool load_artist_images);
   void SetLevelTitle(const std::string& title);
   void SetBackVisible(bool visible);
   // Whether add_button_ (a custom radio stream, see signal_add_requested())
@@ -102,8 +140,18 @@ public:
   // show_favorite_action was true for this level (see SetEntries()).
   sigc::signal<void(unsigned)>& signal_add_to_favorites_requested() { return signal_add_to_favorites_requested_; }
   // Only ever emitted when show_delete_action was true for this level
-  // (browsing "SQ:") — see SetEntries()'s own comment.
+  // (browsing "SQ:" or "R:0/0") — see SetEntries()'s own comment.
   sigc::signal<void(unsigned)>& signal_delete_requested() { return signal_delete_requested_; }
+  // Only ever emitted when show_add_to_playlist_action was true — see
+  // SetEntries()'s own comment. GnomosWindow follows up with its own
+  // playlist-picker dialog; this signal only carries which library entry
+  // (not which playlist) was requested.
+  sigc::signal<void(unsigned)>& signal_add_to_playlist_requested() { return signal_add_to_playlist_requested_; }
+  // Only ever emitted when show_reorder_action was true — see
+  // SetEntries()'s own comment. Both indices are 0-based positions in the
+  // unfiltered level SetEntries() was last called with, same convention
+  // every other index-carrying signal here already uses.
+  sigc::signal<void(unsigned, unsigned)>& signal_reorder_requested() { return signal_reorder_requested_; }
   // add_button_'s click — see SetAddVisible()'s own comment. No index:
   // this adds a brand new custom radio stream, not an action on an
   // existing row.
@@ -135,6 +183,7 @@ private:
   // documents), extended for LibraryView's own grid/list duality.
   void ApplyFilter();
   void BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
+                 bool show_add_to_playlist_action, bool show_reorder_action, bool show_queue_actions,
                  bool load_artist_images);
   void BuildGrid(const std::vector<unsigned>& indices, bool load_artist_images);
 
@@ -166,6 +215,11 @@ private:
   bool grid_active_ = false;
   bool show_favorite_action_ = false;
   bool show_delete_action_ = false;
+  bool show_add_to_playlist_action_ = false;
+  bool show_reorder_action_ = false;
+  bool show_play_all_action_ = false;
+  bool show_queue_all_action_ = false;
+  bool show_queue_actions_ = false;
   bool load_artist_images_ = false;
   sigc::signal<void(unsigned)> signal_entry_activated_;
   sigc::signal<void()> signal_back_requested_;
@@ -174,6 +228,8 @@ private:
   sigc::signal<void(unsigned)> signal_play_next_requested_;
   sigc::signal<void(unsigned)> signal_add_to_favorites_requested_;
   sigc::signal<void(unsigned)> signal_delete_requested_;
+  sigc::signal<void(unsigned)> signal_add_to_playlist_requested_;
+  sigc::signal<void(unsigned, unsigned)> signal_reorder_requested_;
   sigc::signal<void()> signal_add_requested_;
   sigc::signal<void()> signal_play_all_requested_;
   sigc::signal<void()> signal_queue_all_requested_;
