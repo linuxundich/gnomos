@@ -237,15 +237,23 @@ for the user to override either. Unified into one signal and a real
 toggle:
 
 - `LibraryEntry::display_as_grid` is now populated for **every** entry,
-  regardless of source, not just SMAPI ones. Third-party services still
-  set it from `SMAPIItem::displayType == Grid`, straight from the
-  service's own response (`BrowseActiveServiceLocked()`); the local
-  library still has no such per-item hint, so `BrowseLibraryAsync()`
-  derives it from the level's own object_id prefix
-  (`"A:ALBUM"`/`"A:ALBUMARTIST"`) combined with `is_container`, computed
-  once per level and applied to every entry in it. Two different
-  underlying heuristics, because they're genuinely different protocols —
-  but one uniform field to consume.
+  regardless of source, not just SMAPI ones. Third-party services set it
+  from `SMAPIItem::displayType == Grid` **or** simply `is_container` with
+  real cover art (`BrowseActiveServiceLocked()`/`SearchActiveServiceAsync()`)
+  — not displayType alone: confirmed live against a real bonob server,
+  its own "Albums" listing carries real per-album art but never sets
+  displayType to Grid at all (only its root menu does), which left an
+  obviously grid-worthy listing with no way to switch it at all. The
+  local library still has no per-item hint the way SMAPI's displayType
+  gives services, so `BrowseLibraryAsync()` derives it from the level's
+  own object_id prefix (`"A:ALBUM"`/`"A:ALBUMARTIST"`) combined with
+  `is_container`, computed once per level and applied to every entry in
+  it — deliberately *not* switched to the same "has art" rule the SMAPI
+  side uses, since plenty of real local libraries have artist entries
+  with no photo at all and would otherwise lose the Artists grid
+  entirely. Different underlying heuristics, because they're genuinely
+  different data sources with different failure modes — but one uniform
+  field to consume either way.
 - `OnLibraryChanged()` no longer branches on where the level came from at
   all: it just checks `std::any_of(entries, [](e){ return
   e.display_as_grid; })` to decide whether a grid is *available* for this

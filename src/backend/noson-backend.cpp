@@ -1636,7 +1636,17 @@ void NosonBackend::SearchActiveServiceAsync(const std::string& category, const s
         if (!entry.is_container)
           entry.subtitle = smapi_item.item->GetValue("dc:creator");
         entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
-        entry.display_as_grid = smapi_item.displayType == NSROOT::SMAPIItem::Grid;
+        // Trust the service's own displayType when it says Grid — but
+        // don't require it: confirmed live against a real bonob server,
+        // its "Albums" listing carries real per-album cover art but
+        // doesn't set displayType to Grid at all (only its root menu
+        // does), so relying on displayType alone left an obviously
+        // grid-worthy listing stuck in list mode. A container with real
+        // art is exactly what a grid is for, regardless of whether the
+        // service bothered to say so explicitly — same rule a reader
+        // would apply by eye.
+        entry.display_as_grid =
+            smapi_item.displayType == NSROOT::SMAPIItem::Grid || (entry.is_container && !entry.art_uri.empty());
         entries.push_back(std::move(entry));
         raw.push_back(smapi_item.uriMetadata);
       }
@@ -1761,7 +1771,16 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
       if (!entry.is_container)
         entry.subtitle = smapi_item.item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
-      entry.display_as_grid = smapi_item.displayType == NSROOT::SMAPIItem::Grid;
+      // Trust the service's own displayType when it says Grid — but don't
+      // require it: confirmed live against a real bonob server, its own
+      // "Albums" listing carries real per-album cover art but doesn't set
+      // displayType to Grid at all (only its root menu does), so relying
+      // on displayType alone left an obviously grid-worthy listing stuck
+      // in list mode with no way to switch it. A container with real art
+      // is exactly what a grid is for, regardless of whether the service
+      // bothered to say so explicitly.
+      entry.display_as_grid =
+          smapi_item.displayType == NSROOT::SMAPIItem::Grid || (entry.is_container && !entry.art_uri.empty());
       entries.push_back(std::move(entry));
       // Containers have no uriMetadata (they're never played, only browsed
       // into) — null is fine, PlayLibraryItem() only reaches this index for
