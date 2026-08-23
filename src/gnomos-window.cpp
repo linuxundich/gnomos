@@ -439,7 +439,13 @@ GnomosWindow::GnomosWindow()
   adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), GTK_WIDGET(content_box_.gobj()));
   adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), 280);
   adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), 360);
-  adw_overlay_split_view_set_show_sidebar(ADW_OVERLAY_SPLIT_VIEW(content_split_view_), true);
+  // G_BINDING_SYNC_CREATE syncs from the *source* (the toggle button's own
+  // "active") to the target on creation — so the button needs to start
+  // active itself, or this binding would immediately force show-sidebar
+  // back to false and hide the panel completely at normal window widths.
+  // Confirmed live: without this, both side panels were simply missing at
+  // startup, not just uncollapsed.
+  now_playing_toggle_button_.set_active(true);
   g_object_bind_property(now_playing_toggle_button_.gobj(), "active", content_split_view_, "show-sidebar",
                           static_cast<GBindingFlags>(G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE));
   g_object_bind_property(content_split_view_, "collapsed", now_playing_toggle_button_.gobj(), "visible",
@@ -455,14 +461,19 @@ GnomosWindow::GnomosWindow()
   adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), content_split_view_);
   adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 220);
   adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 320);
-  adw_overlay_split_view_set_show_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), true);
-
   // sidebar_toggle_button_ only needs to exist (and be shown) once the
   // split view has actually collapsed the sidebar into an overlay —
   // above that width it's docked side-by-side and the button would be
   // redundant. "active" <-> "show-sidebar" is bidirectional so it also
   // stays in sync if the sidebar is dismissed via its own swipe/click-away
   // gesture rather than the button itself.
+  //
+  // G_BINDING_SYNC_CREATE syncs from the *source* (the button's own
+  // "active") to the target on creation, so the button needs to start
+  // active — see the identical comment on now_playing_toggle_button_ above
+  // for why (this was a real bug: both side panels were missing at
+  // startup until the window got narrow enough to collapse them).
+  sidebar_toggle_button_.set_active(true);
   g_object_bind_property(sidebar_toggle_button_.gobj(), "active", split_view_, "show-sidebar",
                           static_cast<GBindingFlags>(G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE));
   g_object_bind_property(split_view_, "collapsed", sidebar_toggle_button_.gobj(), "visible",
