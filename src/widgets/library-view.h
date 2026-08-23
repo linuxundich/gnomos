@@ -51,6 +51,12 @@ public:
   // Also only ever emitted for a leaf entry in list mode — see
   // signal_add_to_queue_requested()'s comment.
   sigc::signal<void(unsigned)>& signal_play_next_requested() { return signal_play_next_requested_; }
+  // play_all_button_/queue_all_button_ only ever show up once the current
+  // level is entirely leaf tracks (e.g. an album's contents) — see
+  // SetEntries(). Both act on the whole level, not a single row, so
+  // neither signal carries an index.
+  sigc::signal<void()>& signal_play_all_requested() { return signal_play_all_requested_; }
+  sigc::signal<void()>& signal_queue_all_requested() { return signal_queue_all_requested_; }
 
 private:
   void BuildList(const std::vector<LibraryEntry>& entries);
@@ -59,6 +65,8 @@ private:
   Gtk::Button back_button_;
   Gtk::Label level_title_;
   Gtk::Label count_label_;
+  Gtk::Button play_all_button_;
+  Gtk::Button queue_all_button_;
   Gtk::Button search_button_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
@@ -69,6 +77,8 @@ private:
   sigc::signal<void()> signal_search_requested_;
   sigc::signal<void(unsigned)> signal_add_to_queue_requested_;
   sigc::signal<void(unsigned)> signal_play_next_requested_;
+  sigc::signal<void()> signal_play_all_requested_;
+  sigc::signal<void()> signal_queue_all_requested_;
 };
 
 }  // namespace gnomos

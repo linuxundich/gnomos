@@ -2,6 +2,7 @@
 
 #include "library-view.h"
 
+#include <algorithm>
 #include <string>
 
 #include <gtkmm/image.h>
@@ -33,6 +34,23 @@ LibraryView::LibraryView()
   level_title_.set_ellipsize(Pango::EllipsizeMode::END);
   level_title_.add_css_class("heading");
   header->append(level_title_);
+
+  // Only ever shown for a fully-leaf level (e.g. an album's track list) —
+  // see SetEntries(). Placed before the search button so search stays the
+  // rightmost, always-present action.
+  play_all_button_.set_icon_name("media-playback-start-symbolic");
+  play_all_button_.add_css_class("flat");
+  play_all_button_.set_tooltip_text("Alle abspielen");
+  play_all_button_.set_visible(false);
+  play_all_button_.signal_clicked().connect([this] { signal_play_all_requested_.emit(); });
+  header->append(play_all_button_);
+
+  queue_all_button_.set_icon_name("list-add-symbolic");
+  queue_all_button_.add_css_class("flat");
+  queue_all_button_.set_tooltip_text("Alle zur Warteschlange hinzufügen");
+  queue_all_button_.set_visible(false);
+  queue_all_button_.signal_clicked().connect([this] { signal_queue_all_requested_.emit(); });
+  header->append(queue_all_button_);
 
   search_button_.set_icon_name("system-search-symbolic");
   search_button_.add_css_class("flat");
@@ -103,6 +121,14 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
     BuildGrid(entries);
   else
     BuildList(entries);
+
+  // "Play all"/"queue all" only make sense once every entry at this level
+  // is a leaf track — never for a grid (always containers to browse into)
+  // or a list still mixing in containers.
+  bool all_leaf = !grid && !entries.empty() &&
+                   std::none_of(entries.begin(), entries.end(), [](const LibraryEntry& e) { return e.is_container; });
+  play_all_button_.set_visible(all_leaf);
+  queue_all_button_.set_visible(all_leaf);
 }
 
 void LibraryView::BuildList(const std::vector<LibraryEntry>& entries)

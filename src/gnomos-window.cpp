@@ -8,10 +8,12 @@
 
 #include <gdk/gdkkeysyms.h>
 #include <gdkmm/texture.h>
+#include <giomm/application.h>
 #include <giomm/asyncresult.h>
 #include <giomm/cancellable.h>
 #include <giomm/file.h>
 #include <giomm/menu.h>
+#include <giomm/notification.h>
 #include <glib.h>
 #include <glibmm/bytes.h>
 #include <glibmm/error.h>
@@ -41,7 +43,9 @@ namespace gnomos
 GnomosWindow::GnomosWindow()
 {
   set_title("Gnomos");
-  set_default_size(1280, 700);  // room sidebar + tab content + the wider Now Playing panel
+  set_default_size(1280, 700);  // room sidebar + tab content + the wider Now Playing panel — overridden by LoadWindowState() below if a size was saved from a previous run
+  LoadWindowState();
+  signal_close_request().connect(sigc::mem_fun(*this, &GnomosWindow::OnCloseRequest), false);
 
   // --- Header bar (libadwaita, built via the C API — see header comment) ---
   header_bar_ = adw_header_bar_new();
@@ -352,10 +356,14 @@ GnomosWindow::GnomosWindow()
   content_box_.append(*Glib::wrap(view_stack_));
 
   favorites_view_.signal_item_activated().connect([this](unsigned index) { backend_->PlayFavorite(index); });
-  favorites_view_.signal_add_to_queue_requested().connect(
-      [this](unsigned index) { backend_->AddFavoriteToQueue(index); });
-  favorites_view_.signal_play_next_requested().connect(
-      [this](unsigned index) { backend_->PlayFavoriteNext(index); });
+  favorites_view_.signal_add_to_queue_requested().connect([this](unsigned index) {
+    backend_->AddFavoriteToQueue(index);
+    ShowToast("Zur Warteschlange hinzugefügt");
+  });
+  favorites_view_.signal_play_next_requested().connect([this](unsigned index) {
+    backend_->PlayFavoriteNext(index);
+    ShowToast("Als Nächstes hinzugefügt");
+  });
   favorites_view_.signal_delete_requested().connect(
       sigc::mem_fun(*this, &GnomosWindow::ShowDeleteFavoriteConfirmDialog));
 
@@ -380,10 +388,19 @@ GnomosWindow::GnomosWindow()
   library_view_.signal_entry_activated().connect(sigc::mem_fun(*this, &GnomosWindow::OnLibraryEntryActivated));
   library_view_.signal_back_requested().connect(sigc::mem_fun(*this, &GnomosWindow::OnLibraryBackRequested));
   library_view_.signal_search_requested().connect([this] { ShowLibrarySearchDialog(); });
-  library_view_.signal_add_to_queue_requested().connect(
-      [this](unsigned index) { backend_->AddLibraryItemToQueue(index); });
-  library_view_.signal_play_next_requested().connect(
-      [this](unsigned index) { backend_->PlayLibraryItemNext(index); });
+  library_view_.signal_add_to_queue_requested().connect([this](unsigned index) {
+    backend_->AddLibraryItemToQueue(index);
+    ShowToast("Zur Warteschlange hinzugefügt");
+  });
+  library_view_.signal_play_next_requested().connect([this](unsigned index) {
+    backend_->PlayLibraryItemNext(index);
+    ShowToast("Als Nächstes hinzugefügt");
+  });
+  library_view_.signal_play_all_requested().connect([this] { backend_->PlayAllLibraryItemsAsync(); });
+  library_view_.signal_queue_all_requested().connect([this] {
+    backend_->AddAllLibraryItemsToQueue();
+    ShowToast("Zur Warteschlange hinzugefügt");
+  });
 
   player_bar_.signal_play_pause().connect([this] {
     NowPlaying np = backend_->GetNowPlaying();
@@ -513,6 +530,7 @@ GnomosWindow::GnomosWindow()
   history_view_.SetItems(history_);
 
   LoadColorScheme();
+  LoadNotificationSetting();
 
   // Space = play/pause — see OnKeyPressed()'s header comment for why a
   // focused-Editable check is needed alongside the keyval check.
@@ -595,6 +613,59 @@ std::string GnomosWindow::LoadLastRoomUuid() const
   {
     return "";
   }
+}
+
+void GnomosWindow::LoadWindowState()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    int width = keyfile->get_integer("window", "width");
+    int height = keyfile->get_integer("window", "height");
+    if (width > 0 && height > 0)
+      set_default_size(width, height);
+    if (keyfile->get_boolean("window", "maximized"))
+      maximize();
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no saved size yet, the fixed default from the constructor applies
+  }
+}
+
+bool GnomosWindow::OnCloseRequest()
+{
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  bool maximized = is_maximized();
+  keyfile->set_boolean("window", "maximized", maximized);
+  if (!maximized)
+  {
+    int width = 0, height = 0;
+    get_default_size(width, height);
+    keyfile->set_integer("window", "width", width);
+    keyfile->set_integer("window", "height", height);
+  }
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the window size won't be remembered next launch
+  }
+  return false;  // don't block the close
 }
 
 void GnomosWindow::OnDiscoveryDone(bool ok)
@@ -770,6 +841,7 @@ void GnomosWindow::RecordHistoryIfTrackChanged(const NowPlaying& now_playing)
 
   history_view_.SetItems(history_);
   SaveHistory();
+  SendTrackChangeNotification(now_playing);
 }
 
 void GnomosWindow::LoadHistory()
@@ -879,6 +951,74 @@ void GnomosWindow::ApplyColorScheme(const std::string& scheme)
   {
     // non-fatal — just means the override won't be remembered next launch
   }
+}
+
+void GnomosWindow::LoadNotificationSetting()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    notify_on_track_change_ = keyfile->get_boolean("notifications", "track_change");
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no setting saved yet, stays off (the default)
+  }
+}
+
+void GnomosWindow::SetNotifyOnTrackChange(bool enabled)
+{
+  notify_on_track_change_ = enabled;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_boolean("notifications", "track_change", enabled);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the setting won't be remembered next launch
+  }
+}
+
+void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
+{
+  if (!notify_on_track_change_)
+    return;
+
+  auto notification = Gio::Notification::create(now_playing.title.empty() ? "Unbekannter Titel" : now_playing.title);
+  std::string body = now_playing.artist;
+  if (!now_playing.album.empty())
+    body += (body.empty() ? "" : " — ") + now_playing.album;
+  if (!body.empty())
+    notification->set_body(body);
+
+  // Only ever the already-cached texture (memory or disk) — never a fresh
+  // network fetch here, so a notification is never held up waiting on one.
+  // Gdk::Texture doesn't implement Gio::Icon in this gtkmm version (see its
+  // own header), even though the underlying GdkTexture does at the C/GObject
+  // level, so the icon is set through the raw API instead.
+  if (!now_playing.art_uri.empty())
+  {
+    if (auto texture = ArtCache::Instance().Get(now_playing.art_uri))
+      g_notification_set_icon(notification->gobj(), G_ICON(texture->gobj()));
+  }
+
+  if (auto app = get_application())
+    app->send_notification("now-playing", notification);
 }
 
 bool GnomosWindow::OnKeyPressed(guint keyval, guint /*keycode*/, Gdk::ModifierType state)
@@ -1508,6 +1648,15 @@ extern "C" void DeleteVoidCallback(gpointer data, GClosure*)
 {
   delete static_cast<std::function<void()>*>(data);
 }
+extern "C" void OnSwitchRowActiveChanged(GObject* object, GParamSpec*, gpointer user_data)
+{
+  auto* callback = static_cast<std::function<void(bool)>*>(user_data);
+  (*callback)(adw_switch_row_get_active(ADW_SWITCH_ROW(object)));
+}
+extern "C" void DeleteBoolCallback(gpointer data, GClosure*)
+{
+  delete static_cast<std::function<void(bool)>*>(data);
+}
 }  // namespace
 
 void GnomosWindow::ShowSettingsDialog()
@@ -1546,6 +1695,20 @@ void GnomosWindow::ShowSettingsDialog()
                          DeleteGuintCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), scheme_row);
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(appearance_group));
+
+  // --- Benachrichtigungen ---
+  GtkWidget* notifications_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(notifications_group), "Benachrichtigungen");
+
+  GtkWidget* notify_row = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(notify_row), "Bei Titelwechsel benachrichtigen");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(notify_row), notify_on_track_change_);
+  g_signal_connect_data(
+      notify_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
+      new std::function<void(bool)>([this](bool active) { SetNotifyOnTrackChange(active); }), DeleteBoolCallback,
+      static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(notifications_group), notify_row);
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(notifications_group));
 
   // --- Cover-Art-Cache ---
   GtkWidget* cache_group = adw_preferences_group_new();

@@ -104,6 +104,16 @@ private:
   // ([appearance] color_scheme) — see ApplyColorScheme()'s header comment.
   void LoadColorScheme();
   void ApplyColorScheme(const std::string& scheme);
+  // [notifications] track_change in state.ini — see notify_on_track_change_'s
+  // own comment.
+  void LoadNotificationSetting();
+  void SetNotifyOnTrackChange(bool enabled);
+  void SendTrackChangeNotification(const NowPlaying& now_playing);
+  // Window width/height/maximized, persisted to state.ini's [window] group
+  // alongside last_room_uuid — restores the size the user actually left
+  // the app at, instead of always reopening at the fixed default_size().
+  void LoadWindowState();
+  bool OnCloseRequest();
   bool OnKeyPressed(guint keyval, guint keycode, Gdk::ModifierType state);
 
   void ShowToast(const std::string& message);
@@ -177,6 +187,11 @@ private:
   // re-fire of OnNowPlayingChanged() for the same track (e.g. shuffle/repeat
   // toggles, which emit the same signal without changing the track).
   std::string last_history_key_;
+  // Whether to send a desktop notification on a genuine track change —
+  // reuses RecordHistoryIfTrackChanged()'s own dedup key, so this never
+  // fires twice for the same track. Off by default (opt-in via Settings);
+  // persisted to state.ini's [notifications] group.
+  bool notify_on_track_change_ = false;
   // (object_id, display title) from root to current level; back() is the
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;

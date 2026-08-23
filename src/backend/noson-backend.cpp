@@ -1716,6 +1716,79 @@ void NosonBackend::PlayLibraryItemNext(unsigned index)
   });
 }
 
+void NosonBackend::AddAllLibraryItemsToQueue()
+{
+  tasks_.Push([this] {
+    std::vector<NSROOT::DigitalItemPtr> items;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      items = library_raw_;
+    }
+    auto player = SnapshotPlayer();
+    if (!player || items.empty())
+      return;
+
+    unsigned added = 0;
+    for (const NSROOT::DigitalItemPtr& item : items)
+    {
+      if (NSROOT::System::CanQueueItem(item) && player->AddURIToQueue(item, 0) > 0)
+        ++added;
+    }
+
+    if (added == 0)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Titel konnten nicht zur Warteschlange hinzugefügt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+    RefreshQueueAsync();
+  });
+}
+
+void NosonBackend::PlayAllLibraryItemsAsync()
+{
+  tasks_.Push([this] {
+    std::vector<NSROOT::DigitalItemPtr> items;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      items = library_raw_;
+    }
+    auto player = SnapshotPlayer();
+    if (!player || items.empty())
+      return;
+
+    // Same PlayQueue(false)-then-populate-then-seek-then-Play() sequence
+    // PlayLibraryItem() already uses for a single track — mirrored here
+    // rather than reordered, since that sequence is the one actually
+    // exercised live against real hardware.
+    player->PlayQueue(false);
+    if (!player->RemoveAllTracksFromQueue())
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Warteschlange konnte nicht geleert werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+
+    unsigned added = 0;
+    for (const NSROOT::DigitalItemPtr& item : items)
+    {
+      if (NSROOT::System::CanQueueItem(item) && player->AddURIToQueue(item, 0) > 0)
+        ++added;
+    }
+
+    if (added == 0 || !player->SeekTrack(1) || !player->Play())
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Titel konnten nicht abgespielt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+    RefreshQueueAsync();
+  });
+}
+
 void NosonBackend::RefreshAlarmsAsync()
 {
   tasks_.Push([this] {

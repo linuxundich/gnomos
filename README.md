@@ -39,7 +39,8 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Favorites, with search
 - Alarms: create, edit, enable/disable, delete, with a sound preview
 - A play history tab (tracked locally, since Sonos doesn't keep one)
-- Local music library browsing, with an album/artist cover art grid
+- Local music library browsing, with an album/artist cover art grid, and
+  "play all"/"add all to queue" for a track listing
 - Third-party services (Spotify, bonob and other SMAPI-based services)
   through Sonos's own account-linking flow
 - MPRIS2 integration, so GNOME's media keys, the Quick Settings player
@@ -48,7 +49,8 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Light/dark appearance override, adjustable cover art cache size
 - Keyboard shortcuts for play/pause, next/previous, volume and mute
 - A responsive window: both side panels tuck away behind a toggle button
-  once the window gets narrow
+  once the window gets narrow, and remembers its size across restarts
+- Optional desktop notifications on track change
 
 ## Hardware support
 

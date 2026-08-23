@@ -165,6 +165,14 @@ public:
   void AddLibraryItemToQueue(unsigned index);
   // Same "insert right after the current track" semantics as PlayFavoriteNext().
   void PlayLibraryItemNext(unsigned index);
+  // Both operate on every entry GetLibraryEntries() currently returns (a
+  // fully-browsed leaf level, e.g. an album's track list) — GnomosWindow
+  // only ever offers these when the level has no containers left to
+  // navigate into. AddAllLibraryItemsToQueue() appends without disturbing
+  // playback, same as AddLibraryItemToQueue(); PlayAllLibraryItemsAsync()
+  // replaces the queue outright and starts playing from the first item.
+  void AddAllLibraryItemsToQueue();
+  void PlayAllLibraryItemsAsync();
 
   // Third-party service linking (Spotify, bonob, ...). AppLink/DeviceLink
   // services need this before they'll browse — see the "Third-party
