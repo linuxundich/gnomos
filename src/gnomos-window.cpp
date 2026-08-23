@@ -798,7 +798,18 @@ void GnomosWindow::OnNowPlayingChanged()
 {
   NowPlaying np = backend_->GetNowPlaying();
   player_bar_.Update(np);
-  current_queue_index_ = (np.valid && np.playing_from_queue) ? static_cast<int>(np.current_queue_index) : -1;
+  // Skipped while TransportState::Transitioning — np.playing_from_queue is
+  // *always* false for that one event (CurrentTrack/AVTransportURI are
+  // unreliable mid-transition; see RefreshNowPlayingLocked()'s own
+  // comment), not just during a real track change but also, confirmed
+  // live, during a plain seek within the current track. Blindly applying
+  // that momentary false flashed both the queue highlight and the
+  // "Weiter: …" hint off and back on a moment later — a visible layout
+  // jump in the player bar. Keeping the previous value until a settled
+  // (non-Transitioning) event confirms the real one avoids that without
+  // ever risking a wrong value being shown instead.
+  if (np.state != TransportState::Transitioning)
+    current_queue_index_ = (np.valid && np.playing_from_queue) ? static_cast<int>(np.current_queue_index) : -1;
   queue_view_.SetCurrentIndex(current_queue_index_);
   UpdateNextTrackHint();
   RecordHistoryIfTrackChanged(np);

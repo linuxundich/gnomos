@@ -9,6 +9,7 @@
 #include <glibmm/bytes.h>
 #include <glibmm/error.h>
 #include <glibmm/main.h>
+#include <gtkmm/centerbox.h>
 #include <gtkmm/separator.h>
 #include <pangomm/layout.h>
 
@@ -135,7 +136,16 @@ PlayerBar::PlayerBar()
   adw_clamp_set_child(ADW_CLAMP(seek_clamp), GTK_WIDGET(seek_row->gobj()));
   append(*Glib::wrap(seek_clamp));
 
-  auto* bar = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 14);
+  // Gtk::CenterBox, not a plain hexpand()'d Box — a CenterBox keeps its
+  // center child at the true visual center of the *whole* bar regardless
+  // of how wide the start/end children are, growing the wider side's own
+  // margin to compensate. A plain Box only centers transport_row within
+  // whatever space happens to be left between info_box and secondary_row,
+  // which visibly drifted off-center whenever those two differed in width
+  // (info_box, with cover art + title/artist, is almost always the wider
+  // one) — confirmed live, this is what GNOME Music's own PlayerToolbar
+  // uses GtkActionBar for.
+  auto* bar = Gtk::make_managed<Gtk::CenterBox>();
   bar->set_margin_top(4);
   bar->set_margin_bottom(8);
   bar->set_margin_start(14);
@@ -193,15 +203,12 @@ PlayerBar::PlayerBar()
   text_box->append(next_track_label_);
 
   info_box->append(*text_box);
-  bar->append(*info_box);
+  bar->set_start_widget(*info_box);
 
-  // --- Center: the transport row, centered in whatever width is left
-  // between the two side columns (the seek bar itself lives in its own
-  // full-width row above this one — see seek_clamp above). ---
-  auto* center_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
-  center_box->set_hexpand(true);
-  center_box->set_valign(Gtk::Align::CENTER);
-
+  // --- Center: the transport row (the seek bar itself lives in its own
+  // full-width row above this one — see seek_clamp above). Handed to
+  // CenterBox as its center widget directly, no wrapping Box needed —
+  // CenterBox does the true-centering, not this row itself. ---
   auto* transport_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 10);
   transport_row->set_halign(Gtk::Align::CENTER);
   transport_row->set_valign(Gtk::Align::CENTER);
@@ -252,9 +259,7 @@ PlayerBar::PlayerBar()
   repeat_button_.signal_clicked().connect([this] { signal_repeat_clicked_.emit(); });
   transport_row->append(repeat_button_);
 
-  center_box->append(*transport_row);
-
-  bar->append(*center_box);
+  bar->set_center_widget(*transport_row);
 
   // --- Right: favorite + mute + volume, a fixed-ish-width column. ---
   auto* secondary_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
@@ -289,7 +294,7 @@ PlayerBar::PlayerBar()
   });
   secondary_row->append(volume_scale_);
 
-  bar->append(*secondary_row);
+  bar->set_end_widget(*secondary_row);
 
   SetEnabled(false);
 }

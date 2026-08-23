@@ -205,6 +205,28 @@ reordering would introduce a use-after-free.
   volume slider tooltip now also shows the percentage.
 - The track details dialog's existing "Interpret suchen" button now has an
   "Album suchen" counterpart alongside it.
+- The `bar` row (info / transport / volume) is now a `Gtk::CenterBox`
+  instead of a plain hexpand()'d `Gtk::Box` — a plain Box only centers
+  `transport_row` within whatever space is left between `info_box` and
+  `secondary_row`, which visibly drifted off the bar's true center
+  whenever those two differed in width (`info_box`, with cover art +
+  title/artist, is almost always the wider one). `Gtk::CenterBox` keeps
+  its center child at the actual visual center of the whole bar
+  regardless, the same guarantee GNOME Music's own `PlayerToolbar` gets
+  from `GtkActionBar`.
+- Fixed a layout jump in the player bar while seeking: a seek (not just a
+  real track change) briefly puts the transport into
+  `TransportState::Transitioning`, during which
+  `AVTProperty::CurrentTrack`/`AVTransportURI` are unreliable — so
+  `RefreshNowPlayingLocked()` already forces `playing_from_queue = false`
+  for that one event (see the bug list below). `OnNowPlayingChanged()`
+  was applying that momentary `false` directly to `current_queue_index_`,
+  which hid the "Weiter: …" hint and the queue highlight for one event
+  and then restored them once the next, settled event arrived — a visible
+  jump confirmed live while dragging the seek bar. Fixed by skipping the
+  `current_queue_index_` update entirely while `Transitioning`, keeping
+  the previous (correct) value on screen until a settled event confirms
+  the real one, rather than ever showing a known-wrong intermediate value.
 
 ## Bugs found during hardware testing
 
