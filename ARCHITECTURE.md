@@ -158,6 +158,21 @@ reordering would introduce a use-after-free.
   guarantee `TaskQueue` already provides means any other action on that
   room queues up behind it and only runs after, so this can't race a
   meanwhile-started unrelated playback.
+- **Library browse cache.** Every navigation into or back out of a level
+  — local library or a third-party service alike — was a fresh network
+  round trip, even revisiting a level browsed moments ago; this was the
+  single biggest contributor to browsing feeling sluggish.
+  `BrowseLibraryAsync()`/`BrowseActiveServiceLocked()` now serve an
+  already-fetched level straight from `library_cache_` (keyed by
+  object_id, or `"<service id>\x1f<object_id>"` inside a service — a bare
+  object_id isn't necessarily unique across services) instead of
+  re-fetching. The local-library side is invalidated outright on a real
+  `SVCEvent_ContentDirectoryChanged` (new music scanned, a playlist
+  edited elsewhere); third-party services have no equivalent
+  change-notification Gnomos can act on, so those entries instead expire
+  on a 5-minute TTL. Capped at 300 cached levels (dropped outright past
+  that, rather than real LRU bookkeeping) so a very long session can't
+  grow this unbounded.
 
 ## Bugs found during hardware testing
 

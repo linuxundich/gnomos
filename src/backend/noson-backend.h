@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -312,6 +313,14 @@ private:
   void ApplyVolumeAsync(uint8_t value);
   void ApplyRoomVolumeAsync(const std::string& player_uuid, uint8_t value);
 
+  // Clears library_cache_ — called when the household's ContentDirectory
+  // actually changes (SVCEvent_ContentDirectoryChanged in
+  // HandleSystemEvent()), so a real change (new music scanned, a playlist
+  // edited elsewhere) is reflected on the next visit to an affected level
+  // instead of serving a stale cached copy for up to the TTL. Worker-
+  // thread only, like library_cache_ itself.
+  void InvalidateLibraryCache();
+
   NSROOT::PlayerPtr SnapshotPlayer() const;
   NSROOT::ZonePtr SnapshotZone() const;
 
@@ -453,6 +462,35 @@ private:
   // mutex: nothing else ever reads or writes it.
   std::unique_ptr<NSROOT::SMAPI> active_smapi_;
   NSROOT::SMServicePtr active_service_;
+
+  // Browse-result cache, keyed by object_id (or, inside a third-party
+  // service, "<service id>\x1f<object_id>" — a bare object_id isn't
+  // necessarily unique across services). Every level BrowseLibraryAsync()/
+  // BrowseActiveServiceLocked() has already fetched once is served
+  // straight from here on a repeat visit instead of a fresh network round
+  // trip — the local browse tree rarely changes mid-session, and
+  // navigating back into a level you just left (or revisiting a sibling)
+  // is by far the most common pattern, not the exception. TTL-bounded
+  // rather than purely event-invalidated: SVCEvent_ContentDirectoryChanged
+  // (see HandleSystemEvent()) clears it outright for the local-library
+  // case, but nothing plays that role for a third-party service's own
+  // catalog, so a bounded staleness window covers that gap too. Only ever
+  // touched on the TaskQueue worker thread, same as active_smapi_ above —
+  // no mutex needed for the same reason.
+  struct CachedLibraryLevel
+  {
+    std::vector<LibraryEntry> entries;
+    std::vector<NSROOT::DigitalItemPtr> raw;
+    std::chrono::steady_clock::time_point fetched_at;
+  };
+  std::map<std::string, CachedLibraryLevel> library_cache_;
+  // Prepends the active service's id, if any — see library_cache_'s own
+  // comment. Worker-thread only, same as active_smapi_/active_service_.
+  std::string LibraryCacheKey(const std::string& object_id) const;
+  bool GetCachedLibraryLevel(const std::string& object_id, std::vector<LibraryEntry>& out_entries,
+                              std::vector<NSROOT::DigitalItemPtr>& out_raw) const;
+  void StoreLibraryCacheLevel(const std::string& object_id, const std::vector<LibraryEntry>& entries,
+                               const std::vector<NSROOT::DigitalItemPtr>& raw);
 
   TaskQueue tasks_;
 };

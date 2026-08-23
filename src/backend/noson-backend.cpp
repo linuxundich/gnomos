@@ -1336,6 +1336,53 @@ void NosonBackend::DeleteFavorite(unsigned index)
 // which needs the same prefix to push a matching breadcrumb after a
 // successful service link).
 
+namespace
+{
+// Cached levels older than this are treated as a miss and re-fetched —
+// covers third-party services, which have no change-notification Gnomos
+// can act on (unlike the local library, invalidated outright by
+// InvalidateLibraryCache() on a real SVCEvent_ContentDirectoryChanged).
+constexpr auto kLibraryCacheTtl = std::chrono::minutes(5);
+// Simple cap: if exceeded, the whole cache is dropped rather than
+// maintaining real LRU bookkeeping — browsing this many distinct levels
+// in one session is already an edge case, not a pattern worth optimizing
+// for.
+constexpr size_t kMaxLibraryCacheEntries = 300;
+}  // namespace
+
+std::string NosonBackend::LibraryCacheKey(const std::string& object_id) const
+{
+  if (active_smapi_ && active_service_)
+    return active_service_->GetId() + "\x1f" + object_id;
+  return object_id;
+}
+
+bool NosonBackend::GetCachedLibraryLevel(const std::string& object_id, std::vector<LibraryEntry>& out_entries,
+                                          std::vector<NSROOT::DigitalItemPtr>& out_raw) const
+{
+  auto it = library_cache_.find(LibraryCacheKey(object_id));
+  if (it == library_cache_.end())
+    return false;
+  if (std::chrono::steady_clock::now() - it->second.fetched_at > kLibraryCacheTtl)
+    return false;
+  out_entries = it->second.entries;
+  out_raw = it->second.raw;
+  return true;
+}
+
+void NosonBackend::StoreLibraryCacheLevel(const std::string& object_id, const std::vector<LibraryEntry>& entries,
+                                           const std::vector<NSROOT::DigitalItemPtr>& raw)
+{
+  if (library_cache_.size() >= kMaxLibraryCacheEntries)
+    library_cache_.clear();
+  library_cache_[LibraryCacheKey(object_id)] = {entries, raw, std::chrono::steady_clock::now()};
+}
+
+void NosonBackend::InvalidateLibraryCache()
+{
+  library_cache_.clear();
+}
+
 void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
 {
   if (object_id.empty())
@@ -1443,6 +1490,21 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       return;
     }
 
+    {
+      std::vector<LibraryEntry> cached_entries;
+      std::vector<NSROOT::DigitalItemPtr> cached_raw;
+      if (GetCachedLibraryLevel(object_id, cached_entries, cached_raw))
+      {
+        {
+          std::lock_guard<std::mutex> lock(state_mutex_);
+          library_entries_ = std::move(cached_entries);
+          library_raw_ = std::move(cached_raw);
+        }
+        library_dispatcher_.emit();
+        return;
+      }
+    }
+
     NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
     // Not calling browser.Browse(0, 200) again here — same false-failure-
     // on-empty issue documented in RefreshQueueAsync() (an empty library
@@ -1469,6 +1531,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       raw.push_back(item);
     }
 
+    StoreLibraryCacheLevel(object_id, entries, raw);
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       library_entries_ = std::move(entries);
@@ -1617,6 +1680,21 @@ void NosonBackend::SearchLocalLibraryAsync(const std::string& object_id, const s
 
 void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
 {
+  {
+    std::vector<LibraryEntry> cached_entries;
+    std::vector<NSROOT::DigitalItemPtr> cached_raw;
+    if (GetCachedLibraryLevel(id, cached_entries, cached_raw))
+    {
+      {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        library_entries_ = std::move(cached_entries);
+        library_raw_ = std::move(cached_raw);
+      }
+      library_dispatcher_.emit();
+      return;
+    }
+  }
+
   // Same per-call-replace vs. accumulate-ourselves pagination as
   // SearchActiveServiceAsync() — see its comment for why.
   std::vector<LibraryEntry> entries;
@@ -1668,6 +1746,7 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
     return;
   }
 
+  StoreLibraryCacheLevel(id, entries, raw);
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     library_entries_ = std::move(entries);
@@ -2553,7 +2632,15 @@ void NosonBackend::HandleSystemEvent()
     RefreshGen1StatusAsync();
   }
   if (mask & NSROOT::SVCEvent_ContentDirectoryChanged)
+  {
     RefreshFavoritesAsync();
+    // Runs on the worker thread (tasks_.Push()), not directly here —
+    // library_cache_ is worker-thread-only, same as active_smapi_ (see
+    // its own declaration comment). A real household library change
+    // (new music scanned, a playlist edited elsewhere) shouldn't keep
+    // showing a stale cached level until the TTL happens to expire.
+    tasks_.Push([this] { InvalidateLibraryCache(); });
+  }
   if (mask & NSROOT::SVCEvent_AlarmClockChanged)
     RefreshAlarmsAsync();
   // (This ContentDirectoryChanged is the household-wide one, e.g. a
