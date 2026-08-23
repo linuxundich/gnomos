@@ -48,6 +48,11 @@ public:
 
   std::vector<ZoneInfo> Zones() const;
   std::vector<RoomInfo> Rooms() const;
+  // Synchronous, unlike almost every other query here — see DeviceInfo's
+  // own comment for why no network round trip is needed. Returns a
+  // default-constructed (all-empty) DeviceInfo if player_uuid isn't a
+  // currently known room.
+  DeviceInfo GetDeviceInfo(const std::string& player_uuid) const;
 
   // Makes the room join the currently selected zone's group (as a
   // satellite of that zone's coordinator), or leave whatever group it's
@@ -144,6 +149,7 @@ public:
   void SetLoudness(bool enabled);
   void SetNightmode(bool enabled);
   void SetOutputFixed(bool enabled);
+  void SetSubGain(int16_t value);
   // Write-only, like PlayLineIn()/PlayDigitalIn() — libnoson has no
   // GetLEDState() to show a current value with.
   void SetLedState(bool enabled);
@@ -205,6 +211,18 @@ public:
   // replaces the queue outright and starts playing from the first item.
   void AddAllLibraryItemsToQueue();
   void PlayAllLibraryItemsAsync();
+  // System::DestroySavedQueue() against library_entries_[index]'s own
+  // object_id — GnomosWindow only offers this while browsing "SQ:" (the
+  // "Playlisten" root), where every entry's object_id really is a
+  // destroyable saved-queue id, unlike any other library level.
+  void DeleteLibraryPlaylist(unsigned index);
+  // System::CreateRadio() — adds a custom internet radio stream, which
+  // then shows up browsing "R:0/0" ("Radiosender") alongside the built-in
+  // directory, same namespace either way (confirmed in CreateRadio()'s own
+  // implementation — it creates the object under the same ContentSearch
+  // root "R:0/0" already browses). streamURL must be an http(s) URL —
+  // System::CreateRadio() itself validates and rejects anything else.
+  void AddRadioStation(const std::string& title, const std::string& stream_url);
 
   // Third-party service linking (Spotify, bonob, ...). AppLink/DeviceLink
   // services need this before they'll browse — see the "Third-party

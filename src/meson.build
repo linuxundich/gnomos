@@ -6,6 +6,7 @@ gnomos_sources = files(
   'backend/noson-backend.cpp',
   'widgets/alarms-view.cpp',
   'widgets/art-cache.cpp',
+  'widgets/artist-image-fetcher.cpp',
   'widgets/cover-thumbnail.cpp',
   'widgets/favorites-view.cpp',
   'widgets/history-view.cpp',
@@ -19,6 +20,6 @@ executable(
   gnomos_sources,
   config_h,
   include_directories: config_inc,
-  dependencies: [gtkmm_dep, adwaita_dep, noson_dep],
+  dependencies: [gtkmm_dep, adwaita_dep, noson_dep, json_glib_dep],
   install: true,
 )

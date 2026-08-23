@@ -26,6 +26,10 @@ public:
   AlarmsView();
 
   void SetItems(const std::vector<AlarmInfo>& items);
+  // The soonest upcoming enabled alarm's own summary text (computed by
+  // GnomosWindow — see NextAlarmSummary()), or empty to hide the label
+  // entirely (no enabled alarms at all).
+  void SetNextAlarmLabel(const std::string& text);
   void Clear();
 
   sigc::signal<void(std::string, bool)>& signal_enabled_toggled() { return signal_enabled_toggled_; }
@@ -42,6 +46,7 @@ public:
   sigc::signal<void(std::string)>& signal_duplicate_requested() { return signal_duplicate_requested_; }
 
 private:
+  Gtk::Label next_alarm_label_;
   Gtk::Button add_button_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;

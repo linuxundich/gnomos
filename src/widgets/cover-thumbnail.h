@@ -30,10 +30,27 @@ public:
   // Empty uri shows the fallback icon. Safe to call repeatedly (e.g. from
   // a recycled row) — a superseded in-flight load is cancelled.
   void SetArtUri(const std::string& uri);
+  // What to show for an empty uri or a failed load — a generic note glyph
+  // by default, but LibraryEntry::icon_name (derived from the item's own
+  // DIDL subType — artist/album/genre/playlist/folder) gives a much more
+  // specific, GNOME-consistent icon per entry when the caller knows one.
+  // Call before SetArtUri() (or it won't take effect until the next call,
+  // since SetArtUri() only re-renders the fallback for an already-empty
+  // uri if the uri actually *changes* — see its own early-return check).
+  void SetFallbackIconName(const std::string& icon_name);
+  // Resolves artist_name to a real photo via ArtistImageFetcher (Deezer —
+  // see its own header for the opt-in/privacy reasoning), then loads it
+  // the same way SetArtUri() would once resolved. Call this *instead of*
+  // SetArtUri() when the caller has both an artist-name hint and the
+  // "load artist images" preference on; the fallback icon (see
+  // SetFallbackIconName()) stays showing for however long the lookup
+  // takes, same as it would for any other pending load.
+  void LoadArtistImage(const std::string& artist_name);
 
 private:
   void OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::RefPtr<Gio::File>& file, unsigned generation);
 
+  std::string fallback_icon_name_ = "audio-x-generic-symbolic";
   std::string current_uri_;
   unsigned generation_ = 0;
   Glib::RefPtr<Gio::Cancellable> cancellable_;

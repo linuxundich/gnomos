@@ -58,15 +58,23 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Favorites, with search, "add to favorites" from anywhere in the library,
   and "play all"/"add all to queue" for the whole list
 - Alarms: create, edit, duplicate, enable/disable, delete, with a sound
-  preview
+  preview and a "next alarm" indicator
 - A play history tab (tracked locally, since Sonos doesn't keep one), with
   a quick "search the library" action per entry
 - Local music library browsing, with a toggle between list and cover art
   grid for Albums/Artists and similar (local and third-party services
-  alike), "play all"/"add all to queue" for a track listing, and a cache
-  so revisiting a level doesn't refetch it over the network every time
-- Fixed volume / line-out mode, alongside bass, treble, loudness and night
-  mode, for a device feeding a receiver or amp with its own volume control
+  alike), consistent GNOME iconography per category (artist/album/genre/
+  playlist), "play all"/"add all to queue" for a track listing, adding a
+  custom internet radio station, deleting a saved Sonos playlist, and a
+  cache so revisiting a level doesn't refetch it over the network every time
+- Optional real artist photos in the library, looked up by name against
+  Deezer's public API — off by default, since it's the one thing in this
+  app that leaves the local Sonos household (Settings → Bibliothek)
+- Fixed volume / line-out mode and sub gain, alongside bass, treble,
+  loudness and night mode, for a device feeding a receiver or amp with its
+  own volume control, or a paired Sonos Sub
+- A "Geräteinfo" dialog per room (IP, MAC, software version, model),
+  reached from the room picker's popover
 - Third-party services (Spotify, bonob and other SMAPI-based services)
   through Sonos's own account-linking flow
 - MPRIS2 integration, so GNOME's media keys, the Quick Settings player
@@ -100,10 +108,11 @@ Gnomos isn't packaged anywhere yet, so building from source is currently
 the only way to run it.
 
 Dependencies: `meson`, `ninja`, a C++17 compiler, `pkgconf`, `openssl`,
-`zlib`, `gtkmm-4.0` (>= 4.10) and `libadwaita-1` (>= 1.4). On Arch Linux:
+`zlib`, `gtkmm-4.0` (>= 4.10), `libadwaita-1` (>= 1.4) and `json-glib-1.0`.
+On Arch Linux:
 
 ```sh
-sudo pacman -S meson ninja gcc pkgconf openssl zlib gtkmm-4.0 libadwaita
+sudo pacman -S meson ninja gcc pkgconf openssl zlib gtkmm-4.0 libadwaita json-glib
 ```
 
 Then:

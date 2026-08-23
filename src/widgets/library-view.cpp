@@ -63,6 +63,17 @@ LibraryView::LibraryView()
   view_mode_button_.signal_clicked().connect([this] { signal_view_mode_toggled_.emit(); });
   header->append(view_mode_button_);
 
+  // Only ever shown while browsing "R:0/0" ("Radiosender") — see
+  // SetAddVisible(). Placed right before search, same "actions before the
+  // always-present rightmost search button" convention as play_all_button_/
+  // queue_all_button_ above.
+  add_button_.set_icon_name("list-add-symbolic");
+  add_button_.add_css_class("flat");
+  add_button_.set_tooltip_text("Radiosender hinzufügen");
+  add_button_.set_visible(false);
+  add_button_.signal_clicked().connect([this] { signal_add_requested_.emit(); });
+  header->append(add_button_);
+
   search_button_.set_icon_name("system-search-symbolic");
   search_button_.add_css_class("flat");
   search_button_.set_tooltip_text("Suchen");
@@ -122,7 +133,7 @@ LibraryView::LibraryView()
 }
 
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
-                              bool show_favorite_action)
+                              bool show_favorite_action, bool show_delete_action, bool load_artist_images)
 {
   Clear();
   count_label_.set_text(entries.empty()      ? ""
@@ -131,9 +142,9 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
   bool grid = grid_available && grid_active;
   scroller_.set_child(grid ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_));
   if (grid)
-    BuildGrid(entries);
+    BuildGrid(entries, load_artist_images);
   else
-    BuildList(entries, show_favorite_action);
+    BuildList(entries, show_favorite_action, show_delete_action, load_artist_images);
 
   view_mode_button_.set_visible(grid_available);
   // Icon/tooltip reflect the mode a click switches *to*, not the current
@@ -150,7 +161,8 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
   queue_all_button_.set_visible(all_leaf);
 }
 
-void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_favorite_action)
+void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_favorite_action,
+                             bool show_delete_action, bool load_artist_images)
 {
   for (size_t i = 0; i < entries.size(); ++i)
   {
@@ -162,7 +174,14 @@ void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_
     row_box->set_margin_end(6);
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>();
-    thumbnail->SetArtUri(entry.art_uri);
+    thumbnail->SetFallbackIconName(entry.icon_name);
+    // "avatar-default-symbolic" is exactly the icon IconNameForSubType()
+    // (noson-backend.cpp) assigns for an artist (DigitalItem::SubType_person)
+    // — the one entry type with no real art of its own to fall back to.
+    if (load_artist_images && entry.icon_name == "avatar-default-symbolic" && entry.art_uri.empty())
+      thumbnail->LoadArtistImage(entry.title);
+    else
+      thumbnail->SetArtUri(entry.art_uri);
     row_box->append(*thumbnail);
 
     auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
@@ -199,6 +218,21 @@ void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_
       row_box->append(*favorite_button);
     }
 
+    // Only ever true while browsing "SQ:" — see SetEntries()'s own
+    // comment. Every entry there is a container (a saved playlist), so
+    // this sits alongside the favorite button rather than inside the
+    // leaf-only branch below.
+    if (show_delete_action)
+    {
+      auto* delete_button = Gtk::make_managed<Gtk::Button>();
+      delete_button->set_icon_name("user-trash-symbolic");
+      delete_button->add_css_class("flat");
+      delete_button->set_valign(Gtk::Align::CENTER);
+      delete_button->set_tooltip_text("Playlist löschen");
+      delete_button->signal_clicked().connect([this, index] { signal_delete_requested_.emit(index); });
+      row_box->append(*delete_button);
+    }
+
     if (entry.is_container)
     {
       auto* chevron = Gtk::make_managed<Gtk::Image>();
@@ -229,7 +263,7 @@ void LibraryView::BuildList(const std::vector<LibraryEntry>& entries, bool show_
   }
 }
 
-void LibraryView::BuildGrid(const std::vector<LibraryEntry>& entries)
+void LibraryView::BuildGrid(const std::vector<LibraryEntry>& entries, bool load_artist_images)
 {
   for (const LibraryEntry& entry : entries)
   {
@@ -238,7 +272,13 @@ void LibraryView::BuildGrid(const std::vector<LibraryEntry>& entries)
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>(120);
     thumbnail->set_halign(Gtk::Align::CENTER);
-    thumbnail->SetArtUri(entry.art_uri);
+    thumbnail->SetFallbackIconName(entry.icon_name);
+    // See BuildList()'s identical check for why "avatar-default-symbolic"
+    // specifically is the signal to use here.
+    if (load_artist_images && entry.icon_name == "avatar-default-symbolic" && entry.art_uri.empty())
+      thumbnail->LoadArtistImage(entry.title);
+    else
+      thumbnail->SetArtUri(entry.art_uri);
     tile->append(*thumbnail);
 
     auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? "Unbenannt" : entry.title);
@@ -274,6 +314,11 @@ void LibraryView::SetLevelTitle(const std::string& title)
 void LibraryView::SetBackVisible(bool visible)
 {
   back_button_.set_visible(visible);
+}
+
+void LibraryView::SetAddVisible(bool visible)
+{
+  add_button_.set_visible(visible);
 }
 
 void LibraryView::Clear()

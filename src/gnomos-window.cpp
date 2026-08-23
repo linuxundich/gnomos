@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <ctime>
 #include <tuple>
 
 #include <gdk/gdkkeysyms.h>
@@ -25,6 +26,7 @@
 #include <gtkmm/dropdown.h>
 #include <gtkmm/editable.h>
 #include <gtkmm/entry.h>
+#include <gtkmm/grid.h>
 #include <gtkmm/image.h>
 #include <gtkmm/linkbutton.h>
 #include <gtkmm/scale.h>
@@ -284,6 +286,15 @@ GnomosWindow::GnomosWindow()
   });
   sound_box->append(*reset_eq_button);
 
+  add_sound_label("Sub-Pegel");
+  sub_gain_scale_.set_range(-15, 15);
+  sub_gain_scale_.set_digits(0);
+  sub_gain_scale_.signal_value_changed().connect([this] {
+    if (!suppress_sound_signals_)
+      backend_->SetSubGain(static_cast<int16_t>(sub_gain_scale_.get_value()));
+  });
+  sound_box->append(sub_gain_scale_);
+
   sound_box->append(*Gtk::make_managed<Gtk::Separator>());
 
   auto* loudness_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
@@ -514,6 +525,9 @@ GnomosWindow::GnomosWindow()
     backend_->AddLibraryItemToFavorites(index);
     ShowToast("Zu Favoriten hinzugefügt");
   });
+  library_view_.signal_delete_requested().connect(
+      sigc::mem_fun(*this, &GnomosWindow::ShowDeletePlaylistConfirmDialog));
+  library_view_.signal_add_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowAddRadioStationDialog));
   library_view_.signal_play_all_requested().connect([this] { backend_->PlayAllLibraryItemsAsync(); });
   library_view_.signal_queue_all_requested().connect([this] {
     backend_->AddAllLibraryItemsToQueue();
@@ -655,6 +669,7 @@ GnomosWindow::GnomosWindow()
   LoadColorScheme();
   LoadNotificationSetting();
   LoadLibraryViewPreference();
+  LoadArtistImagesSetting();
 
   // Space = play/pause — see OnKeyPressed()'s header comment for why a
   // focused-Editable check is needed alongside the keyval check.
@@ -932,6 +947,17 @@ void GnomosWindow::OnZonesChanged()
       badge->add_css_class("caption");
       row_box->append(*badge);
     }
+
+    auto* info_button = Gtk::make_managed<Gtk::Button>();
+    info_button->set_icon_name("dialog-information-symbolic");
+    info_button->add_css_class("flat");
+    info_button->set_valign(Gtk::Align::CENTER);
+    info_button->set_tooltip_text("Geräteinfo");
+    std::string coordinator_uuid = zone.coordinator_uuid;
+    std::string zone_name = zone.display_name;
+    info_button->signal_clicked().connect(
+        [this, coordinator_uuid, zone_name] { ShowDeviceInfoDialog(coordinator_uuid, zone_name); });
+    row_box->append(*info_button);
 
     zones_list_box_.append(*row_box);
 
@@ -1244,6 +1270,52 @@ void GnomosWindow::SetPreferGridView(bool prefer_grid)
   }
 }
 
+void GnomosWindow::LoadArtistImagesSetting()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    load_artist_images_ = keyfile->get_boolean("library", "load_artist_images");
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no setting saved yet, stays off (the default)
+  }
+}
+
+void GnomosWindow::SetLoadArtistImages(bool enabled)
+{
+  load_artist_images_ = enabled;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_boolean("library", "load_artist_images", enabled);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the setting won't be remembered next launch
+  }
+  // Takes effect immediately if "Interpreten" (or any other level with
+  // artist-typed entries) happens to be the currently displayed one —
+  // harmless no-op re-render otherwise, same as toggling prefer_grid_view_
+  // already does unconditionally.
+  OnLibraryChanged();
+}
+
 void GnomosWindow::LoadNotificationSetting()
 {
   auto keyfile = Glib::KeyFile::create();
@@ -1383,9 +1455,95 @@ void GnomosWindow::OnFavoritesChanged()
   favorites_view_.SetItems(backend_->GetFavorites());
 }
 
+namespace
+{
+// Recurrence strings are comma-separated 3-letter day abbreviations (see
+// NSROOT::DayTable in alarm.h) — substring search is safe here since none
+// of the seven tokens is a substring of another.
+std::vector<int> ParseRecurrenceDays(const std::string& recurrence)
+{
+  static const std::array<std::pair<const char*, int>, 7> kDayTokens = {{
+      {"SUN", 0},
+      {"MON", 1},
+      {"TUE", 2},
+      {"WED", 3},
+      {"THU", 4},
+      {"FRI", 5},
+      {"SAT", 6},
+  }};
+  std::vector<int> days;
+  for (const auto& [token, value] : kDayTokens)
+    if (recurrence.find(token) != std::string::npos)
+      days.push_back(value);
+  return days;
+}
+
+// Soonest enabled alarm's own summary ("Heute, 07:00 Uhr — Küche" /
+// "Morgen, ..." / a weekday name), or empty if there are no enabled
+// alarms with parseable recurrence days — an alarm using a recurrence
+// Gnomos never itself generates (e.g. a literal "ONCE" from the official
+// Sonos app rather than a day list) is silently skipped rather than
+// guessed at, since ParseRecurrenceDays() would return no days for it.
+std::string NextAlarmSummary(const std::vector<AlarmInfo>& alarms)
+{
+  std::time_t now_time = std::time(nullptr);
+  std::tm now_tm{};
+  localtime_r(&now_time, &now_tm);
+  int now_wday = now_tm.tm_wday;
+  int now_minutes = now_tm.tm_hour * 60 + now_tm.tm_min;
+
+  static const std::array<const char*, 7> kWeekdayNames = {"Sonntag",     "Montag", "Dienstag", "Mittwoch",
+                                                             "Donnerstag", "Freitag", "Samstag"};
+
+  int best_day_offset = -1;
+  int best_minutes = -1;
+  const AlarmInfo* best_alarm = nullptr;
+  for (const AlarmInfo& alarm : alarms)
+  {
+    if (!alarm.enabled)
+      continue;
+    int hour = 0, minute = 0;
+    if (std::sscanf(alarm.start_time.c_str(), "%d:%d", &hour, &minute) != 2)
+      continue;
+    int alarm_minutes = hour * 60 + minute;
+    std::vector<int> days = ParseRecurrenceDays(alarm.recurrence);
+    if (days.empty())
+      continue;
+    for (int offset = 0; offset < 8; ++offset)
+    {
+      int wday = (now_wday + offset) % 7;
+      if (std::find(days.begin(), days.end(), wday) == days.end())
+        continue;
+      if (offset == 0 && alarm_minutes < now_minutes)
+        continue;  // today's own slot already passed — next real match is a week from now
+      if (best_day_offset < 0 || offset < best_day_offset ||
+          (offset == best_day_offset && alarm_minutes < best_minutes))
+      {
+        best_day_offset = offset;
+        best_minutes = alarm_minutes;
+        best_alarm = &alarm;
+      }
+      break;  // this alarm's own soonest occurrence found — move to the next alarm
+    }
+  }
+
+  if (!best_alarm)
+    return "";
+
+  char time_buf[16];
+  std::snprintf(time_buf, sizeof(time_buf), "%02d:%02d", best_minutes / 60, best_minutes % 60);
+  std::string when = best_day_offset == 0    ? "Heute"
+                      : best_day_offset == 1 ? "Morgen"
+                                              : kWeekdayNames[(now_wday + best_day_offset) % 7];
+  return when + ", " + time_buf + " Uhr — " + best_alarm->room_name;
+}
+}  // namespace
+
 void GnomosWindow::OnAlarmsChanged()
 {
-  alarms_view_.SetItems(backend_->GetAlarms());
+  std::vector<AlarmInfo> alarms = backend_->GetAlarms();
+  alarms_view_.SetItems(alarms);
+  alarms_view_.SetNextAlarmLabel(NextAlarmSummary(alarms));
 }
 
 void GnomosWindow::OnAlarmEditRequested(std::string alarm_id)
@@ -1430,9 +1588,14 @@ void GnomosWindow::OnLibraryChanged()
 
   // Favoriting only offered below the true root — "Interpreten"/"Alben"/...
   // are static categories, not real content Sonos has anything to favorite.
-  library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_, library_stack_.size() > 1);
+  // Deletion only offered browsing "SQ:" itself, where every entry really
+  // is a destroyable saved playlist.
+  const std::string& current_object_id = library_stack_.back().first;
+  library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_, library_stack_.size() > 1,
+                            current_object_id == "SQ:", load_artist_images_);
   library_view_.SetLevelTitle(library_stack_.back().second);
   library_view_.SetBackVisible(library_stack_.size() > 1);
+  library_view_.SetAddVisible(current_object_id == "R:0/0");
 
   // Root level specifically — see library_root_entries_'s own comment for
   // why this can't just reuse current_library_entries_ unconditionally
@@ -1555,29 +1718,86 @@ void GnomosWindow::RebuildGroupingPopover()
   }
 }
 
-namespace
+void GnomosWindow::ShowDeviceInfoDialog(std::string player_uuid, std::string room_name)
 {
-// Recurrence strings are comma-separated 3-letter day abbreviations (see
-// NSROOT::DayTable in alarm.h) — substring search is safe here since none
-// of the seven tokens is a substring of another.
-std::vector<int> ParseRecurrenceDays(const std::string& recurrence)
-{
-  static const std::array<std::pair<const char*, int>, 7> kDayTokens = {{
-      {"SUN", 0},
-      {"MON", 1},
-      {"TUE", 2},
-      {"WED", 3},
-      {"THU", 4},
-      {"FRI", 5},
-      {"SAT", 6},
-  }};
-  std::vector<int> days;
-  for (const auto& [token, value] : kDayTokens)
-    if (recurrence.find(token) != std::string::npos)
-      days.push_back(value);
-  return days;
+  DeviceInfo info = backend_->GetDeviceInfo(player_uuid);
+
+  auto* dialog = new Gtk::Window();
+  dialog->set_title("Geräteinfo");
+  dialog->set_transient_for(*this);
+  dialog->set_modal(true);
+  dialog->set_default_size(320, -1);
+
+  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+  content->set_margin_top(18);
+  content->set_margin_bottom(18);
+  content->set_margin_start(18);
+  content->set_margin_end(18);
+
+  auto* heading = Gtk::make_managed<Gtk::Label>(room_name);
+  heading->set_wrap(true);
+  heading->add_css_class("title-2");
+  heading->set_halign(Gtk::Align::START);
+  content->append(*heading);
+
+  if (info.is_gen1)
+  {
+    auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
+    badge->add_css_class("dim-label");
+    badge->add_css_class("caption");
+    badge->set_halign(Gtk::Align::START);
+    content->append(*badge);
+  }
+
+  auto* grid = Gtk::make_managed<Gtk::Grid>();
+  grid->set_row_spacing(6);
+  grid->set_column_spacing(12);
+  grid->set_margin_top(6);
+
+  // (label, value) — a field libnoson couldn't resolve (e.g. an offline
+  // room that dropped out of the topology between opening the popover and
+  // clicking its info button) shows as "—" rather than an empty cell.
+  const std::vector<std::pair<std::string, std::string>> fields = {
+      {"Modell", info.model_number.empty() ? "—" : info.model_number},
+      {"IP-Adresse", info.ip.empty() ? "—" : info.ip},
+      {"MAC-Adresse", info.mac.empty() ? "—" : info.mac},
+      {"Software-Version", info.software_version.empty() ? "—" : info.software_version},
+  };
+  int row = 0;
+  for (const auto& [label_text, value_text] : fields)
+  {
+    auto* label = Gtk::make_managed<Gtk::Label>(label_text);
+    label->set_halign(Gtk::Align::START);
+    label->add_css_class("dim-label");
+    grid->attach(*label, 0, row);
+
+    auto* value = Gtk::make_managed<Gtk::Label>(value_text);
+    value->set_halign(Gtk::Align::START);
+    value->set_selectable(true);
+    grid->attach(*value, 1, row);
+    ++row;
+  }
+  content->append(*grid);
+
+  auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  button_box->set_halign(Gtk::Align::END);
+  button_box->set_margin_top(6);
+  auto* copy_button = Gtk::make_managed<Gtk::Button>("Kopieren");
+  std::string clipboard_text = room_name + "\nModell: " + (info.model_number.empty() ? "—" : info.model_number) +
+                                "\nIP-Adresse: " + (info.ip.empty() ? "—" : info.ip) +
+                                "\nMAC-Adresse: " + (info.mac.empty() ? "—" : info.mac) +
+                                "\nSoftware-Version: " + (info.software_version.empty() ? "—" : info.software_version);
+  copy_button->signal_clicked().connect([this, clipboard_text] { get_clipboard()->set_text(clipboard_text); });
+  button_box->append(*copy_button);
+  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
+  close_button->add_css_class("suggested-action");
+  close_button->signal_clicked().connect([dialog] { dialog->close(); });
+  button_box->append(*close_button);
+  content->append(*button_box);
+
+  dialog->set_child(*content);
+  dialog->present();
 }
-}  // namespace
 
 void GnomosWindow::ShowAddAlarmDialog()
 {
@@ -1829,6 +2049,8 @@ void GnomosWindow::OnSoundSettingsChanged()
   suppress_sound_signals_ = true;
   bass_scale_.set_value(settings.bass);
   treble_scale_.set_value(settings.treble);
+  sub_gain_scale_.set_sensitive(settings.sub_gain_supported);
+  sub_gain_scale_.set_value(settings.sub_gain);
   suppress_sound_signals_ = false;
 
   // set_active()/set_state() called programmatically don't trigger
@@ -2039,6 +2261,23 @@ void GnomosWindow::ShowSettingsDialog()
                          DeleteVoidCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(cache_group), clear_row);
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(cache_group));
+
+  // --- Bibliothek ---
+  GtkWidget* library_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(library_group), "Bibliothek");
+
+  GtkWidget* artist_images_row = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(artist_images_row), "Künstlerbilder laden");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(artist_images_row),
+      "Sendet Künstlernamen ohne Coverbild an die öffentliche Deezer-API, um ein Foto zu finden");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(artist_images_row), load_artist_images_);
+  g_signal_connect_data(
+      artist_images_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
+      new std::function<void(bool)>([this](bool active) { SetLoadArtistImages(active); }), DeleteBoolCallback,
+      static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), artist_images_row);
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(library_group));
 
   adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
@@ -2341,6 +2580,73 @@ void GnomosWindow::ShowDeleteFavoriteConfirmDialog(unsigned index)
                                                                                     : "diesen Favoriten";
   ShowConfirmDialog("Favorit löschen?", "„" + title + "“ wirklich aus den Favoriten löschen?", "Löschen",
                      [this, index] { backend_->DeleteFavorite(index); });
+}
+
+void GnomosWindow::ShowDeletePlaylistConfirmDialog(unsigned index)
+{
+  std::string title = index < current_library_entries_.size() && !current_library_entries_[index].title.empty()
+                           ? current_library_entries_[index].title
+                           : "diese Playlist";
+  ShowConfirmDialog("Playlist löschen?", "„" + title + "“ wirklich löschen?", "Löschen", [this, index] {
+    backend_->DeleteLibraryPlaylist(index);
+    // DeleteLibraryPlaylist() runs on the same serial tasks_ worker this
+    // browse gets queued on, so it always executes first — see that
+    // method's own comment for why NosonBackend can't just do this itself.
+    backend_->BrowseLibraryAsync(library_stack_.back().first);
+  });
+}
+
+void GnomosWindow::ShowAddRadioStationDialog()
+{
+  auto* dialog = new Gtk::Window();
+  dialog->set_title("Radiosender hinzufügen");
+  dialog->set_transient_for(*this);
+  dialog->set_modal(true);
+  dialog->set_default_size(360, -1);
+
+  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+  content->set_margin_top(18);
+  content->set_margin_bottom(18);
+  content->set_margin_start(18);
+  content->set_margin_end(18);
+
+  auto* title_label = Gtk::make_managed<Gtk::Label>("Name");
+  title_label->set_halign(Gtk::Align::START);
+  content->append(*title_label);
+  auto* title_entry = Gtk::make_managed<Gtk::Entry>();
+  content->append(*title_entry);
+
+  auto* url_label = Gtk::make_managed<Gtk::Label>("Stream-URL");
+  url_label->set_halign(Gtk::Align::START);
+  content->append(*url_label);
+  auto* url_entry = Gtk::make_managed<Gtk::Entry>();
+  url_entry->set_placeholder_text("http://...");
+  content->append(*url_entry);
+
+  auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  button_box->set_halign(Gtk::Align::END);
+  button_box->set_margin_top(6);
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
+  button_box->append(*cancel_button);
+  auto* confirm_button = Gtk::make_managed<Gtk::Button>("Hinzufügen");
+  confirm_button->add_css_class("suggested-action");
+  confirm_button->signal_clicked().connect([this, dialog, title_entry, url_entry] {
+    std::string title = title_entry->get_text();
+    std::string url = url_entry->get_text();
+    if (title.empty() || url.empty())
+      return;
+    backend_->AddRadioStation(title, url);
+    // Same reasoning as ShowDeletePlaylistConfirmDialog()'s own re-browse —
+    // AddRadioStation() is queued first on the same serial worker.
+    backend_->BrowseLibraryAsync(library_stack_.back().first);
+    dialog->close();
+  });
+  button_box->append(*confirm_button);
+  content->append(*button_box);
+
+  dialog->set_child(*content);
+  dialog->present();
 }
 
 void GnomosWindow::ShowDeleteAlarmConfirmDialog(std::string alarm_id)

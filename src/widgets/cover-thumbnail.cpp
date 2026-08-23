@@ -7,6 +7,7 @@
 #include <glibmm/error.h>
 
 #include "art-cache.h"
+#include "artist-image-fetcher.h"
 
 namespace gnomos
 {
@@ -25,6 +26,28 @@ CoverThumbnail::~CoverThumbnail()
     cancellable_->cancel();
 }
 
+void CoverThumbnail::SetFallbackIconName(const std::string& icon_name)
+{
+  fallback_icon_name_ = icon_name.empty() ? "audio-x-generic-symbolic" : icon_name;
+  if (current_uri_.empty())
+    set_from_icon_name(fallback_icon_name_);
+}
+
+void CoverThumbnail::LoadArtistImage(const std::string& artist_name)
+{
+  if (cancellable_)
+    cancellable_->cancel();
+  unsigned generation = ++generation_;
+  auto alive = alive_;  // captured by value — see its own header comment
+  ArtistImageFetcher::Instance().RequestArtistImage(artist_name, [this, generation, alive](std::string url) {
+    if (!*alive)
+      return;  // this CoverThumbnail was destroyed before the lookup finished
+    if (generation != generation_)
+      return;  // superseded by a newer SetArtUri()/LoadArtistImage() call
+    SetArtUri(url);
+  });
+}
+
 void CoverThumbnail::SetArtUri(const std::string& uri)
 {
   if (uri == current_uri_)
@@ -37,7 +60,7 @@ void CoverThumbnail::SetArtUri(const std::string& uri)
 
   if (uri.empty())
   {
-    set_from_icon_name("audio-x-generic-symbolic");
+    set_from_icon_name(fallback_icon_name_);
     return;
   }
 
@@ -77,16 +100,16 @@ void CoverThumbnail::OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib
       if (texture)
         set(texture);
       else
-        set_from_icon_name("audio-x-generic-symbolic");
+        set_from_icon_name(fallback_icon_name_);
     }
     else
     {
-      set_from_icon_name("audio-x-generic-symbolic");
+      set_from_icon_name(fallback_icon_name_);
     }
   }
   catch (const Glib::Error&)
   {
-    set_from_icon_name("audio-x-generic-symbolic");
+    set_from_icon_name(fallback_icon_name_);
   }
 }
 

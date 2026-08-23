@@ -34,6 +34,11 @@ subdir('noson-meson')
 # --- GTK4 / libadwaita / gtkmm4 stack ---
 gtkmm_dep = dependency('gtkmm-4.0', version: '>= 4.10')
 adwaita_dep = dependency('libadwaita-1', version: '>= 1.4')
+# Only for ArtistImageFetcher's own Deezer JSON responses (see its header
+# comment) — small, predictable-shape API responses, not worth hand-rolling
+# a parser for the way NosonBackend does for a handful of single XML tags
+# elsewhere.
+json_glib_dep = dependency('json-glib-1.0')
 
 subdir('data')
 subdir('src')

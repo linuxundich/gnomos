@@ -449,6 +449,134 @@ new `meson.build`-injected `config.h` define) as an extra search path,
 guarded by `Glib::file_test()` so it's a harmless no-op for an installed
 or Flatpak build where that path doesn't exist.
 
+### Five more additions, round two: device info, playlist/radio management, sub gain, next-alarm
+
+- **"Geräteinfo" dialog**: `NosonBackend::GetDeviceInfo(player_uuid)` is
+  synchronous, unlike almost every other query in this class — everything
+  it returns (IP, software version, model number) is already sitting in
+  the cached zone topology (`ZonePlayer::GetHost()`/`GetAttribut(ZP_VERSION)`,
+  `model_number_by_uuid_`), no network round trip needed. The MAC address
+  needs no query at all: Sonos embeds it directly in the player's own UUID
+  (`"RINCON_<12 hex MAC digits><port suffix>"`, confirmed live). Reached
+  from a new "i" button on every row in `room_button_`'s popover — deliberately
+  per-room there, not gated to just the currently selected zone's coordinator,
+  since knowing a *specific* room's IP/software version is exactly the kind
+  of thing you'd want when troubleshooting one particular speaker.
+- **Delete a saved Sonos playlist**: `NosonBackend::DeleteLibraryPlaylist(index)`
+  wraps `System::DestroySavedQueue()`. `LibraryView` only shows the delete
+  button while `library_stack_.back().first == "SQ:"` (the "Playlisten"
+  root) — every entry there really is a destroyable saved queue, unlike
+  any other library level. The backend can't refresh the level itself
+  afterward (it has no notion of "the level currently browsed", only
+  `GnomosWindow::library_stack_` does), so `ShowDeletePlaylistConfirmDialog()`
+  follows the delete with its own `BrowseLibraryAsync(library_stack_.back().first)`
+  call — queued on the same serial `tasks_` worker, so it always runs after
+  the delete completes.
+- **Add a custom radio station**: `NosonBackend::AddRadioStation(title, url)`
+  wraps `System::CreateRadio()`, which creates the entry under the exact
+  same `"R:0/0"` root `BrowseLibraryAsync("R:0/0")` already browses — new
+  stations show up right alongside the built-in TuneIn-backed directory,
+  no separate namespace. `LibraryView::add_button_` only shows up browsing
+  that root, same re-browse-after-write pattern as the playlist delete above.
+- **Sub gain**: `SoundSettings` gained `sub_gain`/`sub_gain_supported`,
+  following the exact same pattern `output_fixed_supported` already
+  established — except there's no `GetSupportsOutputFixed()`-style
+  capability check for sub gain anywhere in the protocol, so "supported"
+  is inferred the same way `nightmode_supported` already is instead, from
+  whether `GetSubGain()` itself succeeds. `sub_gain_scale_` uses
+  `set_sensitive()`, not `set_visible()`, when unsupported — a stable
+  popover layout across room switches, not a jumping one.
+- **Next-alarm indicator**: a new label in `AlarmsView`'s own toolbar,
+  computed by `GnomosWindow`'s `NextAlarmSummary()` (day-of-week +
+  time-of-day arithmetic over every *enabled* alarm's own recurrence,
+  reusing `ParseRecurrenceDays()` — moved earlier in the file so
+  `OnAlarmsChanged()` can call it too, alongside its original caller
+  `ShowAlarmDialog()`) and passed down as plain text — `AlarmsView` itself
+  stays a dumb renderer, same division of labor every other view already
+  follows. An alarm whose recurrence doesn't parse to any days at all (a
+  literal `"ONCE"` from the official Sonos app, say — Gnomos's own alarm
+  dialog only ever generates day-list recurrences) is silently excluded
+  rather than guessed at.
+
+### Consistent GNOME iconography for the library, and real artist photos
+
+Two related fixes, both prompted directly by screenshots: the local
+library's "Interpreten" grid showed the exact same generic note icon for
+*every* artist (no per-item art existed to fall back to), and a linked
+service's own root menu (bonob, specifically) showed its *own*
+inconsistent, non-GNOME icon set for category tiles like "Artists"/
+"Albums"/"Random" — a small monochrome stock-icon set that visibly
+clashed with the rest of a GNOME app.
+
+- **The real signal**: `DigitalItem::subType()` — parsed generically by
+  libnoson from the item's own `upnp:class` DIDL property (see its
+  constructor in `digitalitem.cpp`) — already distinguishes person/album/
+  genre/playlistContainer/storageFolder, identically for local library
+  items *and* every SMAPI service alike, without Gnomos needing to guess
+  anything from a title string the way a name-based heuristic would have
+  to. `LibraryEntry` gained `icon_name`, populated via a new
+  `IconNameForSubType()` helper (in all four entry-building loops:
+  local browse, local search, SMAPI browse, SMAPI search) mapping to
+  verified-installed Adwaita symbolic icon names (`avatar-default-symbolic`
+  for an artist, `media-optical-cd-symbolic` for an album,
+  `folder-music-symbolic` for a genre or generic folder,
+  `media-playlist-consecutive-symbolic` for a playlist) — checked against
+  the actual installed icon theme files before picking names, not
+  guessed. The static local root categories ("Interpreten", "Alben", ...)
+  set it directly in their own brace-init list, since they have no backing
+  `DigitalItem` to derive one from at all.
+- **`CoverThumbnail::SetFallbackIconName()`**: replaces the single
+  hardcoded `"audio-x-generic-symbolic"` every entry used to fall back to
+  regardless of type — now the caller decides, defaulting to that same
+  string if never called, so every *other* existing caller (Queue/
+  Favorites/History, none of which carry an `icon_name`) is unaffected.
+- **Overriding a service's own root-menu icon, not just filling gaps**:
+  for a SMAPI entry, `SMAPIItem::displayType == Grid` (already relied on
+  elsewhere as bonob's own "this is a root category tile, not real
+  content" signal — see the grid-eligibility fix earlier in this file)
+  now also clears `art_uri` outright rather than only supplying
+  `icon_name` as a fallback for an *empty* one. Confirmed live: bonob's
+  own root tiles ("Artists", "Albums", "Random", ...) each carry a real,
+  distinct, but visually inconsistent icon image of their own — leaving
+  `art_uri` alone there would have kept showing those. A real album's or
+  artist's own genuine cover art, deeper in the same service (where
+  `displayType` isn't `Grid`), is untouched.
+- **Real artist photos** (`src/widgets/artist-image-fetcher.h/.cpp`, new):
+  local `A:ALBUMARTIST` entries generally have no `albumArtURI` at all in
+  Sonos's own ContentDirectory response (confirmed live — this is exactly
+  why every local artist showed the same generic icon before this whole
+  fix), so there's no *Sonos-side* photo to fall back to no matter how
+  it's parsed. `ArtistImageFetcher` is a small, throttled (`kMaxConcurrent`
+  = 2 at a time — hundreds of simultaneous connections the moment
+  "Interpreten" opens would be poor citizenship against a free public API)
+  singleton that looks a name up against Deezer's public
+  `api.deezer.com/search/artist` endpoint and caches the result
+  in-process, parsed with `json-glib` (a new dependency — this is the
+  first place in the app dealing with a real multi-object JSON response,
+  unlike the single-tag XML `std::string::find()` extraction
+  `RefreshGen1StatusAsync()` already does elsewhere, so a real parser
+  earns its keep here). Deezer's own search ranking isn't popularity-aware
+  — confirmed live, searching "Adele" ranks an obscure "Adèle & Zalem"
+  (1.5k fans) above the real Adele (15.4M fans) and returns several
+  *other* unrelated results also literally named "Adele" with negligible
+  fan counts — so matching picks the highest `nb_fan` among exact
+  (case-insensitive) name matches on the first page of results, falling
+  back to Deezer's own first result only when no exact match appears at
+  all. `CoverThumbnail::LoadArtistImage()` reuses the exact same
+  generation-counter/`alive_`-flag safety machinery `SetArtUri()` already
+  has for its own async load, just with an extra resolution step in front
+  of it.
+- **Explicitly opt-in**: every other network request this app makes stays
+  within the local Sonos household; a Deezer lookup is the one exception,
+  sending an artist's name to a third-party server. Off by default,
+  toggled via a new "Bibliothek" group in Settings with a subtitle
+  disclosing exactly that — `GnomosWindow::load_artist_images_`, persisted
+  to `state.ini`'s `[library]` group alongside `prefer_grid_view_`.
+  `LibraryView` only calls `CoverThumbnail::LoadArtistImage()` instead of
+  `SetArtUri()` when the preference is on **and** `icon_name` is exactly
+  `"avatar-default-symbolic"` **and** `art_uri` is empty — never for an
+  artist a service already supplied real art for.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

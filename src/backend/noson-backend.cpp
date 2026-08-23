@@ -89,6 +89,36 @@ void ExhaustBrowser(NSROOT::ContentBrowser& browser)
   }
 }
 
+// Maps a DigitalItem's own subType() — parsed generically from its
+// upnp:class DIDL property (see DigitalItem's constructor), so this works
+// identically for local library items and every SMAPI service alike,
+// without Gnomos needing to guess anything from a title string — to a
+// GNOME/Adwaita symbolic icon name. Only icon-worthy container types get a
+// specific one; everything else (tracks, unknown types) returns empty,
+// which just means "CoverThumbnail's own generic default applies" — same
+// as before this existed.
+std::string IconNameForSubType(NSROOT::DigitalItem::SubType_t subtype)
+{
+  switch (subtype)
+  {
+    case NSROOT::DigitalItem::SubType_person:
+      return "avatar-default-symbolic";
+    case NSROOT::DigitalItem::SubType_album:
+      return "media-optical-cd-symbolic";
+    case NSROOT::DigitalItem::SubType_genre:
+      return "folder-music-symbolic";
+    case NSROOT::DigitalItem::SubType_playlistContainer:
+      return "media-playlist-consecutive-symbolic";
+    case NSROOT::DigitalItem::SubType_storageFolder:
+    case NSROOT::DigitalItem::SubType_storageSystem:
+    case NSROOT::DigitalItem::SubType_storageVolume:
+    case NSROOT::DigitalItem::SubType_bookmarkFolder:
+      return "folder-music-symbolic";
+    default:
+      return "";
+  }
+}
+
 }  // namespace
 
 NosonBackend::NosonBackend()
@@ -379,6 +409,49 @@ std::vector<RoomInfo> NosonBackend::Rooms() const
     }
   }
   return result;
+}
+
+DeviceInfo NosonBackend::GetDeviceInfo(const std::string& player_uuid) const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  DeviceInfo info;
+  for (const auto& kv : zones_by_uuid_)
+  {
+    for (const NSROOT::ZonePlayerPtr& zp : *kv.second)
+    {
+      if (zp->GetUUID() != player_uuid)
+        continue;
+
+      info.ip = zp->GetHost();
+      info.software_version = zp->GetAttribut(ZP_VERSION);
+
+      // Sonos embeds the MAC address directly in the player's own UUID:
+      // "RINCON_<12 hex MAC digits><5-digit port suffix>" — confirmed live
+      // against real hardware, avoids a separate query for something
+      // that's already sitting in data already fetched at discovery time.
+      static const std::string kUuidPrefix = "RINCON_";
+      if (player_uuid.compare(0, kUuidPrefix.size(), kUuidPrefix) == 0 &&
+          player_uuid.size() >= kUuidPrefix.size() + 12)
+      {
+        std::string raw_mac = player_uuid.substr(kUuidPrefix.size(), 12);
+        for (size_t i = 0; i < raw_mac.size(); i += 2)
+        {
+          if (i > 0)
+            info.mac += ':';
+          info.mac += raw_mac.substr(i, 2);
+        }
+      }
+
+      auto model_it = model_number_by_uuid_.find(player_uuid);
+      if (model_it != model_number_by_uuid_.end())
+      {
+        info.model_number = model_it->second;
+        info.is_gen1 = is_gen1_model(model_it->second);
+      }
+      return info;
+    }
+  }
+  return info;
 }
 
 namespace
@@ -935,6 +1008,11 @@ void NosonBackend::RefreshSoundSettingsAsync()
     if (settings.output_fixed_supported && player->GetOutputFixed(uuid, &fixed))
       settings.output_fixed = fixed != 0;
 
+    int16_t sub_gain = 0;
+    settings.sub_gain_supported = player->GetSubGain(uuid, &sub_gain);
+    if (settings.sub_gain_supported)
+      settings.sub_gain = sub_gain;
+
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       sound_settings_ = settings;
@@ -1031,6 +1109,26 @@ void NosonBackend::SetOutputFixed(bool enabled)
     }
     // Same reasoning as SetLoudness()/SetNightmode(): refresh unconditionally
     // so the switch snaps back to the true device state on failure.
+    RefreshSoundSettingsAsync();
+  });
+}
+
+void NosonBackend::SetSubGain(int16_t value)
+{
+  tasks_.Push([this, value] {
+    auto player = SnapshotPlayer();
+    auto zone = SnapshotZone();
+    if (!player || !zone)
+      return;
+    auto coord = zone->GetCoordinator();
+    if (!coord)
+      return;
+    if (!player->SetSubGain(coord->GetUUID(), value))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Sub-Pegel konnte nicht geändert werden.";
+      error_dispatcher_.emit();
+    }
     RefreshSoundSettingsAsync();
   });
 }
@@ -1568,13 +1666,13 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       // Player::SaveQueue() (the "als Playlist speichern" queue action)
       // creates — that's the one most people mean by "my playlists".
       std::vector<LibraryEntry> roots = {
-          {"A:ALBUMARTIST", "Interpreten", "", true, ""},
-          {"A:ALBUM", "Alben", "", true, ""},
-          {"A:GENRE", "Genres", "", true, ""},
-          {"A:TRACKS", "Titel", "", true, ""},
-          {"SQ:", "Playlisten", "", true, ""},
-          {"A:PLAYLISTS", "Playlisten (lokale Freigabe)", "", true, ""},
-          {"R:0/0", "Radiosender", "", true, ""},
+          {"A:ALBUMARTIST", "Interpreten", "", true, "", false, "avatar-default-symbolic"},
+          {"A:ALBUM", "Alben", "", true, "", false, "media-optical-cd-symbolic"},
+          {"A:GENRE", "Genres", "", true, "", false, "folder-music-symbolic"},
+          {"A:TRACKS", "Titel", "", true, "", false, ""},
+          {"SQ:", "Playlisten", "", true, "", false, "media-playlist-consecutive-symbolic"},
+          {"A:PLAYLISTS", "Playlisten (lokale Freigabe)", "", true, "", false, "media-playlist-consecutive-symbolic"},
+          {"R:0/0", "Radiosender", "", true, "", false, "network-wireless-symbolic"},
       };
       // One root entry per service already linked on this household (e.g.
       // Spotify via bonob) — SMAPI::Init() pulls that service's existing
@@ -1591,7 +1689,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       }
       // GnomosWindow recognizes this exact object_id and opens the service
       // picker/link dialog instead of trying to browse into it.
-      roots.push_back({kLinkServiceSentinel, "Dienst verknüpfen…", "", true, ""});
+      roots.push_back({kLinkServiceSentinel, "Dienst verknüpfen…", "", true, "", false, ""});
 
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
@@ -1696,6 +1794,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       if (!entry.is_container)
         entry.subtitle = item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
+      entry.icon_name = IconNameForSubType(item->subType());
       entry.display_as_grid = grid_eligible_prefix && entry.is_container;
       entries.push_back(std::move(entry));
       raw.push_back(item);
@@ -1767,6 +1866,12 @@ void NosonBackend::SearchActiveServiceAsync(const std::string& category, const s
         if (!entry.is_container)
           entry.subtitle = smapi_item.item->GetValue("dc:creator");
         entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
+        entry.icon_name = IconNameForSubType(smapi_item.item->subType());
+        // See BrowseActiveServiceLocked()'s identical check for why —
+        // Grid marks a category tile, not real content, so its own
+        // service-branded icon image gives way to icon_name here.
+        if (smapi_item.displayType == NSROOT::SMAPIItem::Grid)
+          entry.art_uri.clear();
         // Trust the service's own displayType when it says Grid — but
         // don't require it: confirmed live against a real bonob server,
         // its "Albums" listing carries real per-album cover art but
@@ -1843,6 +1948,7 @@ void NosonBackend::SearchLocalLibraryAsync(const std::string& object_id, const s
       if (!entry.is_container)
         entry.subtitle = item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
+      entry.icon_name = IconNameForSubType(item->subType());
       if (!ContainsCaseInsensitive(entry.title, term_lower) && !ContainsCaseInsensitive(entry.subtitle, term_lower))
         continue;
       entries.push_back(std::move(entry));
@@ -1902,6 +2008,20 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
       if (!entry.is_container)
         entry.subtitle = smapi_item.item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
+      entry.icon_name = IconNameForSubType(smapi_item.item->subType());
+      // displayType == Grid is bonob's (and, per this same field's use
+      // elsewhere, apparently every SMAPI service's) way of marking a
+      // *category* tile — its own root menu ("Artists"/"Albums"/"Random"/
+      // ...), not a specific piece of real content — confirmed live: every
+      // one of those tiles carries its own distinct service-branded icon
+      // image, visually inconsistent with the rest of a GNOME app (a
+      // microphone, a target/circle, shuffle arrows, ...). Discarding that
+      // image in favor of icon_name here, rather than only falling back to
+      // it when art_uri is empty, is what actually fixes that — a real
+      // album's/artist's own genuine cover art (deeper levels, where
+      // displayType isn't Grid) is untouched.
+      if (smapi_item.displayType == NSROOT::SMAPIItem::Grid)
+        entry.art_uri.clear();
       // Trust the service's own displayType when it says Grid — but don't
       // require it: confirmed live against a real bonob server, its own
       // "Albums" listing carries real per-album cover art but doesn't set
@@ -2254,6 +2374,45 @@ void NosonBackend::PlayAllLibraryItemsAsync()
       return;
     }
     RefreshQueueAsync();
+  });
+}
+
+void NosonBackend::DeleteLibraryPlaylist(unsigned index)
+{
+  tasks_.Push([this, index] {
+    std::string object_id;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (index >= library_entries_.size())
+        return;
+      object_id = library_entries_[index].object_id;
+    }
+    if (!system_->DestroySavedQueue(object_id))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Playlist konnte nicht gelöscht werden.";
+      error_dispatcher_.emit();
+    }
+    // Refresh either way — a stale library_entries_ that still lists an
+    // already-deleted playlist is worse than one more redundant fetch on
+    // the rare failure path. GnomosWindow follows up with its own
+    // BrowseLibraryAsync(library_stack_.back().first) call right after
+    // this one (queued on the same tasks_ serial worker, so this delete
+    // always runs first) — see its own comment for why the backend can't
+    // do that itself (it has no notion of "the level currently browsed",
+    // only GnomosWindow's library_stack_ does).
+  });
+}
+
+void NosonBackend::AddRadioStation(const std::string& title, const std::string& stream_url)
+{
+  tasks_.Push([this, title, stream_url] {
+    if (!system_->CreateRadio(stream_url, title))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Radiosender konnte nicht hinzugefügt werden.";
+      error_dispatcher_.emit();
+    }
   });
 }
 

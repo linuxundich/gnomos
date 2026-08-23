@@ -150,6 +150,14 @@ struct SoundSettings
   // GetSupportsOutputFixed() rather than always shown.
   bool output_fixed_supported = false;
   bool output_fixed = false;
+  // Sub (subwoofer) gain, -15..15 (Sonos's own convention for this
+  // parameter, distinct from bass/treble's -10..10). No GetSupportsSubGain()
+  // exists anywhere in the protocol the way output_fixed has one — support
+  // is inferred the same way nightmode_supported already is, from whether
+  // GetSubGain() itself succeeds (a zone with no paired Sub simply fails
+  // the request).
+  bool sub_gain_supported = false;
+  int16_t sub_gain = 0;
 };
 
 struct QueueItem
@@ -226,6 +234,19 @@ struct LibraryEntry
   // object_id prefix ("A:ALBUM"/"A:ALBUMARTIST") combined with
   // is_container instead.
   bool display_as_grid = false;
+  // GNOME/Adwaita symbolic icon name shown by CoverThumbnail whenever
+  // art_uri is empty (or fails to load) — empty means "just use
+  // CoverThumbnail's own generic default", the same "audio-x-generic-
+  // symbolic" every entry used to show regardless of type. Populated two
+  // ways: the static local root categories set it directly (BrowseLibraryAsync()'s
+  // own roots list, e.g. "Interpreten" -> an avatar icon); everything else
+  // (real local content, and every SMAPI entry) derives it from the
+  // underlying DigitalItem::subType() — person/album/genre/playlistContainer
+  // map to a matching icon, since that's a reliable, already-populated,
+  // service-and-language-independent signal (parsed generically from the
+  // item's own upnp:class DIDL property) rather than something Gnomos
+  // needs to guess from a title string. See IconNameForSubType().
+  std::string icon_name;
 };
 
 // Sentinel for NosonBackend::UpdateAlarmSchedule()'s sound_index — leaves
@@ -270,6 +291,21 @@ struct RoomInfo
   std::string coordinator_uuid;      // bare uuid of that group's coordinator — the argument JoinToGroup() wants
   bool is_gen1 = false;               // ZonePlayer::GetIconName(), same heuristic as ZoneInfo::is_gen1
   std::string model_number;           // device_description.xml <modelNumber> (e.g. "ZP120"), empty if not yet fetched
+};
+
+// For the "Geräteinfo" dialog — entirely derived from already-cached zone
+// topology data (see NosonBackend::GetDeviceInfo()), no network round trip
+// needed: ip/software_version come straight from the player's own
+// ZoneGroupState attributes, mac is decoded from its RINCON_<mac>...
+// UUID directly (Sonos embeds it there), and model_number/is_gen1 reuse
+// the same cache RefreshGen1StatusAsync() already populates.
+struct DeviceInfo
+{
+  std::string ip;
+  std::string mac;
+  std::string software_version;
+  std::string model_number;
+  bool is_gen1 = false;
 };
 
 }  // namespace gnomos

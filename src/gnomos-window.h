@@ -49,6 +49,11 @@ private:
   void SaveLastRoom(const std::string& coordinator_uuid) const;
   std::string LoadLastRoomUuid() const;
   void RebuildGroupingPopover();
+  // Read-only IP/MAC/software-version/model dialog for one specific room —
+  // player_uuid is that room's own coordinator (see the room popover's own
+  // info button, which is what opens this), not necessarily
+  // selected_group_id_'s coordinator.
+  void ShowDeviceInfoDialog(std::string player_uuid, std::string room_name);
   // room_button_'s own label — the current room name, so it still reads
   // correctly without opening room_popover_. Called after every zone
   // selection and every zones_list_box_ rebuild (a topology change can
@@ -84,6 +89,10 @@ private:
   void ShowClearQueueConfirmDialog();
   void ShowDeleteFavoriteConfirmDialog(unsigned index);
   void ShowDeleteAlarmConfirmDialog(std::string alarm_id);
+  void ShowDeletePlaylistConfirmDialog(unsigned index);
+  // Title + stream URL entry for NosonBackend::AddRadioStation() — reached
+  // from LibraryView's add_button_, only visible while browsing "R:0/0".
+  void ShowAddRadioStationDialog();
   // Shared AdwAlertDialog wrapper for all three confirmations above — see
   // its header comment for why this replaced three hand-rolled Gtk::Window
   // dialogs.
@@ -143,6 +152,10 @@ private:
   // [library] prefer_grid in state.ini — see prefer_grid_view_'s own
   // comment.
   void LoadLibraryViewPreference();
+  // [library] load_artist_images in state.ini — see load_artist_images_'s
+  // own comment.
+  void LoadArtistImagesSetting();
+  void SetLoadArtistImages(bool enabled);
   void SetPreferGridView(bool prefer_grid);
   // Window width/height/maximized, persisted to state.ini's [window] group
   // alongside last_room_uuid — restores the size the user actually left
@@ -209,6 +222,11 @@ private:
   Gtk::Popover sound_popover_;
   Gtk::Scale bass_scale_;
   Gtk::Scale treble_scale_;
+  // Sub gain — same set_sensitive()-when-unsupported treatment as
+  // nightmode_switch_/output_fixed_switch_ (no GetSupportsSubGain() exists
+  // to check up front; "supported" is inferred from whether GetSubGain()
+  // itself succeeds — see SoundSettings::sub_gain_supported).
+  Gtk::Scale sub_gain_scale_;
   Gtk::Switch loudness_switch_;
   Gtk::Switch nightmode_switch_;
   // Line-out / fixed-volume mode — for a device feeding a receiver/amp with
@@ -294,6 +312,12 @@ private:
   // (one on/off control, not a per-level memory). Persisted to
   // state.ini's [library] group.
   bool prefer_grid_view_ = true;
+  // Off by default (opt-in via Settings) — every enabled lookup sends an
+  // artist's name to Deezer's public API (see ArtistImageFetcher), the
+  // only place in this app that talks to anything beyond the local Sonos
+  // household. Persisted to state.ini's [library] group, alongside
+  // prefer_grid_view_.
+  bool load_artist_images_ = false;
   // (object_id, display title) from root to current level; back() is the
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;

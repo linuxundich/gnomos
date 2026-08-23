@@ -18,9 +18,15 @@ AlarmsView::AlarmsView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeholder_
   set_hexpand(true);
 
   auto* toolbar = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL);
-  toolbar->set_halign(Gtk::Align::END);
   toolbar->set_margin_top(6);
+  toolbar->set_margin_start(12);
   toolbar->set_margin_end(12);
+  next_alarm_label_.set_halign(Gtk::Align::START);
+  next_alarm_label_.set_hexpand(true);
+  next_alarm_label_.set_ellipsize(Pango::EllipsizeMode::END);
+  next_alarm_label_.add_css_class("dim-label");
+  next_alarm_label_.set_visible(false);
+  toolbar->append(next_alarm_label_);
   add_button_.set_icon_name("list-add-symbolic");
   add_button_.set_tooltip_text("Alarm hinzufügen");
   add_button_.add_css_class("flat");
@@ -150,6 +156,12 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
 
     list_box_.append(*row_box);
   }
+}
+
+void AlarmsView::SetNextAlarmLabel(const std::string& text)
+{
+  next_alarm_label_.set_visible(!text.empty());
+  next_alarm_label_.set_text("Nächster Alarm: " + text);
 }
 
 void AlarmsView::Clear()
