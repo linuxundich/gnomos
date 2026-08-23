@@ -736,6 +736,58 @@ and debounces the disk-persist + `OnLibraryChanged()` rebuild by 200ms via
 a `fallback_icon_scale_debounce_connection_` timeout, so only the
 settled value after dragging stops actually triggers a rebuild.
 
+**Third follow-up, reported live against a fresh screenshot**: several
+tiles in bonob's own root menu ("Albums", "Random", "Top Rated",
+"Internet Radio") still looked like they were showing the plain fallback
+icon rather than something fitting. Rather than guess from the
+screenshot, this was checked directly against the running app: with no
+screen-capture path available in this environment (see the Flatpak
+portal note below), a debug build was driven live via `gdb`, calling
+`NosonBackend::BrowseLibraryAsync()` directly on the already-running
+process (using a `LibraryEntry::object_id` value read straight out of
+`GnomosWindow::current_library_entries_` at a breakpoint, avoiding
+`gdb`'s own flaky support for constructing a `std::string` argument from
+a literal) to browse into bonob's root menu and inspect the resulting
+`LibraryEntry` values directly — no UI interaction needed.
+
+That confirmed two distinct things bundled under one complaint. First,
+most of bonob's own root tiles ("Albums", "Random", "Favourites", "Top
+Rated", "Recently added/played", "Most played") report SMAPI itemType
+`albumList` (-> `SubType_storageFolder`), which already resolves to a
+real, deliberate icon (`folder-music-symbolic`) via `IconNameForSubType()`
+— not literally the generic fallback, just the same undistinguished
+folder glyph for every one of them, since SMAPI gives no finer-grained,
+service-independent signal to tell "Random" apart from "Top Rated".
+Second, "Internet Radio" specifically reports itemType `stream` (->
+`SubType_audioItem`, and `IsContainer()` false — a real leaf, not a
+folder to browse into, unlike every other root tile) — a subtype
+`IconNameForSubType()` rightly leaves unmapped everywhere else in the
+app (a real playable track has no better icon than the generic note),
+but which was genuinely wrong for a root-level tile: this one really was
+falling through to the plain fallback, a real bug.
+
+Fixed at the same call site that builds `LibraryEntry` for a service's
+root menu (`id == "root"`, `BrowseActiveServiceLocked()`): when
+`IconNameForSubType()` comes back empty *and* this is a root-level tile,
+default to `folder-music-symbolic` for a container or
+`network-wireless-symbolic` for a non-container leaf — mirroring the
+same split the local library's own hardcoded root categories already use
+(`BrowseLibraryAsync("")`'s `roots` list gives "Radiosender" that exact
+icon for the same reason). Every other browsing level (a real
+track/stream found deeper in an actual listing) is untouched, since the
+`id == "root"` check only applies to a service's own top-level menu.
+
+*Aside — screen capture in this environment*: taking a screenshot via
+`org.freedesktop.portal.Desktop`'s `Screenshot` portal was attempted
+again here (`gdbus call` against the session bus) since the user
+suggested it directly; the request object is created successfully but
+its `Response` signal never arrives, even after 15s — consistent with it
+waiting on an interactive confirmation dialog neither `wlr-screencopy`
+nor this headless-of-input session can drive. Driving the backend
+directly via `gdb` sidestepped that entirely and gave a more precise
+answer than a screenshot would have (the actual `SubType_t`/`itemType`
+values, not just how they render).
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

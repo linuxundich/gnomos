@@ -2032,6 +2032,26 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
         entry.subtitle = smapi_item.item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
       entry.icon_name = IconNameForSubType(smapi_item.item->subType());
+      // A service's root menu ("Albums"/"Random"/"Internet Radio"/... —
+      // id == "root") is always a list of top-level categories, regardless
+      // of what SubType_t the service happens to report for each one.
+      // Confirmed live against bonob: most of its own root tiles report
+      // itemType "albumList" (-> SubType_storageFolder, already covered by
+      // IconNameForSubType() below), but "Internet Radio" comes back as
+      // itemType "stream" (-> SubType_audioItem, and IsContainer() false —
+      // a real leaf, not a folder to browse into, unlike every other root
+      // tile) — a leaf-item subtype IconNameForSubType() rightly leaves
+      // unmapped everywhere else in the app (a real playable track has no
+      // better icon than the generic note), but which is simply wrong for
+      // a root-level tile. Defaulting only *here*, only when the lookup
+      // came back empty, keeps every other browsing level (a real
+      // track/stream deeper in a listing) exactly as before. The
+      // container/non-container split mirrors local library's own root
+      // categories (BrowseLibraryAsync("")'s hardcoded `roots` list) —
+      // "network-wireless-symbolic" is exactly what its own "Radiosender"
+      // entry uses for the same reason: a stream to play, not a folder.
+      if (id == "root" && entry.icon_name.empty())
+        entry.icon_name = entry.is_container ? "folder-music-symbolic" : "network-wireless-symbolic";
       // displayType == Grid is bonob's (and, per this same field's use
       // elsewhere, apparently every SMAPI service's) way of marking a
       // *category* tile — its own root menu ("Artists"/"Albums"/"Random"/
