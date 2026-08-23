@@ -6,6 +6,20 @@ network — discovery, playback, volume, grouping, queue, favorites, alarms —
 and pays particular attention to first-generation hardware (ZP80, ZP90,
 ZP100, ZP120, CR100) that Sonos's own current apps have dropped support for.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/gnomos-favourites.png" alt="Favorites list, with the section sidebar and bottom Now Playing bar" width="49%">
+  <img src="screenshots/gnomos-albums.png" alt="Cover-art grid view of a linked service's Albums listing" width="49%">
+</p>
+
+Left: the Favorites tab, with the section sidebar (queue, favorites,
+alarms, history, library) and the library's own root categories listed as
+sub-items underneath "Bibliothek", plus the bottom Now Playing bar. Right:
+the cover-art grid view for a linked third-party service's Albums listing
+(here, bonob) — the same list/grid toggle is available for the local
+library's own Albums and Artists.
+
 ## About
 
 Gnomos is built on top of [libnoson](https://github.com/janbar/noson), the
