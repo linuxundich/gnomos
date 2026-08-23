@@ -75,16 +75,17 @@ sudo pacman -S meson ninja gcc pkgconf openssl zlib gtkmm-4.0 libadwaita
 Then:
 
 ```sh
-git clone https://github.com/linuxundich/gnomos.git
+git clone --recurse-submodules https://github.com/linuxundich/gnomos.git
 cd gnomos
 meson setup build
 ninja -C build
 ./build/src/gnomos
 ```
 
-libnoson is vendored under `noson/` (a plain copy of its source, not a
-submodule) and built together with Gnomos; you don't need to install it
-separately.
+libnoson is a git submodule under `noson/` (`--recurse-submodules` above
+fetches it too) and is built together with Gnomos; you don't need to
+install it separately. If you already cloned without that flag, run
+`git submodule update --init` to fetch it afterwards.
 
 A Flatpak manifest exists under `build-aux/flatpak/` but hasn't been
 verified end to end yet — see [ARCHITECTURE.md](ARCHITECTURE.md) for

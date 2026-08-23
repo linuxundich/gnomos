@@ -7,12 +7,15 @@ extending the code; if you just want to use the app, see [README.md](README.md).
 
 ## Overview
 
-- `noson/noson/` — vendored [libnoson](https://github.com/janbar/noson)
-  source, given its own `meson.build` (upstream only ships a CMake build)
-  that mirrors `noson/noson/CMakeLists.txt`. Built as an internal static
-  library; the local-audio-streaming feature (FLAC/PulseAudio source) is
-  deliberately not built, since a pure remote control never needs to
-  originate audio itself.
+- `noson/` — [libnoson](https://github.com/janbar/noson) as a git
+  submodule, an unmodified checkout of upstream (which only ships a CMake
+  build). The meson build for it lives in `noson-meson/meson.build`
+  instead, kept outside the submodule on purpose so `noson/` never needs
+  its own commits — see that file's own header comment. It mirrors
+  `noson/noson/CMakeLists.txt` and builds an internal static library; the
+  local-audio-streaming feature (FLAC/PulseAudio source) is deliberately
+  not built, since a pure remote control never needs to originate audio
+  itself.
 - `src/backend/noson-backend.{h,cpp}` — the only place that touches
   `NSROOT::` (libnoson) directly. Everything else in `src/` only sees
   plain-data types from `noson-types.h` and sigc++ signals.

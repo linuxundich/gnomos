@@ -20,12 +20,15 @@ conf.set_quoted('PACKAGE_VERSION', meson.project_version())
 conf.set_quoted('APPLICATION_ID', application_id)
 config_h = configure_file(output: 'config.h', configuration: conf)
 # add_project_arguments() must run before any build target is declared
-# (i.e. before subdir('noson/noson'), which defines the noson static_library).
+# (i.e. before subdir('noson-meson'), which defines the noson static_library).
 add_project_arguments('-DHAVE_CONFIG_H', language: ['c', 'cpp'])
 config_inc = include_directories('.')
 
-# --- libnoson (vendored under noson/, upstream ships only a CMake build) ---
-subdir('noson/noson')
+# --- libnoson (git submodule under noson/, upstream ships only a CMake
+# build) — the meson.build for it deliberately lives in noson-meson/, not
+# inside the submodule itself, so noson/ stays a pristine, unmodified
+# checkout of upstream. See noson-meson/meson.build's own header comment.
+subdir('noson-meson')
 
 # --- GTK4 / libadwaita / gtkmm4 stack ---
 gtkmm_dep = dependency('gtkmm-4.0', version: '>= 4.10')
