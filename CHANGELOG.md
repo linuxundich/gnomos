@@ -8,6 +8,50 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.3.6] - 2026-08-23
+
+### Added
+- The Now Playing panel moved from a side panel to a full-width bottom bar,
+  with the seek bar getting its own dedicated, much wider row (capped at a
+  sane maximum width on ultrawide monitors, matching GNOME Music's own
+  approach).
+- "Zurück" now restarts the current track if a few seconds in, instead of
+  always skipping to the actual previous track.
+- "Gruppe auflösen" in the grouping popover, symmetric to the existing
+  "Alle Räume gruppieren".
+- The mute button icon now reflects the actual volume level (low/medium/
+  high/muted); the volume slider shows a percentage tooltip.
+- An "Album suchen" button alongside "Interpret suchen" in the track
+  details dialog.
+- A grid/list toggle for the library (Albums/Artists and similar levels),
+  available for the local library and third-party services alike, with a
+  single persisted preference.
+- A section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/Bibliothek)
+  replacing the previous top tab switcher, styled after noson-app's own
+  left-hand navigation. The library's own root categories (Interpreten,
+  Alben, Genres, Titel, Playlisten, Radiosender, and any linked
+  third-party services) are listed directly underneath "Bibliothek" as
+  sub-items, so you can jump straight to one.
+- Room/zone selection moved out of a permanent sidebar into a compact
+  picker in the header bar, always showing the current room's name.
+
+### Changed
+- Every round transport/icon button (play/pause, shuffle, repeat, prev/
+  next, favorite, mute) now gets an explicit equal width/height and center
+  alignment, so a fixed-height bar can no longer stretch one into an oval.
+- The player bar's info/transport/volume row is now truly centered
+  regardless of the two side groups' relative widths.
+- Grid eligibility for third-party service listings (e.g. bonob's Albums)
+  no longer depends solely on the service's own, often-missing
+  `displayType` hint — a container entry with real cover art now also
+  qualifies.
+
+### Fixed
+- A layout jump in the player bar while seeking, caused by a momentary
+  `Transitioning` transport state briefly hiding the "Weiter: …" hint.
+- The room picker popover closing itself in the same instant it opened,
+  making the header-bar room button appear completely unresponsive.
+
 ## [0.3.5] - 2026-08-23
 
 ### Added

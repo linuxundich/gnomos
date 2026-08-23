@@ -15,6 +15,15 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.3.6" date="2026-08-23">
+      <description>
+        <p>A bottom Now Playing bar with a much wider seek bar, a
+        collapsible section sidebar (styled after noson-app) with the
+        library's own categories listed as sub-items, a compact room
+        picker in the header bar, a library grid/list toggle, and several
+        layout and popover fixes.</p>
+      </description>
+    </release>
     <release version="0.3.5" date="2026-08-23">
       <description>
         <p>Repeat-one, MPRIS shuffle/repeat control, suspend/resume
