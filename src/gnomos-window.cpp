@@ -2265,18 +2265,34 @@ void GnomosWindow::ShowSettingsDialog()
   // --- Bibliothek ---
   GtkWidget* library_group = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(library_group), "Bibliothek");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(library_group),
+      "Alles andere in Gnomos bleibt innerhalb deines Sonos-Haushalts im lokalen Netzwerk — die folgende "
+      "Funktion ist die einzige Ausnahme davon.");
 
   GtkWidget* artist_images_row = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(artist_images_row), "Künstlerbilder laden");
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(artist_images_row),
-      "Sendet Künstlernamen ohne Coverbild an die öffentliche Deezer-API, um ein Foto zu finden");
+      "Fragt für Interpreten ohne eigenes Coverbild ein Foto bei der öffentlichen Deezer-API "
+      "(api.deezer.com) ab — das ist eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff. "
+      "Dabei wird jeweils der Interpretenname an Deezer übertragen. Es gelten Deezers eigene "
+      "Nutzungsbedingungen für diese API (siehe Link unten).");
   adw_switch_row_set_active(ADW_SWITCH_ROW(artist_images_row), load_artist_images_);
   g_signal_connect_data(
       artist_images_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
       new std::function<void(bool)>([this](bool active) { SetLoadArtistImages(active); }), DeleteBoolCallback,
       static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), artist_images_row);
+
+  GtkWidget* deezer_terms_row = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(deezer_terms_row), "Deezer-API und Nutzungsbedingungen");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(deezer_terms_row), "developers.deezer.com");
+  auto* deezer_link_button = Gtk::make_managed<Gtk::LinkButton>("https://developers.deezer.com/api", "Öffnen");
+  deezer_link_button->set_valign(Gtk::Align::CENTER);
+  adw_action_row_add_suffix(ADW_ACTION_ROW(deezer_terms_row), GTK_WIDGET(deezer_link_button->gobj()));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), deezer_terms_row);
+
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(library_group));
 
   adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));

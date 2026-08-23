@@ -577,6 +577,43 @@ clashed with the rest of a GNOME app.
   `"avatar-default-symbolic"` **and** `art_uri` is empty — never for an
   artist a service already supplied real art for.
 
+### Stronger Deezer disclosure, and an A-Z jump index for long lists
+
+- The "Künstlerbilder laden" setting's subtitle now names the actual
+  endpoint (`api.deezer.com`), says explicitly that it's a real internet
+  request rather than a local Sonos one, and states that Deezer's own
+  terms of use apply. A second row right below it links out to
+  `developers.deezer.com/api` (`Gtk::LinkButton`, same widget the
+  service-linking dialog already uses) so the terms are one click away
+  rather than just asserted in prose. `AdwPreferencesGroup` itself also
+  gained a description stating that this is the *only* thing in the app
+  that isn't local-network-only.
+- **A-Z jump index**: `LibraryView` gained `index_strip_`, a narrow
+  (28px), `.card`-styled vertical strip along the content's left edge —
+  one row per bucket (`'0'` for anything not starting with a Latin
+  letter, then `A`..`Z`), clickable when the current level has at least
+  one entry in that bucket, dimmed and inert when it doesn't (kept
+  visible either way, so the strip's own layout stays a reliable spatial
+  guide to "roughly where" a letter is). Only shown at all once
+  `SetEntries()` sees at least 30 entries — a short list doesn't need it,
+  and the 27-row strip would dwarf one.
+  - Bucketing (`BucketFor()`) folds accented Latin letters to their base
+    letter via Unicode NFD decomposition + skipping the resulting
+    combining mark, so a German entry starting with Ä/Ö/Ü doesn't get
+    stranded under "0" just because of the umlaut.
+  - Clicking a letter calls `JumpToIndex()`, which resolves the target
+    child from `list_box_`/`flow_box_` directly (`grid_mode_active_`
+    tracks which one — set by `SetEntries()`, since entry indices map
+    onto different widgets depending on list vs. grid mode), computes its
+    position via `Gtk::Widget::compute_bounds()` relative to that same
+    container, and sets the scrolled window's own vertical adjustment to
+    it directly — no smooth-scroll animation, an instant jump, matching
+    what the index is actually for (skipping past hundreds of entries at
+    once, not a gentle nudge).
+  - Applies uniformly to every library level, local and third-party alike
+    — Artists/Albums/Genres/Playlists all qualify once they're long
+    enough; nothing here is specific to any one entry type.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

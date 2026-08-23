@@ -110,6 +110,13 @@ private:
   void BuildList(const std::vector<LibraryEntry>& entries, bool show_favorite_action, bool show_delete_action,
                  bool load_artist_images);
   void BuildGrid(const std::vector<LibraryEntry>& entries, bool load_artist_images);
+  // A-Z jump index down index_strip_'s left edge — one row per bucket
+  // ('0' for anything that doesn't start with a Latin letter, then A..Z),
+  // each jumping to that bucket's first entry when the list has enough
+  // entries to be worth it. See its own .cpp comment for the threshold and
+  // the accent-folding behind bucketing.
+  void RebuildIndexStrip(const std::vector<LibraryEntry>& entries);
+  void JumpToIndex(int entry_index);
 
   Gtk::Button back_button_;
   Gtk::Label level_title_;
@@ -126,6 +133,11 @@ private:
   Gtk::ListBox list_box_;
   Gtk::FlowBox flow_box_;
   Gtk::Label placeholder_;
+  Gtk::Box index_strip_{Gtk::Orientation::VERTICAL, 0};
+  // Set by the most recent SetEntries() — JumpToIndex() needs to know
+  // whether entry indices currently map onto flow_box_'s children or
+  // list_box_'s rows.
+  bool grid_mode_active_ = false;
   sigc::signal<void(unsigned)> signal_entry_activated_;
   sigc::signal<void()> signal_back_requested_;
   sigc::signal<void()> signal_search_requested_;

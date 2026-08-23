@@ -3,8 +3,11 @@
 #include "library-view.h"
 
 #include <algorithm>
+#include <map>
 #include <string>
 
+#include <glib.h>
+#include <gtkmm/adjustment.h>
 #include <gtkmm/image.h>
 #include <pangomm/layout.h>
 
@@ -129,7 +132,25 @@ LibraryView::LibraryView()
   scroller_.set_child(list_box_);
   scroller_.set_vexpand(true);
   scroller_.set_hexpand(true);
-  append(scroller_);
+
+  // A-Z jump index (see RebuildIndexStrip()) — narrow, fixed-width, its
+  // own "card" background so it reads as a distinct control rather than
+  // part of the scrolled content next to it, matching the user's own
+  // "schmale farblich abgesetzte Spalte" request. Only visible once
+  // SetEntries() has enough entries to actually be worth jumping around
+  // in — see RebuildIndexStrip()'s own threshold.
+  index_strip_.add_css_class("card");
+  index_strip_.set_homogeneous(true);
+  index_strip_.set_vexpand(true);
+  index_strip_.set_size_request(28, -1);
+  index_strip_.set_visible(false);
+
+  auto* content_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 0);
+  content_row->set_vexpand(true);
+  content_row->set_hexpand(true);
+  content_row->append(index_strip_);
+  content_row->append(scroller_);
+  append(*content_row);
 }
 
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
@@ -140,11 +161,13 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
                          : entries.size() == 1 ? "1 Eintrag"
                                                 : std::to_string(entries.size()) + " Einträge");
   bool grid = grid_available && grid_active;
+  grid_mode_active_ = grid;
   scroller_.set_child(grid ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_));
   if (grid)
     BuildGrid(entries, load_artist_images);
   else
     BuildList(entries, show_favorite_action, show_delete_action, load_artist_images);
+  RebuildIndexStrip(entries);
 
   view_mode_button_.set_visible(grid_available);
   // Icon/tooltip reflect the mode a click switches *to*, not the current
@@ -304,6 +327,99 @@ void LibraryView::BuildGrid(const std::vector<LibraryEntry>& entries, bool load_
 
     flow_box_.append(*tile);
   }
+}
+
+namespace
+{
+// '0' for anything not starting with a Latin letter, otherwise the
+// upper-cased first Latin letter — accented ones (Ä, É, ...) fold to
+// their base letter via Unicode NFD decomposition + skipping the
+// resulting combining mark, so a German or French entry isn't stranded
+// under "0" just because of an umlaut or accent.
+char BucketFor(const std::string& title)
+{
+  if (title.empty())
+    return '0';
+  gchar* normalized = g_utf8_normalize(title.c_str(), -1, G_NORMALIZE_NFD);
+  if (!normalized)
+    return '0';
+  char result = '0';
+  for (const char* p = normalized; *p; p = g_utf8_next_char(p))
+  {
+    gunichar ch = g_utf8_get_char(p);
+    if (g_unichar_type(ch) == G_UNICODE_NON_SPACING_MARK)
+      continue;
+    gunichar upper = g_unichar_toupper(ch);
+    if (upper >= 'A' && upper <= 'Z')
+      result = static_cast<char>(upper);
+    break;
+  }
+  g_free(normalized);
+  return result;
+}
+}  // namespace
+
+void LibraryView::RebuildIndexStrip(const std::vector<LibraryEntry>& entries)
+{
+  while (Gtk::Widget* child = index_strip_.get_first_child())
+    index_strip_.remove(*child);
+
+  // Only worth showing once there's enough content to actually need
+  // jumping around in — a handful of entries doesn't need this, and the
+  // 27-row strip would dwarf a short list.
+  static constexpr size_t kMinEntriesForIndex = 30;
+  if (entries.size() < kMinEntriesForIndex)
+  {
+    index_strip_.set_visible(false);
+    return;
+  }
+
+  std::map<char, int> first_index_for_bucket;
+  for (size_t i = 0; i < entries.size(); ++i)
+  {
+    char bucket = BucketFor(entries[i].title);
+    if (first_index_for_bucket.find(bucket) == first_index_for_bucket.end())
+      first_index_for_bucket[bucket] = static_cast<int>(i);
+  }
+
+  static const std::string kAlphabet = "0ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  for (char c : kAlphabet)
+  {
+    auto* label = Gtk::make_managed<Gtk::Label>(std::string(1, c));
+    label->add_css_class("caption");
+
+    auto it = first_index_for_bucket.find(c);
+    if (it == first_index_for_bucket.end())
+    {
+      // Still shown (not removed) so the strip's spatial layout stays a
+      // reliable, consistent guide to "roughly where" a letter is even
+      // when nothing that entries this level happens to start with it.
+      label->add_css_class("dim-label");
+      label->set_opacity(0.35);
+      index_strip_.append(*label);
+      continue;
+    }
+
+    auto* button = Gtk::make_managed<Gtk::Button>();
+    button->set_child(*label);
+    button->add_css_class("flat");
+    int target_index = it->second;
+    button->signal_clicked().connect([this, target_index] { JumpToIndex(target_index); });
+    index_strip_.append(*button);
+  }
+  index_strip_.set_visible(true);
+}
+
+void LibraryView::JumpToIndex(int entry_index)
+{
+  Gtk::Widget* target = grid_mode_active_
+                            ? static_cast<Gtk::Widget*>(flow_box_.get_child_at_index(entry_index))
+                            : static_cast<Gtk::Widget*>(list_box_.get_row_at_index(entry_index));
+  if (!target)
+    return;
+  Gtk::Widget& container = grid_mode_active_ ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_);
+  if (auto bounds = target->compute_bounds(container))
+    scroller_.get_vadjustment()->set_value(bounds->get_y());
 }
 
 void LibraryView::SetLevelTitle(const std::string& title)
