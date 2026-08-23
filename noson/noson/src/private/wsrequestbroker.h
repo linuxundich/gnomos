@@ -1,0 +1,134 @@
+/*
+ *      Copyright (C) 2014-2026 Jean-Luc Barriere
+ *
+ *  This library is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU Lesser General Public License as published
+ *  by the Free Software Foundation; either version 3, or (at your option)
+ *  any later version.
+ *
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU Lesser General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Lesser General Public License
+ *  along with this library; see the file COPYING.  If not, write to
+ *  the Free Software Foundation, 51 Franklin Street, Fifth Floor, Boston,
+ *  MA 02110-1301 USA
+ *  http://www.gnu.org/copyleft/gpl.html
+ *
+ */
+
+#ifndef WSREQUESTBROKER_H
+#define	WSREQUESTBROKER_H
+
+#include "local_config.h"
+#include "wsstatic.h"
+#include "wsheader.h"
+
+#include <string>
+#include <map>
+
+#define SERVER_PROTOCOL       "HTTP/1.1"
+#define SERVER_SOFTWARE       LIBTAG "/" LIBVERSION
+#define SERVER_CONNECTION     "close"
+#define SERVER_STD_CHARSET    "utf-8"
+
+namespace NSROOT
+{
+
+  class TcpSocket;
+
+  class WSRequestBroker
+  {
+  public:
+    WSRequestBroker(TcpSocket* socket, bool secure, int timeout);
+    ~WSRequestBroker();
+
+    typedef std::map<std::string, WSHeader> VARS;
+
+    void SetTimeout(int timeout);
+    bool IsSecure() const { return m_secure; }
+    bool IsParsed() const { return m_parsed; }
+    std::string GetRemoteAddrInfo() const;
+    std::string GetHostAddrInfo() const;
+    WS_METHOD GetRequestMethod() const { return m_method; }
+    const std::string& GetRequestMethodKey() const { return m_methodKey; }
+    const std::string& GetRequestURI() const { return m_requestUri; }
+    const std::string& GetRequestPath() const { return m_path; }
+    const std::string& GetRequestProtocol() const { return m_protocol; }
+    const std::string& GetRequestHost() const { return m_host; }
+    const std::string& GetRequestServerName() const { return m_serverName; }
+    const std::string& GetRequestServerPort() const { return m_serverPort; }
+    const std::string& GetRequestHeader(const std::string& key) const;
+    const std::string& GetRequestHeader(WS_HEADER header) const { return GetRequestHeader(ws_header_to_upperstr(header)); }
+    const std::string& GetURIParams() const { return m_uriParams; }
+    bool IsRewritten() const { return m_rewritten; }
+    bool IsPathHidden() const { return m_pathIsHidden; }
+    bool HasContent() const { return m_hasContent; }
+    bool IsChunkedTransfer() const { return m_contentChunked; }
+    size_t GetContentLength() const { return m_contentLength; }
+    int ReadContent(char *buf, size_t buflen);
+    size_t GetConsumed() const { return m_consumed; }
+
+    const VARS& GetRequestHeaders() const { return m_requestHeaders; }
+
+    static bool ExplodeURI(const std::string& uri, std::string& path, std::string& uriparams, bool& ishidden);
+    static VARS ExplodeQuery(const std::string& uriparams);
+    static bool ExplodeHost(const std::string& host, std::string& nameStr, std::string& portStr);
+
+    bool ReplyData(const char * data, size_t size);
+    bool RewritePath(const std::string& newpath);
+
+    void SetAuthUser(const std::string& authUser) { m_authUser = authUser; }
+    const std::string& GetAuthUser() const { return m_authUser; }
+    void SetStatus(WS_STATUS status) { m_status = status; }
+    WS_STATUS GetStatus() const { return m_status; }
+    size_t GetBytesOut() const { return m_bytesOut; }
+    const std::string& GetRequestLine() const { return m_requestLine; }
+    TcpSocket * Socket() { return m_socket; }
+
+  private:
+    TcpSocket* m_socket;
+    bool m_secure;
+    bool m_parsed;
+    std::string m_requestLine;
+    std::string m_requestUri;
+    WS_METHOD m_method;
+    std::string m_methodKey;
+    std::string m_path;
+    std::string m_protocol;
+    std::string m_uriParams;
+    std::string m_host;
+    std::string m_serverName;
+    std::string m_serverPort;
+    bool m_rewritten;
+    bool m_pathIsHidden;
+    bool m_hasContent;
+    bool m_contentChunked;
+    bool m_chunkNext;
+    size_t m_contentLength;
+    size_t m_consumed;
+    char* m_chunkBuffer;
+    char* m_chunkPtr;
+    char* m_chunkEOR;
+    char* m_chunkEnd;
+    VARS m_requestHeaders;
+
+    std::string m_authUser;
+    WS_STATUS m_status;
+    size_t m_bytesOut;
+
+    // prevent copy
+    WSRequestBroker(const WSRequestBroker&);
+    WSRequestBroker& operator=(const WSRequestBroker&);
+
+    bool ReadHeaderLine(const char *eol, std::string& line, size_t *len);
+    bool ParseQuery();
+    int ReadChunk(void *buf, size_t buflen);
+  };
+
+}
+
+#endif	/* WSREQUESTBROKER_H */
+

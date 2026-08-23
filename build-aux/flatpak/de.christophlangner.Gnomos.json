@@ -1,0 +1,82 @@
+{
+    "app-id": "de.christophlangner.Gnomos",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "47",
+    "sdk": "org.gnome.Sdk",
+    "command": "gnomos",
+    "finish-args": [
+        "--share=ipc",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--device=dri",
+        "--share=network"
+    ],
+    "cleanup": [
+        "/include",
+        "/lib/pkgconfig",
+        "/lib/cmake",
+        "/share/man",
+        "*.la",
+        "*.a"
+    ],
+    "modules": [
+        {
+            "name": "glibmm",
+            "buildsystem": "meson",
+            "config-opts": ["-Dbuild-documentation=false", "-Dbuild-tests=false"],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.gnome.org/GNOME/glibmm.git",
+                    "tag": "2.78.1"
+                }
+            ]
+        },
+        {
+            "name": "cairomm",
+            "buildsystem": "meson",
+            "config-opts": ["-Dbuild-documentation=false", "-Dbuild-tests=false"],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.freedesktop.org/cairo/cairomm.git",
+                    "tag": "1.16.2"
+                }
+            ]
+        },
+        {
+            "name": "pangomm",
+            "buildsystem": "meson",
+            "config-opts": ["-Dbuild-documentation=false"],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.gnome.org/GNOME/pangomm.git",
+                    "tag": "2.54.0"
+                }
+            ]
+        },
+        {
+            "name": "gtkmm",
+            "buildsystem": "meson",
+            "config-opts": ["-Dbuild-documentation=false", "-Dbuild-tests=false", "-Dbuild-demos=false"],
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://gitlab.gnome.org/GNOME/gtkmm.git",
+                    "tag": "4.14.0"
+                }
+            ]
+        },
+        {
+            "name": "gnomos",
+            "buildsystem": "meson",
+            "sources": [
+                {
+                    "type": "dir",
+                    "path": "../.."
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>de.christophlangner.Gnomos</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Gnomos</name>
+  <summary>Control Sonos speakers, including first-generation hardware</summary>
+  <description>
+    <p>
+      Gnomos is a GTK4/libadwaita client for Sonos speakers, built on top of
+      libnoson. It targets first-generation Sonos hardware (ZP80, ZP90,
+      ZP100, ZP120, CR100) that Sonos's own current apps no longer support.
+    </p>
+  </description>
+  <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.3.2" date="2026-08-23">
+      <description>
+        <p>Confirmation dialogs, Settings and keyboard shortcuts rebuilt on
+        current libadwaita widgets; the room sidebar now collapses on narrow
+        windows; clipboard copy in the track details dialog.</p>
+      </description>
+    </release>
+    <release version="0.3.1" date="2026-08-23">
+      <description>
+        <p>Play history tab, light/dark appearance override, library entry
+        counts, and a Space bar shortcut for play/pause.</p>
+      </description>
+    </release>
+    <release version="0.3.0" date="2026-08-22">
+      <description>
+        <p>Album/Artist cover art grid and a configurable, disk-persisted
+        cover art cache.</p>
+      </description>
+    </release>
+    <release version="0.2.5" date="2026-08-22">
+      <description>
+        <p>Three-pane layout with a dedicated Now Playing panel, and cover
+        art thumbnails throughout.</p>
+      </description>
+    </release>
+    <release version="0.2.4" date="2026-08-22">
+      <description>
+        <p>Fixed the "Gen 1" badge, which never appeared due to reading the
+        wrong device property.</p>
+      </description>
+    </release>
+    <release version="0.2.3" date="2026-08-22">
+      <description>
+        <p>Add-to-queue and play-next actions, richer alarm options,
+        destructive-action confirmations, local library search.</p>
+      </description>
+    </release>
+    <release version="0.2.2" date="2026-08-22">
+      <description>
+        <p>Fixed a false "queue could not be loaded" error and stale rows
+        after clearing the queue.</p>
+      </description>
+    </release>
+    <release version="0.2.1" date="2026-08-22">
+      <description>
+        <p>Fixed duplicate service entries after relinking, and "remember
+        last room" restoring the wrong room.</p>
+      </description>
+    </release>
+    <release version="0.2.0" date="2026-08-22">
+      <description>
+        <p>Support for third-party music services (Spotify, bonob and other
+        SMAPI-based services).</p>
+      </description>
+    </release>
+    <release version="0.1.2" date="2026-08-22">
+      <description>
+        <p>Track details dialog, seek bar, queue reordering, save queue as
+        playlist.</p>
+      </description>
+    </release>
+    <release version="0.1.1" date="2026-08-22">
+      <description>
+        <p>MPRIS2 support, sound settings, sleep timer, line-in switching.</p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-08-22">
+      <description>
+        <p>Initial version: zone discovery, playback controls, volume, queue,
+        favorites, alarms.</p>
+      </description>
+    </release>
+  </releases>
+</component>

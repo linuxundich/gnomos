@@ -1,0 +1,14 @@
+build/
+builddir/
+.flatpak-builder/
+_flatpak_build/
+*.o
+*.swp
+
+# Local reference copy of noson-app (the Qt/QML sibling project) — not part
+# of the Gnomos source tree and not needed to build it, kept only for local
+# comparison against noson-app's own behavior while developing.
+noson-app/
+
+# Claude Code session state
+.claude/

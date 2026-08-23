@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Gnomos
+Comment=Control Sonos speakers, including first-generation hardware
+Exec=gnomos
+Icon=de.christophlangner.Gnomos
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;AudioVideo;Audio;Player;
+StartupNotify=true

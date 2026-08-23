@@ -1,0 +1,64 @@
+/*
+ *      Copyright (C) 2018-2026 Jean-Luc Barriere
+ *
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#ifndef PASOURCE_H
+#define PASOURCE_H
+
+#include "local_config.h"
+#include "audiosource.h"
+#include "dlsym_pulse.h"
+
+namespace NSROOT
+{
+
+class PASourceWorker;
+
+class PASource : public AudioSource
+{
+  friend class PASourceWorker;
+public:
+  PASource(const std::string& name, const std::string& deviceName);
+  virtual ~PASource();
+
+  std::string getName() const override { return m_name; }
+  std::string getDescription() const override { return m_deviceName; }
+  AudioFormat getFormat() const override { return m_format; }
+
+  void play(OutputStream* out) override;
+  void stop() override;
+
+private:
+  std::string m_name;
+  std::string m_deviceName;
+  AudioFormat m_format;
+  OutputStream * m_output;
+
+  bool initPA();
+  void freePA();
+
+  int m_pa_error;
+  pa_simple * m_pa;
+  void(*m_blankKiller)(void*, int, int);
+
+  PASourceWorker * m_p;
+};
+
+}
+
+#endif /* PASOURCE_H */
+

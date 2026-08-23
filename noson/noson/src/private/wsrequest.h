@@ -1,0 +1,102 @@
+/*
+ *      Copyright (C) 2014-2026 Jean-Luc Barriere
+ *
+ *  This library is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU Lesser General Public License as published
+ *  by the Free Software Foundation; either version 3, or (at your option)
+ *  any later version.
+ *
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU Lesser General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Lesser General Public License
+ *  along with this library; see the file COPYING.  If not, write to
+ *  the Free Software Foundation, 51 Franklin Street, Fifth Floor, Boston,
+ *  MA 02110-1301 USA
+ *  http://www.gnu.org/copyleft/gpl.html
+ *
+ */
+
+#ifndef WSREQUEST_H
+#define	WSREQUEST_H
+
+#include "local_config.h"
+#include "wsstatic.h"
+#include "uriparser.h"
+
+#include <string>
+#include <map>
+
+#define REQUEST_PROTOCOL      "HTTP/1.1"
+#define REQUEST_USER_AGENT    LIBTAG "/" LIBVERSION
+#define REQUEST_CONNECTION    "close"
+#define REQUEST_STD_CHARSET   "utf-8"
+
+namespace NSROOT
+{
+
+  class WSRequestStreamSink
+  {
+  public:
+    virtual bool WriteRequestStream(const char * data, unsigned len) = 0;
+    virtual bool FlushRequestStream() = 0;
+  };
+
+  class WSRequest
+  {
+  public:
+    WSRequest(const std::string& server, unsigned port);
+    WSRequest(const std::string& server, unsigned port, bool secureURI);
+    WSRequest(const URIParser& uri, WS_METHOD method = WS_METHOD_Get);
+    ~WSRequest();
+
+    // Clone for redirection: see RFC-9110 section 10.2.2 Location
+    WSRequest(const WSRequest& o, const URIParser& redirection);
+
+    void RequestService(const std::string& url, WS_METHOD method = WS_METHOD_Get);
+    void RequestAccept(const std::string& contentType);
+    void RequestAcceptEncoding(bool yesno);
+    void SetUserAgent(const std::string& value);
+
+    void SetHeader(const std::string& field, const std::string& value);
+    void ClearHeader(const std::string& field);
+
+    void SetContentParam(const std::string& param, const std::string& value);
+    void SetContentCustom(const std::string& contentType, const char *content);
+    const std::string& GetContent() const { return m_contentData; }
+    void ClearContent();
+
+    const std::string& GetServer() const { return m_server; }
+    unsigned GetPort() const { return m_port; }
+    bool IsSecureURI() const { return m_secure_uri; }
+    WS_METHOD GetMethod() const { return m_service_method; }
+    const std::string& GetService() const { return m_service_url; }
+
+    bool WriteMessage(WSRequestStreamSink& sink) const;
+
+  private:
+    std::string m_server;
+    unsigned m_port;
+    bool m_secure_uri;
+    std::string m_service_url;
+    WS_METHOD m_service_method;
+    std::string m_charset;
+    std::string m_accept;
+    WS_CTYPE m_contentType;
+    std::string m_contentTypeStr;
+    std::string m_contentData;
+    typedef std::pair<std::string, std::string> header_t;
+    std::map<std::string, header_t> m_headers;
+    std::string m_userAgent;
+
+    bool WriteCommonHeading(WSRequestStreamSink& sink) const;
+    bool WriteMessageGET(WSRequestStreamSink& sink, const char* method) const;
+    bool WriteMessagePOST(WSRequestStreamSink& sink, const char* method) const;
+
+  };
+
+}
+
+#endif	/* WSREQUEST_H */

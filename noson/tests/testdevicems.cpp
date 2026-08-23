@@ -1,0 +1,268 @@
+#if (defined(_WIN32) || defined(_WIN64))
+#define __WINDOWS__
+#endif
+
+#ifdef __WINDOWS__
+#include <WinSock2.h>
+#include <Windows.h>
+#include <time.h>
+#define STDOUT stdout
+#define STDERR stderr
+#define usleep(t) Sleep((DWORD)(t)/1000)
+#define sleep(t)  Sleep((DWORD)(t)*1000)
+#else
+#include <unistd.h>
+#include <sys/time.h>
+#define STDOUT stdout
+#define STDERR stderr
+#endif
+
+#include <noson/sonossystem.h>
+#include <noson/contentdirectory.h>
+#include <noson/avtransport.h>
+#include <noson/musicservices.h>
+#include <noson/smapi.h>
+#include <noson/didlparser.h>
+
+#include <cstdio>
+#include <string>
+#include <cstdlib>
+
+#define PRINT(a) fputs(a, STDOUT)
+#define PRINTF(a, ...) fprintf(STDOUT, a, __VA_ARGS__)
+#define PERROR(a) fputs(a, STDERR)
+#define PERRORF(a, ...) fprintf(STDERR, a, __VA_ARGS__)
+
+void handleEventCB(void* handle)
+{
+//  PERROR("#########################\n");
+//  PERROR("### Handling event CB ###\n");
+//  PERROR("#########################\n");
+}
+
+
+void usage(const char* cmd)
+{
+  fprintf(stderr,
+        "Usage: %s [options]\n"
+        "  --zone <zone name>         Connect to zone\n"
+        "  --service <service name>   Testing for music service, default is 'TuneIn'\n"
+        "  --search <media id>        Testing search for id, default is 'root'\n"
+        "  --username <user name>     If policy auth is UserId: username\n"
+        "  --password <password>      If policy auth is UserId: password\n"
+        "  --debug                    Enable debug output\n"
+        "  --help                     print this help\n"
+        "\n", cmd
+        );
+}
+
+static int g_loglevel = 1;
+
+int main(int argc, char** argv)
+{
+  int ret = 0;
+#ifdef __WINDOWS__
+  //Initialize Winsock
+  WSADATA wsaData;
+  if ((ret = WSAStartup(MAKEWORD(2, 2), &wsaData)))
+    return ret;
+#endif /* __WINDOWS__ */
+
+  std::string tryzone;
+  std::string tstServiceName = "TuneIn";
+  std::string tstServiceMediaId = "root";
+  std::string username = "";
+  std::string password = "";
+
+  int i = 0;
+  while (++i < argc)
+  {
+    if (strcmp(argv[i], "--debug") == 0)
+    {
+      g_loglevel = 4;
+      PERROR("debug=Yes, ");
+    }
+    else if (strcmp(argv[i], "--zone") == 0 && argc > i+1)
+    {
+      PERRORF("zone=%s, ", argv[i+1]);
+      tryzone.assign(argv[i+1]);
+    }
+    else if (strcmp(argv[i], "--service") == 0 && argc > i+1)
+    {
+      PERRORF("service=%s, ", argv[i+1]);
+      tstServiceName.assign(argv[i+1]);
+    }
+    else if (strcmp(argv[i], "--search") == 0 && argc > i+1)
+    {
+      PERRORF("search=%s, ", argv[i+1]);
+      tstServiceMediaId.assign(argv[i+1]);
+    }
+    else if (strcmp(argv[i], "--username") == 0 && argc > i+1)
+    {
+      PERRORF("username=%s, ", argv[i+1]);
+      username.assign(argv[i+1]);
+    }
+    else if (strcmp(argv[i], "--password") == 0 && argc > i+1)
+    {
+      PERRORF("password=%s, ", argv[i+1]);
+      password.assign(argv[i+1]);
+    }
+    else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0)
+    {
+      usage(argv[0]);
+      return 0;
+    }
+  }
+  PERROR("\n");
+  SONOS::System::Debug(g_loglevel);
+
+  {
+
+    SONOS::System sonos(0, handleEventCB);
+    if (sonos.Discover())
+    {
+      PRINT("Discovered !!!\n");
+
+      if (sonos.IsConnected())
+      {
+        /*
+         * Music services
+         */
+        for (auto&& item : sonos.GetAvailableServices())
+       	{
+          PRINTF("MusicService: %s : %s , %s\n", item->GetName().c_str(), item->GetServiceType().c_str(), (item->GetPresentationMap() ? item->GetPresentationMap()->GetAttribut("Uri").c_str() : "No presentation map"));
+          PRINTF("Policy      = Auth:%s , Poll:%s\n", item->GetPolicy()->GetAttribut("Auth").c_str(), item->GetPolicy()->GetAttribut("PollInterval").c_str());
+          PRINTF("Capabilities= %s\n", item->GetCapabilities().c_str());
+          PRINTF("small icon  = %s\n", SONOS::System::GetLogoForService(item, "small").c_str());
+          PRINTF("xlarge icon = %s\n", SONOS::System::GetLogoForService(item, "x-large").c_str());
+          PRINTF("square icon = %s\n", SONOS::System::GetLogoForService(item, "square").c_str());
+          PRINT("\n");
+
+          if (tstServiceName.empty() && item->GetName() == "TuneIn")
+          {
+            SONOS::System::Debug((g_loglevel < 3 ? 3 : g_loglevel));
+            PRINTF("Testing service %s ...\n", item->GetName().c_str());
+            SONOS::SMAPI sm(sonos);
+            sm.Init(item, "fr_FR");
+            SONOS::SMAPIMetadata meta;
+            PRINTF("\n...search stations for term '%s'\n", "jazz");
+            sm.Search("stations", "jazz", 0, 10, meta);
+            for (auto&& data : meta.GetItems())
+            {
+              PRINTF("item: %s, %s\n", data.item->GetObjectID().c_str(), data.item->GetValue("dc:title").c_str());
+              if (data.uriMetadata)
+                PRINTF("%s\n\n", data.uriMetadata->DIDL().c_str());
+              else
+                PRINTF("%s\n\n", data.item->DIDL().c_str());
+            }
+            SONOS::System::Debug(g_loglevel);
+          }
+          if (item->GetName() == tstServiceName)
+          {
+            SONOS::System::Debug((g_loglevel < 3 ? 3 : g_loglevel));
+            PRINTF("Testing service %s ...\n", item->GetName().c_str());
+            SONOS::SMAPI sm(sonos);
+            sm.Init(item, "fr_FR");
+
+            for (auto&& search : sm.AvailableSearchCategories())
+              PRINTF("Search category: %s, %s\n", search->GetKey().c_str(), search->c_str());
+
+            bool rs;
+            SONOS::SMAPIMetadata meta;
+            PRINTF("\n...browse id '%s'\n", tstServiceMediaId.c_str());
+            if (!(rs = sm.GetMetadata(tstServiceMediaId, 0, 10, false, meta)))
+              rs = sm.GetMediaMetadata(tstServiceMediaId, meta);
+            if (!rs)
+            {
+              std::string regUrl;
+              std::string linkCode;
+              if (!sm.AuthTokenExpired())
+                PRINTF("!!! Browsing failed for service %s !!!\n", item->GetName().c_str());
+              else
+              {
+                SONOS::SMOAKeyring::Data auth;
+                switch (sm.GetPolicyAuth())
+                {
+                case SONOS::SMAPI::Auth_UserId:
+                  if (sm.GetSessionId(username, password, auth))
+                  {
+                    PRINTF("Session ID = %s\n", auth.key.c_str());
+                    if (!(rs = sm.GetMetadata(tstServiceMediaId, 0, 10, false, meta)))
+                      rs = sm.GetMediaMetadata(tstServiceMediaId, meta);
+                  }
+                  else
+                    PRINTF("!!! Getting session token failed for service %s !!!\n", item->GetName().c_str());
+                  break;
+
+                case SONOS::SMAPI::Auth_DeviceLink:
+                  if (sm.GetDeviceLinkCode(regUrl, linkCode))
+                  {
+                    PRINTF("Go to manual registration URL: %s\n", regUrl.c_str());
+                    if (!linkCode.empty())
+                      PRINTF("Link code: %s\n", linkCode.c_str());
+                    while (sm.GetDeviceAuthToken(auth))
+                    {
+                      PRINTF("Retrying %s\n", "...");
+                      sleep(5);
+                    }
+                    PRINTF("OAuth key   = %s\n", auth.key.c_str());
+                    PRINTF("OAuth token = %s\n", auth.token.c_str());
+                    if (!auth.key.empty())
+                    {
+                      if (!(rs = sm.GetMetadata(tstServiceMediaId, 0, 10, false, meta)))
+                        rs = sm.GetMediaMetadata(tstServiceMediaId, meta);
+                    }
+                    else
+                      PRINTF("!!! Getting auth token failed for service %s !!!\n", item->GetName().c_str());
+                  }
+                  break;
+
+                case SONOS::SMAPI::Auth_AppLink:
+                  if (sm.GetAppLink(regUrl, linkCode))
+                  {
+                    PRINTF("Go to manual registration URL: %s\n", regUrl.c_str());
+                    if (!linkCode.empty())
+                      PRINTF("Link code: %s\n", linkCode.c_str());
+                    while (sm.GetDeviceAuthToken(auth))
+                    {
+                      PRINTF("Retrying %s\n", "...");
+                      sleep(5);
+                    }
+                    PRINTF("OAuth key   = %s\n", auth.key.c_str());
+                    PRINTF("OAuth token = %s\n", auth.token.c_str());
+                    if (!auth.key.empty())
+                    {
+                      if (!(rs = sm.GetMetadata(tstServiceMediaId, 0, 10, false, meta)))
+                        rs = sm.GetMediaMetadata(tstServiceMediaId, meta);
+                    }
+                    else
+                      PRINTF("!!! Getting auth token failed for service %s !!!\n", item->GetName().c_str());
+                  }
+                  break;
+
+                default:
+                  break;
+                }
+              }
+            }
+            for (auto&& data : meta.GetItems())
+            {
+              PRINTF("item: %s, %s\n", data.item->GetObjectID().c_str(), data.item->GetValue("dc:title").c_str());
+              if (data.uriMetadata)
+                PRINTF("%s\n\n", data.uriMetadata->DIDL().c_str());
+              else
+                PRINTF("%s\n\n", data.item->DIDL().c_str());
+            }
+            SONOS::System::Debug(g_loglevel);
+          }
+        }
+      }
+    }
+  }
+
+  //out:
+#ifdef __WINDOWS__
+  WSACleanup();
+#endif /* __WINDOWS__ */
+  return ret;
+}
