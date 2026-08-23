@@ -8,6 +8,52 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.4.0] - 2026-08-23
+
+### Added
+- Consistent GNOME iconography for library entries by type (artist/album/
+  genre/playlist/folder), replacing the single generic icon every entry
+  used to show regardless of what it actually was — including linked
+  third-party services, whose own category tiles (e.g. bonob's "Albums",
+  "Internet Radio") previously showed a visually inconsistent
+  service-branded icon or, in one case, fell through to the plain
+  fallback glyph entirely.
+- Optional real artist photos in the library, looked up by name against
+  Deezer's public API — off by default, since it's the one thing in this
+  app that leaves the local Sonos household, with a Settings entry
+  disclosing exactly that (endpoint, terms, opt-in).
+- A live filter for narrowing down a long library list as you type
+  (Artists/Albums/Genres/Playlists and similar, local and third-party
+  services alike), plus a user-adjustable fallback icon size ("Symbolgröße"
+  in Settings → Bibliothek).
+- A "Geräteinfo" dialog per room (IP, MAC, software version, model),
+  reached from the room picker's popover.
+- Deleting a saved Sonos playlist, and adding a custom internet radio
+  station, both from their respective library root levels.
+- Sub gain in the sound popover, alongside the existing bass/treble/
+  loudness/night mode/fixed volume.
+- A "next alarm" indicator in the Alarms tab, and alarm duplication.
+- A "search the library" action on history entries (search by artist,
+  since a history entry carries no URI to replay directly).
+- "Add to favorites" for library entries (tracks and containers alike),
+  and "play all"/"add all to queue" for Favorites, matching actions the
+  library already had.
+- A fixed volume / line-out toggle in the sound popover, for a device
+  feeding a receiver/amp with its own volume control.
+- A proper app icon, replacing the placeholder — Sonos' black/white
+  palette with a wifi/broadcast-wave motif clipped inside a play-triangle
+  silhouette.
+
+### Changed
+- Real downloaded images (album art, service icons, artist photos) no
+  longer display larger than fallback icons in the same grid or list.
+
+### Fixed
+- Local library browsing coming back empty after visiting a third-party
+  service and then jumping to a local category from the sidebar.
+- A crash when adjusting the new icon-size setting while viewing a large
+  grid (e.g. a linked service's full Albums listing).
+
 ## [0.3.6] - 2026-08-23
 
 ### Added

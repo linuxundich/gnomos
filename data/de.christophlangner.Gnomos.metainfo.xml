@@ -15,6 +15,17 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.4.0" date="2026-08-23">
+      <description>
+        <p>Consistent, type-aware icons throughout the library (including
+        linked third-party services), optional real artist photos via
+        Deezer, a live filter for long library lists, a device info
+        dialog per room, sub gain control, playlist deletion and custom
+        internet radio stations, several smaller additions, a proper app
+        icon, and a couple of fixes (empty library after visiting a
+        service, real images displaying larger than fallback icons).</p>
+      </description>
+    </release>
     <release version="0.3.6" date="2026-08-23">
       <description>
         <p>A bottom Now Playing bar with a much wider seek bar, a
