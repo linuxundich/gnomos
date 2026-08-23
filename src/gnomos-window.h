@@ -55,10 +55,18 @@ private:
   // rename the selected zone, e.g. joining/leaving a group).
   void UpdateRoomButtonLabel();
   // nav_list_box_ (the section sidebar: Warteschlange/Favoriten/Alarme/
-  // Verlauf/Bibliothek) replaced the old top AdwViewSwitcher — this just
-  // sets view_stack_'s visible child to match the row clicked, the same
-  // job AdwViewSwitcher used to do internally.
+  // Verlauf/Bibliothek) replaced the old top AdwViewSwitcher. Every row —
+  // the five static top-level ones and the library's own sub-items alike
+  // — carries its own action in nav_row_actions_ (index-matched, see that
+  // member's comment); this just runs the one for the row clicked.
   void OnNavRowSelected(Gtk::ListBoxRow* row);
+  // Rebuilds the indented library sub-item rows nested under "Bibliothek"
+  // (Interpreten/Alben/.../linked services) from library_root_entries_ —
+  // called whenever the library root is (re)fetched (see OnLibraryChanged())
+  // so a newly linked/unlinked service is reflected without restarting.
+  // Only ever touches rows after the five static ones — see
+  // nav_row_actions_'s own comment for why those are never rebuilt.
+  void RebuildLibraryNavEntries();
   void ShowAddAlarmDialog();
   void ShowAlarmDialog(const AlarmInfo* existing);
   void OnAlarmEditRequested(std::string alarm_id);
@@ -217,11 +225,24 @@ private:
   // AdwViewSwitcher this app used to have as a top tab bar — styled after
   // noson-app's own left-hand navigation (Meine Dienste/Mein
   // Musikverzeichnis/Meine Radiosender/Favoriten/Wiedergabelisten/Wecker/
-  // Dieses Gerät). Selecting a row just sets view_stack_'s visible child
-  // (OnNavRowSelected()); each page still owns its own content and any
-  // further internal navigation (e.g. LibraryView's own back button)
-  // exactly as before.
+  // Dieses Gerät). Below the "Bibliothek" row, RebuildLibraryNavEntries()
+  // appends one indented, icon-less row per root library category
+  // (Interpreten/Alben/Genres/Titel/Playlisten/Radiosender) and per linked
+  // service (Spotify, bonob, ...) — the same list BrowseLibraryAsync("")
+  // returns for the library's own root level, so jumping straight to
+  // "Interpreten" from the sidebar doesn't need a second source of truth.
   Gtk::ListBox nav_list_box_;
+  // One action per nav_list_box_ row, in the same append order — the five
+  // static top-level rows first (built once in the constructor and never
+  // rebuilt, so their selection state and row identity survive library
+  // refreshes), then the library's own sub-items (rebuilt in place by
+  // RebuildLibraryNavEntries() whenever the library root changes).
+  // OnNavRowSelected() just runs nav_row_actions_[row->get_index()]() —
+  // same index-into-a-parallel-vector pattern current_zones_ already uses,
+  // but per-row *behavior* rather than per-row *data*, since a sub-item's
+  // action (jump to that library category) differs in kind from a
+  // top-level row's (switch view_stack_ page).
+  std::vector<std::function<void()>> nav_row_actions_;
 
   // Room/zone list — see room_button_'s own comment on where it's shown
   // now; this pair of widgets is unchanged from when it was the permanent
@@ -265,6 +286,14 @@ private:
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;
   std::vector<LibraryEntry> current_library_entries_;
+  // The root level's own entries specifically (a copy of
+  // current_library_entries_ taken whenever library_stack_.size() == 1) —
+  // kept separately since current_library_entries_ tracks whatever level is
+  // currently browsed, which is usually *not* the root once the user has
+  // navigated in. RebuildLibraryNavEntries() reads this to populate the
+  // sidebar's library sub-items, independent of the LibraryView's own
+  // current depth.
+  std::vector<LibraryEntry> library_root_entries_;
   // Set right before BeginServiceLink(); consumed once the link succeeds to
   // push a matching breadcrumb onto library_stack_ (see OnServiceLinkReady()'s
   // "Fertig" handler).

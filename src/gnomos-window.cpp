@@ -41,6 +41,12 @@
 namespace gnomos
 {
 
+// Number of nav_list_box_ rows built once in the constructor and never
+// rebuilt (Warteschlange/Favoriten/Alarme/Verlauf/Bibliothek) — matches
+// kNavPages's own size further down; RebuildLibraryNavEntries() uses this
+// to know where the library's own sub-item rows start.
+constexpr size_t kStaticNavRowCount = 5;
+
 GnomosWindow::GnomosWindow()
 {
   set_title("Gnomos");
@@ -407,10 +413,11 @@ GnomosWindow::GnomosWindow()
     auto* row_label = Gtk::make_managed<Gtk::Label>(title);
     row_label->set_halign(Gtk::Align::START);
     row_box->append(*row_label);
-    // Data-only, never displayed: OnNavRowSelected() reads this back via
-    // get_index() into kNavPages, same index-into-a-parallel-array
-    // pattern OnZoneRowSelected() already uses for current_zones_.
     nav_list_box_.append(*row_box);
+
+    std::string page_name = name;
+    nav_row_actions_.push_back(
+        [this, page_name] { adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str()); });
   }
   auto* nav_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
   nav_scroller->set_child(nav_list_box_);
@@ -653,11 +660,56 @@ void GnomosWindow::OnNavRowSelected(Gtk::ListBoxRow* row)
 {
   if (!row || !view_stack_)
     return;
-  static const std::array<const char*, 5> kNavPageNames = {"queue", "favorites", "alarms", "history", "library"};
   int index = row->get_index();
-  if (index < 0 || static_cast<size_t>(index) >= kNavPageNames.size())
+  if (index < 0 || static_cast<size_t>(index) >= nav_row_actions_.size())
     return;
-  adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), kNavPageNames[static_cast<size_t>(index)]);
+  nav_row_actions_[static_cast<size_t>(index)]();
+}
+
+void GnomosWindow::RebuildLibraryNavEntries()
+{
+  // The five static top-level rows (Warteschlange/Favoriten/Alarme/Verlauf/
+  // Bibliothek) are never touched here — only whatever library sub-item
+  // rows a previous call appended after them.
+  while (nav_row_actions_.size() > kStaticNavRowCount)
+  {
+    int last_index = static_cast<int>(nav_row_actions_.size()) - 1;
+    if (Gtk::ListBoxRow* row = nav_list_box_.get_row_at_index(last_index))
+      nav_list_box_.remove(*row);
+    nav_row_actions_.pop_back();
+  }
+
+  for (const LibraryEntry& entry : library_root_entries_)
+  {
+    // "Dienst verknüpfen…" opens a dialog, not a place to browse into — not
+    // a useful permanent sidebar destination.
+    if (entry.object_id == kLinkServiceSentinel)
+      continue;
+
+    auto* row_label = Gtk::make_managed<Gtk::Label>(entry.title);
+    row_label->set_halign(Gtk::Align::START);
+    row_label->set_ellipsize(Pango::EllipsizeMode::END);
+    row_label->add_css_class("dim-label");
+    row_label->add_css_class("caption");
+    row_label->set_margin_top(6);
+    row_label->set_margin_bottom(6);
+    row_label->set_margin_start(40);
+    row_label->set_margin_end(8);
+    nav_list_box_.append(*row_label);
+
+    std::string object_id = entry.object_id;
+    std::string title = entry.title;
+    nav_row_actions_.push_back([this, object_id, title] {
+      // Jump straight to this category, discarding any deeper browse
+      // position — matches what clicking it from the actual library root
+      // level would do, since that's exactly where this list comes from.
+      library_stack_.clear();
+      library_stack_.push_back({"", "Bibliothek"});
+      library_stack_.push_back({object_id, title.empty() ? "—" : title});
+      backend_->BrowseLibraryAsync(object_id);
+      adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), "library");
+    });
+  }
 }
 
 void GnomosWindow::UpdateRoomButtonLabel()
@@ -1334,6 +1386,15 @@ void GnomosWindow::OnLibraryChanged()
   library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_);
   library_view_.SetLevelTitle(library_stack_.back().second);
   library_view_.SetBackVisible(library_stack_.size() > 1);
+
+  // Root level specifically — see library_root_entries_'s own comment for
+  // why this can't just reuse current_library_entries_ unconditionally
+  // (it tracks whatever level is currently browsed, usually not the root).
+  if (library_stack_.size() == 1)
+  {
+    library_root_entries_ = current_library_entries_;
+    RebuildLibraryNavEntries();
+  }
 }
 
 void GnomosWindow::OnLibraryEntryActivated(unsigned index)

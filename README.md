@@ -59,7 +59,9 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   and repeat
 - A section sidebar (Warteschlange, Favoriten, Alarme, Verlauf, Bibliothek)
   in the style of noson-app's own navigation, plus a compact room/zone
-  picker in the header bar
+  picker in the header bar; the library's own root categories (Interpreten,
+  Alben, Genres, Radiosender, linked services, ...) are listed right there
+  as sub-items, for jumping straight to one without browsing in first
 - A responsive window: the section sidebar tucks away behind a toggle
   button once the window gets narrow, and both the window's and the
   sidebar's size are remembered across restarts

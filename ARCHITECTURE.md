@@ -308,13 +308,49 @@ follow instead:
   nothing is selected; called from both `OnZoneRowSelected()` (after a
   manual pick) and `OnZonesChanged()` (after a topology refresh, including
   the empty-zone-list case where `OnZoneRowSelected()` is never triggered).
-  `OnZoneRowSelected()` also closes the popover (`room_popover_.popdown()`)
-  after a pick, matching how a `Gtk::DropDown` or menu item closes itself
-  on selection.
+  Closing the popover after a pick (`room_popover_.popdown()`) is wired to
+  `zones_list_box_.signal_row_activated()`, not `signal_row_selected()` —
+  see the bug entry below for why that distinction matters.
 - A Sonos household only ever needs *occasional* room switching, not a
   permanently-docked panel for it — freeing the sidebar slot for section
   navigation instead directly mirrors how noson-app itself splits these two
   concerns into a left nav list and a separate room switcher.
+
+### Library categories as sidebar sub-items
+
+Following a user request to see the library's own root categories
+(Interpreten/Alben/Genres/Titel/Playlisten/Radiosender, plus one entry per
+linked third-party service) directly in the section sidebar, not just after
+first clicking into "Bibliothek": `RebuildLibraryNavEntries()` appends one
+indented, icon-less row per entry in `library_root_entries_` right after the
+"Bibliothek" row, and rebuilds them whenever `OnLibraryChanged()` fires for
+the true root level (`library_stack_.size() == 1`) — covering both the
+initial fetch and any later change (a service gets linked/unlinked).
+
+- `library_root_entries_` is `current_library_entries_`'s root-level
+  contents specifically, kept as its own copy since
+  `current_library_entries_` tracks whatever level `LibraryView` currently
+  has open, which is usually *not* the root once the user has browsed in —
+  the sidebar needs the root list independent of that.
+- `nav_row_actions_` replaced the old static index-into-a-fixed-array
+  lookup `OnNavRowSelected()` used: now every `nav_list_box_` row, static
+  or library-derived, carries its own `std::function<void()>` in the same
+  append order, and `OnNavRowSelected()` just runs
+  `nav_row_actions_[row->get_index()]()`. The five static top-level rows
+  are built once in the constructor and never rebuilt — `kStaticNavRowCount`
+  marks where `RebuildLibraryNavEntries()`'s own rows start, so a library
+  refresh only ever removes/re-adds its own tail, never disturbing the
+  static rows' identity or selection state.
+- Clicking a library sub-item resets `library_stack_` back to the root and
+  pushes just that one category, then browses into it and switches
+  `view_stack_` to "library" — a deliberate jump-to-root-then-in, not a
+  push relative to wherever `LibraryView` currently was, so the sidebar
+  always behaves like "go to this category" regardless of prior browse
+  depth. The library's own back button then returns to the true root, not
+  to some arbitrary prior level.
+- `kLinkServiceSentinel`'s "Dienst verknüpfen…" root entry is deliberately
+  excluded from the sidebar — it opens a dialog rather than browsing
+  anywhere, which would read oddly as a permanent nav destination.
 
 ## Bugs found during hardware testing
 
@@ -377,6 +413,19 @@ fixed as of the version noted:
    prevent an already-scheduled callback from still being invoked. Fixed
    with a shared "is this widget still alive" flag, allocated independently
    of the widget itself and checked before the callback touches anything.
+10. **Clicking `room_button_` visibly did nothing.** Root-caused live via
+    temporary `g_message()` diagnostics wired to `room_button_`'s "active"
+    property and `room_popover_`'s show/closed signals: every click logged
+    "shown" immediately followed by "closed" at the same timestamp — the
+    popover opened and closed again within the same tick, never actually
+    rendering. Cause: `zones_list_box_.select_row()` (called from
+    `OnZonesChanged()` to keep the selection in sync) re-fires
+    `row-selected` once the popover's content actually maps, and
+    `OnZoneRowSelected()` was unconditionally closing the popover on every
+    `row-selected` — including that re-fire, closing the very popover that
+    had just triggered it. Fixed by moving the `popdown()` call to
+    `row-activated` instead, which GTK only emits for genuine user
+    interaction (click/Enter), never for a programmatic `select_row()`.
 
 `GNOMOS_DEBUG=<0-6>` (see `main.cpp`) turns on libnoson's own SOAP
 request/response logging to stderr — level 4 is what found bug #1 above (an
