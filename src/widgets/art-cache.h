@@ -57,6 +57,19 @@ public:
   // own (single, larger) art image has no such problem to fix.
   Glib::RefPtr<Gdk::Texture> GetScaled(const std::string& uri, int target_size);
 
+  // Same lookup as GetScaled(), minus the actual decode — memory hit or
+  // disk fallback, same as before, but stops short of turning the bytes
+  // into a texture. Exists so a caller can do the (comparatively
+  // expensive — confirmed live, ~6ms/image on this system, apparently
+  // through a sandboxed glycin loader) decode step itself off the GTK
+  // main thread; DecodeScaledTexture() below is the pure, stateless other
+  // half of what GetScaled() used to do in one synchronous call, safe to
+  // run on any thread since it only touches its own arguments. GetScaled()
+  // itself is unchanged — still fully synchronous — for callers that
+  // don't need to go async.
+  Glib::RefPtr<Glib::Bytes> GetRawBytes(const std::string& uri);
+  static Glib::RefPtr<Gdk::Texture> DecodeScaledTexture(const Glib::RefPtr<Glib::Bytes>& raw_bytes, int target_size);
+
   // Persisted setting (see art-cache.ini next to state.ini/linked-services.ini
   // under $XDG_CONFIG_HOME/gnomos/). Setting a smaller limit than the
   // current on-disk usage evicts immediately.

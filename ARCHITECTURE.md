@@ -788,6 +788,93 @@ directly via `gdb` sidestepped that entirely and gave a more precise
 answer than a screenshot would have (the actual `SubType_t`/`itemType`
 values, not just how they render).
 
+### Switching to a very large grid (1000+ entries) took seconds
+
+Reported live: switching to the local library's or a linked service's
+"Alben" showed a multi-second freeze before anything appeared, worse the
+bigger the collection. Rather than guess, this was measured directly —
+temporary timing instrumentation in `LibraryView::ApplyFilter()`, driven
+via the same live-`gdb` technique used for the icon investigation above
+(`BrowseLibraryAsync()` called directly on the running process) against
+the local library's real 1060-entry "Alben" listing. `Clear()`, the
+filter pass, and swapping the scroller's child were all sub-millisecond;
+`BuildGrid()` itself took **6.7 seconds**.
+
+`Gtk::FlowBox`/`Gtk::ListBox` aren't virtualized — every tile in a 1060-
+entry grid gets a real, fully realized `CoverThumbnail` up front,
+regardless of how many are actually visible on screen. That widget count
+alone wasn't the bottleneck, though: `CoverThumbnail::SetArtUri()` was
+calling `ArtCache::GetScaled()` **synchronously**, inline in the tile-
+building loop, for every entry already in cache — and on this system,
+decoding a cached image (`Gdk::Pixbuf::create_from_stream_at_scale()`)
+costs roughly 6ms each, apparently a sandboxed `glycin` loader round trip
+rather than raw pixel work (confirmed by the flood of `glycin::pool`
+debug messages coincident with each decode, visible with
+`G_MESSAGES_DEBUG=all`). ~1060 of those back-to-back easily accounts for
+the full 6.7s. A second, larger cost was hiding in the disk-cache
+fallback: `ArtCache`'s in-memory LRU only holds `kMaxMemoryEntries = 300`
+decoded entries, so the majority of a 1000+-item grid's tiles — even on
+a *repeat* visit to the exact same listing — miss memory and fall
+through to `GetRawBytes()`'s disk path, which was *also* eagerly
+decoding a full-resolution `Gdk::Texture` there (needed only for
+`Get()`/`PlayerBar`'s benefit, never for a grid tile) on top of the
+scaled decode a tile actually wanted.
+
+Fixed in two parts:
+- **`ArtDecodePool`** (`src/widgets/art-decode-pool.h/.cpp`): a small
+  fixed pool of 2–4 worker threads (clamped from
+  `std::thread::hardware_concurrency()`), separate from `TaskQueue`
+  deliberately — `TaskQueue` is single-threaded by design (libnoson calls
+  must be serialized against one connection), but decode jobs are fully
+  independent of each other and *should* run concurrently to actually cut
+  wall-clock time rather than just relocate it. `ArtCache::DecodeScaledTexture()`
+  was promoted from a private, anonymous-namespace helper to a public
+  static method (pure — touches only its own arguments) specifically so
+  it's safe to call from a pool thread. `CoverThumbnail::SetArtUri()` (the
+  cache-hit path) and `OnLoaded()` (the post-download path) both now do
+  the cheap lookup (`ArtCache::GetRawBytes()`, a map lookup or a disk
+  read — never a decode) inline, then push the actual decode onto
+  `ArtDecodePool`, marshaling the resulting texture back to the main
+  thread via `Glib::signal_idle()` (documented safe to schedule from any
+  thread) before touching `this` or any GTK API — guarded by the same
+  `alive_`/`generation_` pair the async network-load path already used,
+  so a decode that finishes after its `CoverThumbnail` was torn down (a
+  filter keystroke, a second rapid grid rebuild, ...) is safely discarded
+  rather than touching freed memory.
+- **Lazy full-resolution decode**: `ArtCache::GetRawBytes()`'s disk
+  fallback now inserts the memory-cache entry with an empty `texture`
+  field (just `raw_bytes`) instead of eagerly decoding one — `Get()`'s
+  memory-hit branch decodes the full-resolution texture on demand, the
+  one time something (`PlayerBar`) actually asks for it, rather than
+  paying for it on every grid tile that happens to need a disk read.
+
+Confirmed live, same 1060-entry listing, same measurement technique:
+6.7s → 241ms — driven mostly by the lazy-decode change once the scaled
+decode was already off the main thread (6.7s → 2.7s from `ArtDecodePool`
+alone, → 241ms once the eager full-res decode was also removed from the
+hot path). Stress-tested by triggering five rapid back-to-back rebuilds
+of the same 1060-entry grid via `gdb` (queuing several `BrowseLibraryAsync()`
+calls before any completed, deliberately racing tile teardown against
+in-flight decode jobs) — no crash, no `CRITICAL`/`WARNING` output, each
+rebuild consistently 150–230ms.
+
+*Aside — a live-testing mishap*: driving the already-*running*,
+user-visible instance's `backend_->BrowseLibraryAsync()` directly via
+`gdb` (to get a real 1000+-entry grid without clicking through the UI)
+skips `GnomosWindow`'s own navigation-stack bookkeeping
+(`library_stack_`), which a real click always goes through. With the
+stack still at its startup depth, `OnLibraryChanged()`'s
+`library_stack_.size() == 1` check misfired and treated the Albums
+listing as the new *root* level, rebuilding the sidebar's nav sub-items
+from 1060 album names instead of the real root categories — visible
+live, reported directly, and understood immediately as a side effect of
+the measurement technique rather than an app bug (a real click into
+"Alben" always pushes onto `library_stack_` first, so this path is
+unreachable through normal use). Fixed by treating every `gdb`-driven
+measurement from then on as a throwaway, disposable process — kill it
+immediately after use and relaunch a cleanly, normally-started instance
+for the user to actually look at.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

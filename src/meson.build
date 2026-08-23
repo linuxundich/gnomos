@@ -6,6 +6,7 @@ gnomos_sources = files(
   'backend/noson-backend.cpp',
   'widgets/alarms-view.cpp',
   'widgets/art-cache.cpp',
+  'widgets/art-decode-pool.cpp',
   'widgets/artist-image-fetcher.cpp',
   'widgets/cover-thumbnail.cpp',
   'widgets/favorites-view.cpp',

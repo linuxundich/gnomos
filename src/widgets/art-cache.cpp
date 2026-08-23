@@ -27,6 +27,7 @@ std::string SettingsPath()
 {
   return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "art-cache.ini");
 }
+}  // namespace
 
 // Decodes raw_bytes scaled so neither dimension exceeds target_size
 // (aspect ratio preserved) — via GdkPixbuf's own purpose-built scaling
@@ -37,8 +38,10 @@ std::string SettingsPath()
 // easy-to-get-subtly-wrong conversion back to GdkPixbuf's plain
 // non-premultiplied RGBA; scaling from the original bytes sidesteps that
 // entirely). Returns an empty RefPtr if raw_bytes can't be decoded as an
-// image at all.
-Glib::RefPtr<Gdk::Texture> DecodeScaledTexture(const Glib::RefPtr<Glib::Bytes>& raw_bytes, int target_size)
+// image at all. Static and stateless (touches only its own arguments) —
+// deliberately safe to call from a worker thread; see its own header
+// comment for why that matters.
+Glib::RefPtr<Gdk::Texture> ArtCache::DecodeScaledTexture(const Glib::RefPtr<Glib::Bytes>& raw_bytes, int target_size)
 {
   try
   {
@@ -54,7 +57,6 @@ Glib::RefPtr<Gdk::Texture> DecodeScaledTexture(const Glib::RefPtr<Glib::Bytes>& 
     return {};
   }
 }
-}  // namespace
 
 ArtCache& ArtCache::Instance()
 {
@@ -199,17 +201,24 @@ Glib::RefPtr<Gdk::Texture> ArtCache::Get(const std::string& uri)
 
 Glib::RefPtr<Gdk::Texture> ArtCache::GetScaled(const std::string& uri, int target_size)
 {
+  auto bytes = GetRawBytes(uri);
+  if (!bytes)
+    return {};
+  return DecodeScaledTexture(bytes, target_size);
+}
+
+Glib::RefPtr<Glib::Bytes> ArtCache::GetRawBytes(const std::string& uri)
+{
   auto it = entries_.find(uri);
   if (it != entries_.end() && it->second.raw_bytes)
   {
     Touch(uri);
-    return DecodeScaledTexture(it->second.raw_bytes, target_size);
+    return it->second.raw_bytes;
   }
 
   // Not in memory (or a memory entry exists but predates raw_bytes being
   // tracked — can't happen post-restart, but harmless to also just fall
-  // through to disk here) — same disk fallback Get() has, just decoding
-  // the result at target_size once found instead of at full resolution.
+  // through to disk here) — same disk fallback Get() has.
   const std::string path = PathFor(uri);
   if (!Glib::file_test(path, Glib::FileTest::EXISTS))
     return {};
@@ -218,13 +227,23 @@ Glib::RefPtr<Gdk::Texture> ArtCache::GetScaled(const std::string& uri, int targe
   {
     std::string contents = Glib::file_get_contents(path);
     auto bytes = Glib::Bytes::create(contents.data(), contents.size());
-    auto texture = Gdk::Texture::create_from_bytes(bytes);
-    InsertMemory(uri, texture, bytes);
+    // No eager full-resolution decode here on purpose — confirmed live,
+    // this was the other half (alongside the scaled decode ArtDecodePool
+    // now handles) of what made rebuilding a large grid take seconds: most
+    // of a 1000+-entry grid's tiles land in this disk-fallback branch
+    // (kMaxMemoryEntries is far smaller than that), and every one of them
+    // used to pay for a full-resolution Gdk::Texture::create_from_bytes()
+    // synchronously right here, even though a grid tile only ever wants
+    // the scaled version. InsertMemory() with an empty texture just means
+    // "raw bytes cached, full-res texture not decoded yet" — Get()'s own
+    // memory-hit branch below decodes it lazily, on demand, the one time
+    // something (PlayerBar) actually asks for the full-resolution image.
+    InsertMemory(uri, {}, bytes);
     auto file = Gio::File::create_for_path(path);
     auto now = Glib::DateTime::create_now_local();
     file->set_attribute_uint64(G_FILE_ATTRIBUTE_TIME_MODIFIED, static_cast<guint64>(now.to_unix()),
                                 Gio::FileQueryInfoFlags::NONE);
-    return DecodeScaledTexture(bytes, target_size);
+    return bytes;
   }
   catch (const Glib::Error&)
   {
