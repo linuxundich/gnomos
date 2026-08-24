@@ -45,6 +45,16 @@ public:
   // takes, same as it would for any other pending load.
   void LoadArtistImage(const std::string& artist_name);
 
+  // Bumps this thumbnail's own pending fetch (if any — a no-op if it
+  // already resolved, or never needed one at all) to the front of
+  // HttpFetch's shared queue. LibraryView calls this for whatever's
+  // actually visible after a scroll settles — see its own comment for why:
+  // a large grid (1000+ entries) queues every tile's fetch up front in
+  // index order, so jumping far ahead by scrolling would otherwise mean
+  // waiting behind everything already queued between the old and new
+  // position.
+  void PrioritizeLoad();
+
   // Global, shared across every CoverThumbnail instance — how large a
   // fallback icon's own *glyph* renders relative to its pixel_size_ box,
   // as a fraction (1.0 = full size). Only affects icon-name rendering

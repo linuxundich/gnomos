@@ -27,4 +27,14 @@ namespace gnomos
 void HttpFetch(const std::string& url, std::function<void(std::string body)> callback,
                 const Glib::RefPtr<Gio::Cancellable>& cancellable = {});
 
+// Moves a still-queued (not yet dispatched — see HttpFetch()'s own
+// kMaxConcurrent comment) fetch for `url` to the front of the queue, if
+// one exists; a no-op otherwise (already in flight, already completed, or
+// never requested at all). Lets a caller with its own notion of what's
+// actually relevant right now — e.g. LibraryView, once it knows which
+// CoverThumbnail tiles just scrolled into view — jump ahead of a large
+// backlog, without HttpFetch itself needing to know anything about
+// scrolling, viewports, or grids.
+void HttpFetchPrioritize(const std::string& url);
+
 }  // namespace gnomos

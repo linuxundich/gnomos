@@ -63,6 +63,12 @@ void CoverThumbnail::LoadArtistImage(const std::string& artist_name)
   });
 }
 
+void CoverThumbnail::PrioritizeLoad()
+{
+  if (!current_uri_.empty())
+    HttpFetchPrioritize(current_uri_);
+}
+
 void CoverThumbnail::SetArtUri(const std::string& uri)
 {
   if (uri == current_uri_)

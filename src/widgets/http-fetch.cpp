@@ -3,6 +3,7 @@
 #include "http-fetch.h"
 
 #include <deque>
+#include <iterator>
 
 #include <libsoup/soup.h>
 
@@ -125,6 +126,24 @@ void HttpFetch(const std::string& url, std::function<void(std::string body)> cal
 {
   g_queue.push_back({url, std::move(callback), cancellable});
   StartNext();
+}
+
+void HttpFetchPrioritize(const std::string& url)
+{
+  // Searches back-to-front: if the same uri was ever requested more than
+  // once (a repeated album cover across several tiles, say), the most
+  // recently queued one is the one most likely to still matter — an
+  // older duplicate request for the same uri may already be stale.
+  for (auto it = g_queue.rbegin(); it != g_queue.rend(); ++it)
+  {
+    if (it->url == url)
+    {
+      PendingFetch pending = std::move(*it);
+      g_queue.erase(std::next(it).base());
+      g_queue.push_front(std::move(pending));
+      return;
+    }
+  }
 }
 
 }  // namespace gnomos

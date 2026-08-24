@@ -6,6 +6,9 @@
 #include <cctype>
 #include <string>
 
+#include <gdkmm/graphene_rect.h>
+#include <glibmm/main.h>
+#include <gtkmm/adjustment.h>
 #include <gtkmm/image.h>
 #include <pangomm/layout.h>
 
@@ -154,6 +157,20 @@ LibraryView::LibraryView()
   scroller_.set_vexpand(true);
   scroller_.set_hexpand(true);
   append(scroller_);
+
+  // See OnScrollSettled()'s own comment. 150ms after the last scroll event
+  // — long enough that a still-moving scroll (a drag, a momentum fling)
+  // doesn't trigger a bounds check per tick, short enough that a genuine
+  // stop reprioritizes promptly rather than visibly lagging behind.
+  scroller_.get_vadjustment()->signal_value_changed().connect([this] {
+    scroll_settle_connection_.disconnect();
+    scroll_settle_connection_ = Glib::signal_timeout().connect(
+        [this] {
+          OnScrollSettled();
+          return false;  // one-shot
+        },
+        150);
+  });
 }
 
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
@@ -254,6 +271,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
     else
       thumbnail->SetArtUri(entry.art_uri);
     row_box->append(*thumbnail);
+    thumbnails_.push_back(thumbnail);
 
     auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     labels->set_hexpand(true);
@@ -424,6 +442,7 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
     else
       thumbnail->SetArtUri(entry.art_uri);
     tile->append(*thumbnail);
+    thumbnails_.push_back(thumbnail);
 
     auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? "Unbenannt" : entry.title);
     title->set_halign(Gtk::Align::CENTER);
@@ -471,6 +490,20 @@ void LibraryView::Clear()
     list_box_.remove(*child);
   while (Gtk::Widget* child = flow_box_.get_first_child())
     flow_box_.remove(*child);
+  thumbnails_.clear();
+}
+
+void LibraryView::OnScrollSettled()
+{
+  double viewport_height = scroller_.get_height();
+  for (CoverThumbnail* thumbnail : thumbnails_)
+  {
+    auto bounds = thumbnail->compute_bounds(scroller_);
+    // No bounds (unmapped, not yet laid out) is never itself "visible" —
+    // skip rather than treat a missing value as in-viewport.
+    if (bounds && bounds->get_y() + bounds->get_height() >= 0 && bounds->get_y() <= viewport_height)
+      thumbnail->PrioritizeLoad();
+  }
 }
 
 }  // namespace gnomos
