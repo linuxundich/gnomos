@@ -11,6 +11,7 @@ gnomos_sources = files(
   'widgets/cover-thumbnail.cpp',
   'widgets/favorites-view.cpp',
   'widgets/history-view.cpp',
+  'widgets/http-fetch.cpp',
   'widgets/library-view.cpp',
   'widgets/player-bar.cpp',
   'widgets/queue-view.cpp',
@@ -22,6 +23,6 @@ executable(
   gnomos_sources,
   config_h,
   include_directories: config_inc,
-  dependencies: [gtkmm_dep, adwaita_dep, noson_dep, json_glib_dep],
+  dependencies: [gtkmm_dep, adwaita_dep, noson_dep, json_glib_dep, soup_dep],
   install: true,
 )

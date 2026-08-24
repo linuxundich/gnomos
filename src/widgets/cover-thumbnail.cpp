@@ -10,6 +10,7 @@
 #include "art-cache.h"
 #include "art-decode-pool.h"
 #include "artist-image-fetcher.h"
+#include "http-fetch.h"
 
 namespace gnomos
 {
@@ -111,67 +112,57 @@ void CoverThumbnail::SetArtUri(const std::string& uri)
   }
 
   cancellable_ = Gio::Cancellable::create();
-  auto file = Gio::File::create_for_uri(uri);
   auto alive = alive_;  // captured by value — see the header comment on alive_
-  file->load_contents_async(
-      [this, file, generation, alive](Glib::RefPtr<Gio::AsyncResult>& result) {
+  HttpFetch(
+      uri,
+      [this, generation, alive](std::string body) {
         if (!*alive)
           return;  // this CoverThumbnail was destroyed before the load finished
-        OnLoaded(result, file, generation);
+        OnLoaded(std::move(body), generation);
       },
       cancellable_);
 }
 
-void CoverThumbnail::OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::RefPtr<Gio::File>& file,
-                               unsigned generation)
+void CoverThumbnail::OnLoaded(std::string body, unsigned generation)
 {
   if (generation != generation_)
     return;  // superseded by a newer SetArtUri() before this load finished
 
-  try
+  if (body.empty())
   {
-    char* contents = nullptr;
-    gsize length = 0;
-    if (file->load_contents_finish(result, contents, length) && contents)
-    {
-      auto bytes = Glib::Bytes::create(contents, length);
-      g_free(contents);
-      // Put() first, so ArtCache has this uri's raw bytes on hand for next
-      // time — then decode those same bytes directly (no need to look them
-      // back up via GetRawBytes()) on ArtDecodePool, same reasoning as
-      // SetArtUri()'s own cache-hit path: a grid whose art is all fresh
-      // downloads would otherwise stall the main thread once per
-      // completion, exactly like the cache-hit case did before that was
-      // moved off-thread too.
-      if (ArtCache::Instance().Put(current_uri_, bytes))
-      {
-        auto alive = alive_;  // captured by value — see the header comment on alive_
-        int target_size = pixel_size_;
-        ArtDecodePool::Instance().Push([this, bytes, target_size, generation, alive] {
-          auto texture = ArtCache::DecodeScaledTexture(bytes, target_size);
-          Glib::signal_idle().connect_once([this, texture, generation, alive] {
-            if (!*alive)
-              return;  // this CoverThumbnail was destroyed before the decode finished
-            if (generation != generation_)
-              return;  // superseded by a newer SetArtUri()/LoadArtistImage() call
-            if (texture)
-              set(texture);
-            else
-              ShowFallback();
-          });
-        });
-      }
-      else
-      {
-        ShowFallback();
-      }
-    }
-    else
-    {
-      ShowFallback();
-    }
+    // Network error, non-2xx status, or a genuinely empty response — see
+    // HttpFetch()'s own comment for why these all collapse to one signal.
+    ShowFallback();
+    return;
   }
-  catch (const Glib::Error&)
+
+  auto bytes = Glib::Bytes::create(body.data(), body.size());
+  // Put() first, so ArtCache has this uri's raw bytes on hand for next
+  // time — then decode those same bytes directly (no need to look them
+  // back up via GetRawBytes()) on ArtDecodePool, same reasoning as
+  // SetArtUri()'s own cache-hit path: a grid whose art is all fresh
+  // downloads would otherwise stall the main thread once per
+  // completion, exactly like the cache-hit case did before that was
+  // moved off-thread too.
+  if (ArtCache::Instance().Put(current_uri_, bytes))
+  {
+    auto alive = alive_;  // captured by value — see the header comment on alive_
+    int target_size = pixel_size_;
+    ArtDecodePool::Instance().Push([this, bytes, target_size, generation, alive] {
+      auto texture = ArtCache::DecodeScaledTexture(bytes, target_size);
+      Glib::signal_idle().connect_once([this, texture, generation, alive] {
+        if (!*alive)
+          return;  // this CoverThumbnail was destroyed before the decode finished
+        if (generation != generation_)
+          return;  // superseded by a newer SetArtUri()/LoadArtistImage() call
+        if (texture)
+          set(texture);
+        else
+          ShowFallback();
+      });
+    });
+  }
+  else
   {
     ShowFallback();
   }

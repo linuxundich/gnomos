@@ -2,11 +2,10 @@
 
 #include "radio-browser-service.h"
 
-#include <giomm/asyncresult.h>
-#include <giomm/file.h>
-#include <glibmm/error.h>
 #include <glibmm/uriutils.h>
 #include <json-glib/json-glib.h>
+
+#include "http-fetch.h"
 
 namespace gnomos
 {
@@ -132,26 +131,10 @@ void RadioBrowserService::SearchStations(const std::string& name, const std::str
   if (!countrycode.empty())
     url += "&countrycode=" + Glib::uri_escape_string(countrycode);
 
-  auto file = Gio::File::create_for_uri(url);
-  file->load_contents_async([file, callback](Glib::RefPtr<Gio::AsyncResult>& result) {
-    std::string body;
-    try
-    {
-      char* contents = nullptr;
-      gsize length = 0;
-      if (file->load_contents_finish(result, contents, length) && contents)
-      {
-        body.assign(contents, length);
-        g_free(contents);
-      }
-    }
-    catch (const Glib::Error&)
-    {
-      // network error, DNS failure, ... — body stays empty, resolved as no
-      // results below like any other empty/unparseable response.
-    }
-    callback(ParseStations(body));
-  });
+  // An empty body (network error, non-2xx status, ...) resolves as no
+  // results below like any other empty/unparseable response — see
+  // HttpFetch()'s own comment.
+  HttpFetch(url, [callback](std::string body) { callback(ParseStations(body)); });
 }
 
 void RadioBrowserService::FetchCountries(std::function<void(std::vector<RadioBrowserCountry>)> callback)
@@ -167,27 +150,12 @@ void RadioBrowserService::FetchCountries(std::function<void(std::vector<RadioBro
     return;  // already in flight — just added another waiting callback above
 
   std::string url = std::string(kApiBase) + "/json/countries";
-  auto file = Gio::File::create_for_uri(url);
-  file->load_contents_async([this, file](Glib::RefPtr<Gio::AsyncResult>& result) {
-    std::string body;
-    try
-    {
-      char* contents = nullptr;
-      gsize length = 0;
-      if (file->load_contents_finish(result, contents, length) && contents)
-      {
-        body.assign(contents, length);
-        g_free(contents);
-      }
-    }
-    catch (const Glib::Error&)
-    {
-      // network error — countries_cache_ stays empty, resolved below same
-      // as a genuinely empty directory; countries_loaded_ deliberately NOT
-      // set in this case so a later retry (opening the dialog again) gets
-      // a fresh attempt rather than being stuck caching a failure forever.
-    }
-
+  // An empty body (network error, non-2xx status, ...) resolves below same
+  // as a genuinely empty directory — see HttpFetch()'s own comment;
+  // countries_loaded_ deliberately NOT set in that case so a later retry
+  // (opening the dialog again) gets a fresh attempt rather than being stuck
+  // caching a failure forever.
+  HttpFetch(url, [this](std::string body) {
     std::vector<RadioBrowserCountry> countries = ParseCountries(body);
     if (!countries.empty())
     {

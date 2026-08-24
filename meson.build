@@ -39,6 +39,14 @@ adwaita_dep = dependency('libadwaita-1', version: '>= 1.4')
 # a parser for the way NosonBackend does for a handful of single XML tags
 # elsewhere.
 json_glib_dep = dependency('json-glib-1.0')
+# HttpFetch()'s own backend (see its header comment) — Gio::File::create_for_uri()
+# would be the more obvious gtkmm-native choice, but its http(s):// support
+# depends on GVfs's own http backend, which isn't part of the GNOME runtime
+# and is entirely unavailable inside a Flatpak sandbox (confirmed live:
+# "gio: https://...: Operation not supported" when run under
+# org.gnome.Platform//49) — libsoup itself, unlike GVfs, is already part of
+# that same runtime, with no extra Flatpak module needed.
+soup_dep = dependency('libsoup-3.0')
 
 subdir('data')
 subdir('src')

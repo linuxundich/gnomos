@@ -4,9 +4,7 @@
 #include <memory>
 #include <string>
 
-#include <giomm/asyncresult.h>
 #include <giomm/cancellable.h>
-#include <giomm/file.h>
 #include <glibmm/refptr.h>
 #include <gtkmm/image.h>
 
@@ -64,7 +62,7 @@ public:
   static void SetFallbackIconScale(double scale);
 
 private:
-  void OnLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::RefPtr<Gio::File>& file, unsigned generation);
+  void OnLoaded(std::string body, unsigned generation);
   // Switches to fallback_icon_name_, sized by pixel_size_ *
   // s_fallback_icon_scale — every "nothing to show" case (empty uri,
   // failed load) goes through this rather than calling

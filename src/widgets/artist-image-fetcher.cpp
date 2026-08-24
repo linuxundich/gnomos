@@ -5,12 +5,10 @@
 #include <algorithm>
 #include <cctype>
 
-#include <giomm/asyncresult.h>
-#include <giomm/cancellable.h>
-#include <giomm/file.h>
-#include <glibmm/error.h>
 #include <glibmm/uriutils.h>
 #include <json-glib/json-glib.h>
+
+#include "http-fetch.h"
 
 namespace gnomos
 {
@@ -131,26 +129,10 @@ void ArtistImageFetcher::StartNext()
 
     std::string url =
         "https://api.deezer.com/search/artist?q=" + Glib::uri_escape_string(artist_name) + "&limit=10";
-    auto file = Gio::File::create_for_uri(url);
-    file->load_contents_async([this, file, artist_name](Glib::RefPtr<Gio::AsyncResult>& result) {
-      std::string body;
-      try
-      {
-        char* contents = nullptr;
-        gsize length = 0;
-        if (file->load_contents_finish(result, contents, length) && contents)
-        {
-          body.assign(contents, length);
-          g_free(contents);
-        }
-      }
-      catch (const Glib::Error&)
-      {
-        // network error, DNS failure, ... — body stays empty, resolved as
-        // "not found" below like any other lookup miss.
-      }
-      OnResponse(artist_name, body);
-    });
+    // An empty body (network error, non-2xx status, ...) resolves as "not
+    // found" below like any other lookup miss — see HttpFetch()'s own
+    // comment.
+    HttpFetch(url, [this, artist_name](std::string body) { OnResponse(artist_name, body); });
   }
 }
 
