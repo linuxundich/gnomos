@@ -45,6 +45,17 @@ public:
   // callback rather than starting a duplicate lookup.
   void RequestArtistImage(const std::string& artist_name, std::function<void(std::string)> callback);
 
+  // Bumps artist_name's own pending lookup — if it's still queued and not
+  // yet dispatched — to the front of the queue; a no-op otherwise (already
+  // in flight, already resolved/cached, or never requested at all).
+  // CoverThumbnail calls this the same way it calls HttpFetchPrioritize()
+  // for a direct art_uri load — see its own PrioritizeLoad() comment for
+  // why: this queue has exactly the same "a large grid queues everything
+  // up front in index order" problem HttpFetch's own queue had, just one
+  // stage earlier (resolving a name to a URL, before HttpFetch even gets
+  // involved to fetch that URL's image).
+  void PrioritizeArtist(const std::string& artist_name);
+
 private:
   ArtistImageFetcher() = default;
 

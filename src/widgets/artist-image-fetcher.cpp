@@ -136,6 +136,20 @@ void ArtistImageFetcher::StartNext()
   }
 }
 
+void ArtistImageFetcher::PrioritizeArtist(const std::string& artist_name)
+{
+  auto it = std::find(queue_.begin(), queue_.end(), artist_name);
+  if (it == queue_.end())
+    return;
+  std::string name = std::move(*it);
+  queue_.erase(it);
+  queue_.push_front(std::move(name));
+  // Picks it up immediately if a slot happens to already be free —
+  // otherwise it'll be next once the current in-flight lookups finish,
+  // same as any other queue_ entry.
+  StartNext();
+}
+
 void ArtistImageFetcher::OnResponse(const std::string& artist_name, const std::string& body)
 {
   Resolve(artist_name, ExtractBestPictureUrl(body, artist_name));

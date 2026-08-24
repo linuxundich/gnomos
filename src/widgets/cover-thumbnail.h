@@ -91,6 +91,12 @@ private:
   int pixel_size_ = 40;
   std::string fallback_icon_name_ = "audio-x-generic-symbolic";
   std::string current_uri_;
+  // Set by LoadArtistImage(), cleared once SetArtUri() actually runs (the
+  // lookup resolved, one way or another) — lets PrioritizeLoad() reach
+  // ArtistImageFetcher's own queue during the name-lookup stage, when
+  // current_uri_ is still empty and there's nothing yet for
+  // HttpFetchPrioritize() to act on.
+  std::string pending_artist_name_;
   unsigned generation_ = 0;
   Glib::RefPtr<Gio::Cancellable> cancellable_;
   // Confirmed live: unlike PlayerBar's own single, never-destroyed art

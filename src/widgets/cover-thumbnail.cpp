@@ -53,6 +53,7 @@ void CoverThumbnail::LoadArtistImage(const std::string& artist_name)
   if (cancellable_)
     cancellable_->cancel();
   unsigned generation = ++generation_;
+  pending_artist_name_ = artist_name;
   auto alive = alive_;  // captured by value — see its own header comment
   ArtistImageFetcher::Instance().RequestArtistImage(artist_name, [this, generation, alive](std::string url) {
     if (!*alive)
@@ -65,12 +66,19 @@ void CoverThumbnail::LoadArtistImage(const std::string& artist_name)
 
 void CoverThumbnail::PrioritizeLoad()
 {
+  // Both no-ops unless actually applicable — see each's own comment for
+  // when. A widget mid-artist-lookup has both fields set (the name lookup
+  // still pending, current_uri_ not yet known); one still fetching its
+  // image directly only has current_uri_.
+  if (!pending_artist_name_.empty())
+    ArtistImageFetcher::Instance().PrioritizeArtist(pending_artist_name_);
   if (!current_uri_.empty())
     HttpFetchPrioritize(current_uri_);
 }
 
 void CoverThumbnail::SetArtUri(const std::string& uri)
 {
+  pending_artist_name_.clear();
   if (uri == current_uri_)
     return;
   current_uri_ = uri;
