@@ -15,6 +15,16 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.7.0" date="2026-08-24">
+      <description>
+        <p>Per-station MPRIS control for radio, so ad breaks between song
+        repeats no longer retrigger notifications: an optional regex
+        filter, and a switch to opt a station out of MPRIS entirely. The
+        library sidebar now separates local network-share content from
+        Sonos playlists, radio and linked services, and a linked service's
+        name is always capitalized.</p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-08-24">
       <description>
         <p>A header-bar spinner for any Sonos activity, a room-info

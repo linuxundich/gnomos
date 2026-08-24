@@ -24,6 +24,7 @@
 #include <glibmm/main.h>
 #include <glibmm/miscutils.h>
 #include <gtkmm/box.h>
+#include <gtkmm/checkbutton.h>
 #include <gtkmm/dropdown.h>
 #include <gtkmm/editable.h>
 #include <gtkmm/entry.h>
@@ -643,6 +644,8 @@ GnomosWindow::GnomosWindow()
   });
   library_view_.signal_delete_requested().connect(
       sigc::mem_fun(*this, &GnomosWindow::ShowDeleteLibraryEntryConfirmDialog));
+  library_view_.signal_radio_settings_requested().connect(
+      sigc::mem_fun(*this, &GnomosWindow::ShowRadioMprisSettingsDialog));
   library_view_.signal_add_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowAddRadioStationDialog));
   library_view_.signal_add_to_playlist_requested().connect(
       sigc::mem_fun(*this, &GnomosWindow::ShowAddToPlaylistDialog));
@@ -875,13 +878,29 @@ void GnomosWindow::RebuildLibraryNavEntries()
     nav_row_actions_.pop_back();
   }
 
-  for (const LibraryEntry& entry : library_root_entries_)
-  {
-    // "Dienst verknüpfen…" opens a dialog, not a place to browse into — not
-    // a useful permanent sidebar destination.
-    if (entry.object_id == kLinkServiceSentinel)
-      continue;
-
+  // Splits the flat root-category list into two labeled groups: "Bibliothek"
+  // (the locally-indexed-share namespace, object_id prefix "A:" — see
+  // BrowseLibraryAsync()'s own comment on that prefix) and "Dienste"
+  // (everything else content actually comes from outside that share: Sonos-
+  // native saved playlists, the radio directory, and linked third-party
+  // services). "Dienst verknüpfen…" opens a dialog, not a place to browse
+  // into, so it's excluded from both groups — not a useful permanent
+  // sidebar destination.
+  auto append_header = [this](const char* title) {
+    auto* header_label = Gtk::make_managed<Gtk::Label>(title);
+    header_label->set_halign(Gtk::Align::START);
+    header_label->add_css_class("heading");
+    header_label->set_margin_top(6);
+    header_label->set_margin_bottom(6);
+    header_label->set_margin_start(8);
+    header_label->set_margin_end(8);
+    nav_list_box_.append(*header_label);
+    // Every nav_list_box_ row needs a matching nav_row_actions_ slot —
+    // OnNavRowSelected() indexes into it by row position — even a header
+    // row that does nothing when clicked.
+    nav_row_actions_.push_back([] {});
+  };
+  auto append_entry = [this](const LibraryEntry& entry) {
     auto* row_label = Gtk::make_managed<Gtk::Label>(entry.title);
     row_label->set_halign(Gtk::Align::START);
     row_label->set_ellipsize(Pango::EllipsizeMode::END);
@@ -905,6 +924,28 @@ void GnomosWindow::RebuildLibraryNavEntries()
       backend_->BrowseLibraryAsync(object_id);
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), "library");
     });
+  };
+
+  bool has_library = std::any_of(library_root_entries_.begin(), library_root_entries_.end(),
+                                  [](const LibraryEntry& e) { return e.object_id.compare(0, 2, "A:") == 0; });
+  bool has_services =
+      std::any_of(library_root_entries_.begin(), library_root_entries_.end(), [](const LibraryEntry& e) {
+        return e.object_id.compare(0, 2, "A:") != 0 && e.object_id != kLinkServiceSentinel;
+      });
+
+  if (has_library)
+  {
+    append_header("Bibliothek");
+    for (const LibraryEntry& entry : library_root_entries_)
+      if (entry.object_id.compare(0, 2, "A:") == 0)
+        append_entry(entry);
+  }
+  if (has_services)
+  {
+    append_header("Dienste");
+    for (const LibraryEntry& entry : library_root_entries_)
+      if (entry.object_id.compare(0, 2, "A:") != 0 && entry.object_id != kLinkServiceSentinel)
+        append_entry(entry);
   }
 }
 
@@ -1833,7 +1874,7 @@ void GnomosWindow::OnLibraryChanged()
   library_view_.SetEntries(current_library_entries_, grid_available, prefer_grid_view_, below_root,
                             current_object_id == "SQ:" || is_radio_level, below_root && !is_radio_level,
                             viewing_one_playlist, !is_radio_level, !is_radio_level, !is_radio_level,
-                            load_artist_images_);
+                            load_artist_images_, is_radio_level);
   library_view_.SetLevelTitle(library_stack_.back().second);
   library_view_.SetBackVisible(library_stack_.size() > 1);
   library_view_.SetAddVisible(current_object_id == "R:0/0");
@@ -3248,6 +3289,88 @@ void GnomosWindow::ShowAddRadioStationDialog()
   content->append(*close_button);
 
   dialog->set_child(*content);
+  dialog->present();
+}
+
+void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
+{
+  if (index >= current_library_entries_.size())
+    return;
+  const LibraryEntry& entry = current_library_entries_[index];
+  // Shouldn't happen while browsing "R:0/0" (BrowseLibraryAsync() always
+  // populates stream_uri there) — guards against an out-of-sync index
+  // rather than assuming the caller got it right.
+  if (entry.stream_uri.empty())
+    return;
+
+  std::string stream_uri = entry.stream_uri;
+  RadioMprisSettings settings = backend_->GetRadioMprisSettings(stream_uri);
+
+  auto* dialog = new Gtk::Window();
+  dialog->set_title("MPRIS-Einstellungen: " + (entry.title.empty() ? "Radiosender" : entry.title));
+  dialog->set_transient_for(*this);
+  dialog->set_modal(true);
+  dialog->set_default_size(420, -1);
+
+  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+  content->set_margin_top(18);
+  content->set_margin_bottom(18);
+  content->set_margin_start(18);
+  content->set_margin_end(18);
+
+  auto* enabled_check = Gtk::make_managed<Gtk::CheckButton>("MPRIS-Benachrichtigung aktiv");
+  enabled_check->set_active(settings.mpris_enabled);
+  content->append(*enabled_check);
+
+  auto* regex_label = Gtk::make_managed<Gtk::Label>("Regex-Filter (optional)");
+  regex_label->set_halign(Gtk::Align::START);
+  regex_label->set_margin_top(6);
+  content->append(*regex_label);
+
+  auto* regex_entry = Gtk::make_managed<Gtk::Entry>();
+  regex_entry->set_text(settings.regex);
+  regex_entry->set_placeholder_text("z. B. .+ / .+");
+  regex_entry->set_activates_default(true);
+  content->append(*regex_entry);
+
+  // Explains both halves of MprisService::BuildMetadata()'s filtering in
+  // one line: the regex decides what counts as a real song (ad text that
+  // doesn't match is ignored), and only a genuinely new match republishes
+  // — a repeat of the same song, or an ad in between, doesn't retrigger
+  // MPRIS clients like GNOME Shell's media notification.
+  auto* help_label = Gtk::make_managed<Gtk::Label>(
+      "Nur Inhalte, die zu diesem Muster passen, werden an MPRIS übermittelt "
+      "— Werbung und Senderkennungen dazwischen werden ignoriert. Leer = "
+      "alles wird übermittelt.");
+  help_label->set_halign(Gtk::Align::START);
+  help_label->set_wrap(true);
+  help_label->add_css_class("caption");
+  help_label->add_css_class("dim-label");
+  content->append(*help_label);
+
+  auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  button_box->set_halign(Gtk::Align::END);
+  button_box->set_margin_top(6);
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
+  auto* save_button = Gtk::make_managed<Gtk::Button>("Speichern");
+  save_button->add_css_class("suggested-action");
+  auto do_save = [this, dialog, enabled_check, regex_entry, stream_uri] {
+    RadioMprisSettings new_settings;
+    new_settings.mpris_enabled = enabled_check->get_active();
+    new_settings.regex = regex_entry->get_text().raw();
+    backend_->SetRadioMprisSettings(stream_uri, new_settings);
+    dialog->close();
+  };
+  save_button->signal_clicked().connect(do_save);
+  regex_entry->signal_activate().connect(do_save);
+  button_box->append(*cancel_button);
+  button_box->append(*save_button);
+  content->append(*button_box);
+
+  dialog->set_child(*content);
+  dialog->set_default_widget(*save_button);
+  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 

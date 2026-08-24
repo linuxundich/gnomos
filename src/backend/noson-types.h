@@ -121,6 +121,29 @@ struct NowPlaying
   // meaningful queue position at all in that case.
   bool playing_from_queue = false;
   unsigned current_queue_index = 0;
+  // The raw stream URL (AVTProperty::AVTransportURI) — only ever populated
+  // for a radio-like source (duration == 0), mirroring LibraryEntry::
+  // stream_uri's own comment. Lets MprisService look up this station's
+  // per-station MPRIS settings without needing to reach back into
+  // NosonBackend's own internal RadioStreamMatchKey() hashing scheme.
+  std::string stream_uri;
+};
+
+// Per-station preferences for whether/how a radio station's rotating
+// "now playing" content (station-reported song/ad text, NowPlaying::artist)
+// is republished to MPRIS clients. Keyed by NowPlaying::stream_uri /
+// LibraryEntry::stream_uri via the same RadioStreamMatchKey() hashing
+// radio-favicons.ini already uses — see NosonBackend::GetRadioMprisSettings()/
+// SetRadioMprisSettings().
+struct RadioMprisSettings
+{
+  bool mpris_enabled = true;
+  // Empty means no filtering: every content change is republished as-is
+  // (today's default behavior). Non-empty: only content that matches this
+  // pattern (std::regex_search) counts as a real song — everything else
+  // (ad breaks, station idents, ...) is ignored. See MprisService::
+  // BuildMetadata() for how this and mpris_enabled combine.
+  std::string regex;
 };
 
 struct SleepTimerInfo
@@ -258,6 +281,13 @@ struct LibraryEntry
   // item's own upnp:class DIDL property) rather than something Gnomos
   // needs to guess from a title string. See IconNameForSubType().
   std::string icon_name;
+  // The raw stream URL ("res" DIDL value) — only ever populated while
+  // browsing "R:0/0" (see BrowseLibraryAsync()'s radio_favicons lookup,
+  // which reads the same value). Lets GnomosWindow key a station's
+  // per-station MPRIS settings (NosonBackend::GetRadioMprisSettings()/
+  // SetRadioMprisSettings()) the same way SaveRadioFavicon() already keys
+  // its own per-station favicon.
+  std::string stream_uri;
 };
 
 // Sentinel for NosonBackend::UpdateAlarmSchedule()'s sound_index — leaves

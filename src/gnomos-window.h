@@ -99,6 +99,12 @@ private:
   // Title + stream URL entry for NosonBackend::AddRadioStation() — reached
   // from LibraryView's add_button_, only visible while browsing "R:0/0".
   void ShowAddRadioStationDialog();
+  // MPRIS-enabled switch + regex filter entry for one radio station's
+  // RadioMprisSettings — reached from LibraryView's per-row gear button,
+  // only visible while browsing "R:0/0". No-op if
+  // current_library_entries_[index].stream_uri is empty (shouldn't happen
+  // while browsing "R:0/0", but guards against an out-of-sync index).
+  void ShowRadioMprisSettingsDialog(unsigned index);
   // Fetches the saved-playlist list fresh (NosonBackend::FetchSavedPlaylistsAsync())
   // and shows a picker once it arrives — reached from LibraryView's
   // per-row "add to playlist" button.

@@ -102,10 +102,15 @@ public:
   // Resets filter_entry_'s own text — a search that made sense for the
   // *previous* level (e.g. "adele" while browsing Interpreten) shouldn't
   // silently keep hiding entries after navigating somewhere unrelated.
+  // show_radio_settings_action: whether to show a per-row "settings" (gear)
+  // button — true under the exact same condition as show_delete_action's
+  // "R:0/0" half (not "SQ:", saved playlists have no MPRIS-relevant
+  // settings of their own). Opens GnomosWindow's per-station MPRIS
+  // settings dialog (see signal_radio_settings_requested()).
   void SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
                   bool show_favorite_action, bool show_delete_action, bool show_add_to_playlist_action,
                   bool show_reorder_action, bool show_play_all_action, bool show_queue_all_action,
-                  bool show_queue_actions, bool load_artist_images);
+                  bool show_queue_actions, bool load_artist_images, bool show_radio_settings_action);
   void SetLevelTitle(const std::string& title);
   void SetBackVisible(bool visible);
   // Whether add_button_ (a custom radio stream, see signal_add_requested())
@@ -142,6 +147,9 @@ public:
   // Only ever emitted when show_delete_action was true for this level
   // (browsing "SQ:" or "R:0/0") — see SetEntries()'s own comment.
   sigc::signal<void(unsigned)>& signal_delete_requested() { return signal_delete_requested_; }
+  // Only ever emitted when show_radio_settings_action was true for this
+  // level (browsing "R:0/0") — see SetEntries()'s own comment.
+  sigc::signal<void(unsigned)>& signal_radio_settings_requested() { return signal_radio_settings_requested_; }
   // Only ever emitted when show_add_to_playlist_action was true — see
   // SetEntries()'s own comment. GnomosWindow follows up with its own
   // playlist-picker dialog; this signal only carries which library entry
@@ -184,7 +192,7 @@ private:
   void ApplyFilter();
   void BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
                  bool show_add_to_playlist_action, bool show_reorder_action, bool show_queue_actions,
-                 bool load_artist_images);
+                 bool load_artist_images, bool show_radio_settings_action);
   void BuildGrid(const std::vector<unsigned>& indices, bool load_artist_images);
 
   Gtk::Button back_button_;
@@ -221,6 +229,7 @@ private:
   bool show_queue_all_action_ = false;
   bool show_queue_actions_ = false;
   bool load_artist_images_ = false;
+  bool show_radio_settings_action_ = false;
   sigc::signal<void(unsigned)> signal_entry_activated_;
   sigc::signal<void()> signal_back_requested_;
   sigc::signal<void()> signal_search_requested_;
@@ -228,6 +237,7 @@ private:
   sigc::signal<void(unsigned)> signal_play_next_requested_;
   sigc::signal<void(unsigned)> signal_add_to_favorites_requested_;
   sigc::signal<void(unsigned)> signal_delete_requested_;
+  sigc::signal<void(unsigned)> signal_radio_settings_requested_;
   sigc::signal<void(unsigned)> signal_add_to_playlist_requested_;
   sigc::signal<void(unsigned, unsigned)> signal_reorder_requested_;
   sigc::signal<void()> signal_add_requested_;

@@ -159,7 +159,7 @@ LibraryView::LibraryView()
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
                               bool show_favorite_action, bool show_delete_action, bool show_add_to_playlist_action,
                               bool show_reorder_action, bool show_play_all_action, bool show_queue_all_action,
-                              bool show_queue_actions, bool load_artist_images)
+                              bool show_queue_actions, bool load_artist_images, bool show_radio_settings_action)
 {
   all_entries_ = entries;
   grid_available_ = grid_available;
@@ -172,6 +172,7 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
   show_queue_all_action_ = show_queue_all_action;
   show_queue_actions_ = show_queue_actions;
   load_artist_images_ = load_artist_images;
+  show_radio_settings_action_ = show_radio_settings_action;
 
   // A filter that made sense for the *previous* level shouldn't silently
   // keep hiding entries after navigating somewhere unrelated — set_text()
@@ -216,7 +217,8 @@ void LibraryView::ApplyFilter()
     BuildGrid(indices, load_artist_images_);
   else
     BuildList(indices, show_favorite_action_, show_delete_action_, show_add_to_playlist_action_,
-              show_reorder_action_ && term.empty(), show_queue_actions_, load_artist_images_);
+              show_reorder_action_ && term.empty(), show_queue_actions_, load_artist_images_,
+              show_radio_settings_action_);
 
   // "Play all"/"queue all" only make sense once every entry at the (full,
   // unfiltered) level is a leaf track, and only while no filter is
@@ -231,7 +233,7 @@ void LibraryView::ApplyFilter()
 
 void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
                              bool show_add_to_playlist_action, bool show_reorder_action, bool show_queue_actions,
-                             bool load_artist_images)
+                             bool load_artist_images, bool show_radio_settings_action)
 {
   for (unsigned index : indices)
   {
@@ -298,6 +300,21 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       delete_button->set_tooltip_text("Löschen");
       delete_button->signal_clicked().connect([this, index] { signal_delete_requested_.emit(index); });
       row_box->append(*delete_button);
+    }
+
+    // Only ever true while browsing "R:0/0" — not "SQ:", saved playlists
+    // have no MPRIS-relevant settings. Opens GnomosWindow's per-station
+    // MPRIS settings dialog (mpris_enabled + regex, see RadioMprisSettings).
+    if (show_radio_settings_action)
+    {
+      auto* radio_settings_button = Gtk::make_managed<Gtk::Button>();
+      radio_settings_button->set_icon_name("emblem-system-symbolic");
+      radio_settings_button->add_css_class("flat");
+      radio_settings_button->set_valign(Gtk::Align::CENTER);
+      radio_settings_button->set_tooltip_text("MPRIS-Einstellungen");
+      radio_settings_button->signal_clicked().connect(
+          [this, index] { signal_radio_settings_requested_.emit(index); });
+      row_box->append(*radio_settings_button);
     }
 
     // Only while viewing a specific saved playlist's own track listing

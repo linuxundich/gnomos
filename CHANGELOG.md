@@ -8,6 +8,26 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.7.0] - 2026-08-24
+
+### Added
+- Per-station MPRIS control for radio: a switch to opt a station out of
+  MPRIS reporting entirely, and an optional regex filter so only content
+  matching a station's own "song / artist" format counts as a real song —
+  ad breaks and station idents in between no longer retrigger MPRIS
+  clients like GNOME Shell's media notification. Reached from a new gear
+  icon on each row while browsing "Radiosender".
+- The library sidebar now splits its sub-items into "Bibliothek" (local
+  network-share content) and "Dienste" (Sonos playlists, Radiosender,
+  linked third-party services).
+
+### Fixed
+- A linked service's name (e.g. bonob) is now capitalized everywhere it's
+  shown, instead of exactly as that service reports it.
+- The Flatpak build was missing the D-Bus permission to own its own MPRIS
+  bus name, so MPRIS silently never worked in the packaged build even
+  though it worked in a native build.
+
 ## [0.6.0] - 2026-08-24
 
 ### Added

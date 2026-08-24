@@ -125,6 +125,21 @@ std::string RadioFaviconsPath()
   return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "radio-favicons.ini");
 }
 
+std::string RadioMprisSettingsPath()
+{
+  return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "radio-mpris-settings.ini");
+}
+
+// A linked service reports its own display name verbatim (SMService::
+// GetName()) — some (e.g. bonob) report it all-lowercase. Capitalized to
+// match every other proper-noun label in the UI (Spotify, TuneIn, ...).
+std::string CapitalizeFirst(std::string s)
+{
+  if (!s.empty())
+    s[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(s[0])));
+  return s;
+}
+
 // System::CreateRadio() (sonossystem.cpp) does NOT store streamURL
 // verbatim — it strips the "http(s)" scheme and prepends Sonos's own
 // "x-rincon-mp3radio:" protocol instead, keeping only the "://host/path"
@@ -1776,7 +1791,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
           continue;
         LibraryEntry entry;
         entry.object_id = std::string(kServiceRootPrefix) + svc->GetId();
-        entry.title = svc->GetName();
+        entry.title = CapitalizeFirst(svc->GetName());
         entry.is_container = true;
         roots.push_back(std::move(entry));
       }
@@ -1917,12 +1932,16 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       if (!entry.is_container)
         entry.subtitle = item->GetValue("dc:creator");
       entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
-      if (entry.art_uri.empty() && !radio_favicons.empty())
+      if (object_id == "R:0/0")
       {
-        const std::string res = item->GetValue("res");
-        if (!res.empty())
+        // Also the identifying key GnomosWindow needs for a station's
+        // per-station MPRIS settings (GetRadioMprisSettings()/
+        // SetRadioMprisSettings()) — see LibraryEntry::stream_uri's own
+        // comment.
+        entry.stream_uri = item->GetValue("res");
+        if (entry.art_uri.empty() && !entry.stream_uri.empty() && !radio_favicons.empty())
         {
-          auto it = radio_favicons.find(RadioStreamMatchKey(res));
+          auto it = radio_favicons.find(RadioStreamMatchKey(entry.stream_uri));
           if (it != radio_favicons.end())
             entry.art_uri = it->second;
         }
@@ -2237,7 +2256,7 @@ std::vector<LinkableService> NosonBackend::GetLinkableServices() const
       continue;
     LinkableService info;
     info.id = svc->GetId();
-    info.name = svc->GetName();
+    info.name = CapitalizeFirst(svc->GetName());
     result.push_back(std::move(info));
   }
   return result;
@@ -2781,6 +2800,58 @@ std::map<std::string, std::string> NosonBackend::LoadRadioFavicons() const
   return result;
 }
 
+RadioMprisSettings NosonBackend::GetRadioMprisSettings(const std::string& stream_uri) const
+{
+  RadioMprisSettings settings;
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(RadioMprisSettingsPath()))
+      return settings;
+    const std::string group = RadioStreamMatchKey(stream_uri);
+    if (!keyfile->has_group(group))
+      return settings;
+    if (keyfile->has_key(group, "mpris_enabled"))
+      settings.mpris_enabled = keyfile->get_boolean(group, "mpris_enabled");
+    if (keyfile->has_key(group, "regex"))
+      settings.regex = keyfile->get_string(group, "regex").raw();
+  }
+  catch (const Glib::Error&)
+  {
+    // no settings saved yet for this station, or the file is otherwise
+    // unreadable — same as "none saved" either way, RadioMprisSettings'
+    // own defaults already are today's unfiltered/enabled behavior
+  }
+  return settings;
+}
+
+void NosonBackend::SetRadioMprisSettings(const std::string& stream_uri, const RadioMprisSettings& settings)
+{
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(RadioMprisSettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first station with saved MPRIS settings this install has ever had
+  }
+  const std::string group = RadioStreamMatchKey(stream_uri);
+  keyfile->set_boolean(group, "mpris_enabled", settings.mpris_enabled);
+  keyfile->set_string(group, "regex", settings.regex);
+  try
+  {
+    keyfile->save_to_file(RadioMprisSettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — the setting just won't survive a restart
+  }
+}
+
 void NosonBackend::RefreshAlarmsAsync()
 {
   tasks_.Push([this] {
@@ -3166,6 +3237,13 @@ void NosonBackend::RefreshNowPlayingLocked()
 
   if (!has_duration)
   {
+    // Identifies this station for MprisService's per-station MPRIS
+    // filtering (GetRadioMprisSettings()) — same value radio-favicons.ini
+    // is already matched against a few lines below, via the same
+    // RadioStreamMatchKey() (see that lookup's own comment for why
+    // AVTransportURI is the right value here).
+    np.stream_uri = prop.AVTransportURI;
+
     std::string uri_title;
     if (prop.r_EnqueuedTransportURIMetaData)
       uri_title = prop.r_EnqueuedTransportURIMetaData->GetValue("dc:title");

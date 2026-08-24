@@ -53,7 +53,7 @@ private:
                       const Glib::ustring& object_path, const Glib::ustring& interface_name,
                       const Glib::ustring& property_name, const Glib::VariantBase& value);
 
-  Glib::VariantBase BuildMetadata() const;
+  Glib::VariantBase BuildMetadata();
   void EmitPropertiesChanged(const Glib::ustring& interface_name,
                               const std::map<Glib::ustring, Glib::VariantBase>& changed);
 
@@ -67,6 +67,17 @@ private:
 
   sigc::connection now_playing_connection_;
   sigc::connection volume_connection_;
+
+  // Per-station dedup state for BuildMetadata()'s radio-content filtering
+  // (see its own comment) — reset whenever NowPlaying::stream_uri changes,
+  // i.e. whenever playback moves to a different station (or away from
+  // radio entirely). radio_effective_artist_ is what's actually published
+  // as xesam:artist right now; it only ever advances to a new value once a
+  // fresh, genuinely different, regex-accepted song comes in — ad text and
+  // repeats leave it untouched.
+  std::string radio_stream_key_;
+  std::string radio_last_matched_content_;
+  std::string radio_effective_artist_;
 };
 
 }  // namespace gnomos

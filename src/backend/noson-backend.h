@@ -270,6 +270,21 @@ public:
   void AddRadioStation(const std::string& title, const std::string& stream_url,
                         const std::string& favicon_url = "");
 
+  // Per-station preferences for whether/how a radio station's rotating
+  // "now playing" content reaches MPRIS clients (see RadioMprisSettings'
+  // own comment for why: ad breaks interspersed between song repeats
+  // otherwise republish MPRIS Metadata on every rotation, not just on a
+  // real song change). Keyed the same way SaveRadioFavicon()/
+  // LoadRadioFavicons() key a station's favicon — the SHA-256 of its
+  // stream URL — in a separate radio-mpris-settings.ini, so a station with
+  // no saved preferences yet just returns RadioMprisSettings' own
+  // defaults (enabled, unfiltered). Called from both MprisService
+  // (read-only, every NowPlaying update) and GnomosWindow's settings
+  // dialog (read on open, write on save), so this needs to be public
+  // unlike the favicon pair, which only NosonBackend itself ever calls.
+  RadioMprisSettings GetRadioMprisSettings(const std::string& stream_uri) const;
+  void SetRadioMprisSettings(const std::string& stream_uri, const RadioMprisSettings& settings);
+
   // Third-party service linking (Spotify, bonob, ...). AppLink/DeviceLink
   // services need this before they'll browse — see the "Third-party
   // service linking" section in README for the full protocol story.

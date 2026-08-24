@@ -10,7 +10,8 @@
         "--socket=wayland",
         "--socket=fallback-x11",
         "--device=dri",
-        "--share=network"
+        "--share=network",
+        "--own-name=org.mpris.MediaPlayer2.gnomos"
     ],
     "cleanup": [
         "/include",
