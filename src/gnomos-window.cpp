@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdio>
 #include <ctime>
+#include <map>
 #include <tuple>
 
 #include <gdk/gdkkeysyms.h>
@@ -30,6 +31,7 @@
 #include <gtkmm/grid.h>
 #include <gtkmm/image.h>
 #include <gtkmm/linkbutton.h>
+#include <gtkmm/revealer.h>
 #include <gtkmm/scale.h>
 #include <gtkmm/separator.h>
 #include <gtkmm/spinbutton.h>
@@ -113,13 +115,14 @@ GnomosWindow::GnomosWindow()
   primary_menu_button_.set_menu_model(primary_menu);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(primary_menu_button_.gobj()));
 
-  discovery_spinner_.set_margin_start(6);
-  discovery_spinner_.set_margin_end(6);
+  activity_spinner_.set_margin_start(6);
+  activity_spinner_.set_margin_end(6);
+  activity_spinner_.set_tooltip_text("Sonos-System antwortet …");
   refresh_button_.set_icon_name("view-refresh-symbolic");
   refresh_button_.set_tooltip_text("Sonos-Geräte suchen");
   refresh_button_.signal_clicked().connect(sigc::mem_fun(*this, &GnomosWindow::OnRefreshClicked));
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(refresh_button_.gobj()));
-  adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(discovery_spinner_.gobj()));
+  adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(activity_spinner_.gobj()));
 
   // --- Grouping popover: which rooms play together with the selected zone ---
   grouping_list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
@@ -127,25 +130,47 @@ GnomosWindow::GnomosWindow()
   auto* grouping_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
   grouping_scroller->set_child(grouping_list_box_);
   grouping_scroller->set_size_request(260, -1);
-  grouping_scroller->set_max_content_height(320);
+  // Reported live with a screenshot: 320 forced scrolling for a real
+  // 4-room group, its last row cut off mid-slider — each room takes
+  // roughly 90-100px (name/switch row plus its own volume slider row),
+  // so 320 barely fit 3. Raised generously enough to fit a real household
+  // of up to ~6 rooms without scrolling at all; propagate_natural_height
+  // below means this is only ever a ceiling, not a fixed height — a
+  // smaller group still sizes down to its own actual content, and
+  // Gtk::Popover's own screen-edge avoidance still keeps this from ever
+  // overflowing off-screen for a household with even more rooms than that.
+  grouping_scroller->set_max_content_height(640);
   grouping_scroller->set_propagate_natural_height(true);
   grouping_scroller->set_margin_start(6);
   grouping_scroller->set_margin_end(6);
   grouping_scroller->set_margin_bottom(6);
 
-  // "Group all" — joins every room not already part of the current zone to
-  // it in one go, reusing the exact same JoinRoomToCurrentZone() each
-  // per-room switch already calls. Matches noson-app's own "group all
-  // zones" action (Zones.qml, onGroupAllZoneClicked -> zoneList.selectAll()).
+  // "Group all" — joins every *free* room (not already part of some other
+  // group) to the current zone in one go, reusing the exact same
+  // JoinRoomToCurrentZone() each per-room switch already calls. Matches
+  // noson-app's own "group all zones" action (Zones.qml,
+  // onGroupAllZoneClicked -> zoneList.selectAll()), minus the rooms the
+  // per-row switches now also refuse to touch directly — see
+  // RebuildGroupingPopover()'s own comment.
   auto* group_all_button = Gtk::make_managed<Gtk::Button>("Alle Räume gruppieren");
   group_all_button->add_css_class("flat");
+  group_all_button->set_tooltip_text(
+      "Fügt jeden freien Raum hinzu — bereits mit einem anderen Raum gruppierte Räume bleiben unverändert");
   group_all_button->set_margin_top(6);
   group_all_button->set_margin_start(6);
   group_all_button->set_margin_end(6);
   group_all_button->set_margin_bottom(6);
   group_all_button->signal_clicked().connect([this] {
-    for (const RoomInfo& room : backend_->Rooms())
-      if (room.group_id != selected_group_id_)
+    std::vector<RoomInfo> rooms = backend_->Rooms();
+    // Same "free rooms only" restriction as each per-row switch — see
+    // RebuildGroupingPopover()'s own comment for why a room already
+    // merged into some other group is deliberately left alone here too,
+    // rather than silently regrouped.
+    std::map<std::string, int> group_sizes;
+    for (const RoomInfo& room : rooms)
+      ++group_sizes[room.group_id];
+    for (const RoomInfo& room : rooms)
+      if (room.group_id != selected_group_id_ && group_sizes[room.group_id] == 1)
         backend_->JoinRoomToCurrentZone(room.player_uuid);
   });
 
@@ -352,6 +377,45 @@ GnomosWindow::GnomosWindow()
 
   sound_box->append(*Gtk::make_managed<Gtk::Separator>());
 
+  // Autoplay and the status LED are both rarely-touched settings —
+  // collapsed behind a toggle by default so the popover's *default*
+  // height stays reasonable regardless of how many rooms/settings a given
+  // household happens to have. Reported live: with every section always
+  // expanded, the popover no longer fit without scrolling.
+  //
+  // A plain Gtk::Expander was tried first and reported back as looking
+  // out of place — it brings its own distinct look (an indented triangle
+  // + label) that doesn't match every *other* row in this popover
+  // (Loudness/Night Mode/Feste Lautstärke: a label on the left, a control
+  // flush right). Rebuilt as a button styled to look like exactly one
+  // more of those rows — a label plus a chevron in the same spot a switch
+  // would sit — driving a Gtk::Revealer instead, so it reads as "another
+  // row that happens to expand" rather than a visually foreign widget.
+  auto* advanced_toggle_row = Gtk::make_managed<Gtk::Button>();
+  advanced_toggle_row->add_css_class("flat");
+  auto* advanced_toggle_content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  auto* advanced_toggle_label = Gtk::make_managed<Gtk::Label>("Erweitert");
+  advanced_toggle_label->set_halign(Gtk::Align::START);
+  advanced_toggle_label->set_hexpand(true);
+  advanced_toggle_content->append(*advanced_toggle_label);
+  auto* advanced_chevron = Gtk::make_managed<Gtk::Image>();
+  advanced_chevron->set_from_icon_name("pan-end-symbolic");
+  advanced_toggle_content->append(*advanced_chevron);
+  advanced_toggle_row->set_child(*advanced_toggle_content);
+  sound_box->append(*advanced_toggle_row);
+
+  auto* advanced_revealer = Gtk::make_managed<Gtk::Revealer>();
+  advanced_revealer->set_transition_type(Gtk::RevealerTransitionType::SLIDE_DOWN);
+  advanced_toggle_row->signal_clicked().connect([advanced_revealer, advanced_chevron] {
+    bool reveal = !advanced_revealer->get_reveal_child();
+    advanced_revealer->set_reveal_child(reveal);
+    advanced_chevron->set_from_icon_name(reveal ? "pan-down-symbolic" : "pan-end-symbolic");
+  });
+  sound_box->append(*advanced_revealer);
+
+  auto* advanced_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 6);
+  advanced_box->set_margin_top(6);
+
   auto* autoplay_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   auto* autoplay_label = Gtk::make_managed<Gtk::Label>("Autoplay (Line-In)");
   autoplay_label->set_halign(Gtk::Align::START);
@@ -367,7 +431,7 @@ GnomosWindow::GnomosWindow()
       },
       false);
   autoplay_row->append(autoplay_switch_);
-  sound_box->append(*autoplay_row);
+  advanced_box->append(*autoplay_row);
 
   auto* autoplay_volume_switch_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   auto* autoplay_volume_switch_label = Gtk::make_managed<Gtk::Label>("Eigene Autoplay-Lautstärke");
@@ -382,18 +446,22 @@ GnomosWindow::GnomosWindow()
       },
       false);
   autoplay_volume_switch_row->append(autoplay_use_volume_switch_);
-  sound_box->append(*autoplay_volume_switch_row);
+  advanced_box->append(*autoplay_volume_switch_row);
 
-  add_sound_label("Autoplay-Lautstärke");
+  auto* autoplay_volume_label = Gtk::make_managed<Gtk::Label>("Autoplay-Lautstärke");
+  autoplay_volume_label->set_halign(Gtk::Align::START);
+  autoplay_volume_label->add_css_class("caption");
+  autoplay_volume_label->add_css_class("dim-label");
+  advanced_box->append(*autoplay_volume_label);
   autoplay_volume_scale_.set_range(0, 100);
   autoplay_volume_scale_.set_digits(0);
   autoplay_volume_scale_.signal_value_changed().connect([this] {
     if (!suppress_sound_signals_)
       backend_->SetAutoplayVolume(static_cast<uint8_t>(autoplay_volume_scale_.get_value()));
   });
-  sound_box->append(autoplay_volume_scale_);
+  advanced_box->append(autoplay_volume_scale_);
 
-  sound_box->append(*Gtk::make_managed<Gtk::Separator>());
+  advanced_box->append(*Gtk::make_managed<Gtk::Separator>());
 
   // Plain buttons, not a switch: libnoson has no GetLEDState() to show a
   // true current value with (unlike loudness/night mode above, which get
@@ -410,7 +478,9 @@ GnomosWindow::GnomosWindow()
   auto* led_off_button = Gtk::make_managed<Gtk::Button>("Aus");
   led_off_button->signal_clicked().connect([this] { backend_->SetLedState(false); });
   led_row->append(*led_off_button);
-  sound_box->append(*led_row);
+  advanced_box->append(*led_row);
+
+  advanced_revealer->set_child(*advanced_box);
 
   sound_popover_.set_child(*sound_box);
 
@@ -701,6 +771,7 @@ GnomosWindow::GnomosWindow()
   // --- Backend wiring ---
   backend_ = std::make_unique<NosonBackend>();
   backend_->signal_discovery_done().connect(sigc::mem_fun(*this, &GnomosWindow::OnDiscoveryDone));
+  backend_->signal_busy_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnBusyChanged));
   backend_->signal_zones_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnZonesChanged));
   backend_->signal_player_ready().connect(sigc::mem_fun(*this, &GnomosWindow::OnPlayerReady));
   backend_->signal_now_playing_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnNowPlayingChanged));
@@ -748,7 +819,8 @@ GnomosWindow::GnomosWindow()
 
 void GnomosWindow::OnRefreshClicked()
 {
-  discovery_spinner_.start();
+  discovering_ = true;
+  UpdateActivitySpinner();
   backend_->DiscoverAsync();
 }
 
@@ -979,9 +1051,24 @@ bool GnomosWindow::OnCloseRequest()
 
 void GnomosWindow::OnDiscoveryDone(bool ok)
 {
-  discovery_spinner_.stop();
+  discovering_ = false;
+  UpdateActivitySpinner();
   if (!ok)
     ShowToast("Kein Sonos-Gerät im Netzwerk gefunden.");
+}
+
+void GnomosWindow::OnBusyChanged(bool busy)
+{
+  backend_busy_ = busy;
+  UpdateActivitySpinner();
+}
+
+void GnomosWindow::UpdateActivitySpinner()
+{
+  if (discovering_ || backend_busy_)
+    activity_spinner_.start();
+  else
+    activity_spinner_.stop();
 }
 
 void GnomosWindow::OnZonesChanged()
@@ -1029,10 +1116,9 @@ void GnomosWindow::OnZonesChanged()
     info_button->add_css_class("flat");
     info_button->set_valign(Gtk::Align::CENTER);
     info_button->set_tooltip_text("Geräteinfo");
-    std::string coordinator_uuid = zone.coordinator_uuid;
+    std::string group_id = zone.group_id;
     std::string zone_name = zone.display_name;
-    info_button->signal_clicked().connect(
-        [this, coordinator_uuid, zone_name] { ShowDeviceInfoDialog(coordinator_uuid, zone_name); });
+    info_button->signal_clicked().connect([this, group_id, zone_name] { ShowDeviceInfoDialog(group_id, zone_name); });
     row_box->append(*info_button);
 
     zones_list_box_.append(*row_box);
@@ -1798,7 +1884,21 @@ void GnomosWindow::RebuildGroupingPopover()
   if (selected_group_id_.empty())
     return;
 
-  for (const RoomInfo& room : backend_->Rooms())
+  std::vector<RoomInfo> rooms = backend_->Rooms();
+
+  // A room's own current group size — RoomInfo has no member list of its
+  // own, but every room sharing the same group_id is (by definition) a
+  // member of the same group, so counting occurrences of each group_id
+  // across all rooms gives exactly that. Needed to tell a genuinely
+  // "free" room (alone in its own single-member group) apart from one
+  // that's already merged into *some other*, non-selected multi-room
+  // group — see the switch's own sensitivity comment below for why that
+  // distinction matters.
+  std::map<std::string, int> group_sizes;
+  for (const RoomInfo& room : rooms)
+    ++group_sizes[room.group_id];
+
+  for (const RoomInfo& room : rooms)
   {
     auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     row_box->set_margin_top(6);
@@ -1826,12 +1926,28 @@ void GnomosWindow::RebuildGroupingPopover()
 
     auto* room_switch = Gtk::make_managed<Gtk::Switch>();
     room_switch->set_valign(Gtk::Align::CENTER);
-    room_switch->set_active(room.group_id == selected_group_id_);
+    const bool in_selected_group = room.group_id == selected_group_id_;
+    room_switch->set_active(in_selected_group);
 
     // This room *is* the currently selected zone's own coordinator —
     // always "in the group" trivially, not something to toggle from here.
-    const bool is_self = (room.player_uuid == room.coordinator_uuid && room.group_id == selected_group_id_);
-    room_switch->set_sensitive(!is_self);
+    const bool is_self = (room.player_uuid == room.coordinator_uuid && in_selected_group);
+    // Requested directly: a room already merged into *some other*,
+    // non-selected group (group_sizes[room.group_id] > 1 — more than
+    // just itself) can't be joined to this one in a single step anymore,
+    // even though the underlying Sonos action would technically allow it
+    // (moving a device straight from one group to another). Only a
+    // genuinely free room (alone in its own single-member group) can be
+    // added directly; moving an already-grouped room means removing it
+    // from its current group first (switch it off there), then adding it
+    // here as a separate action — the explicit two-step the user wants
+    // instead of an implicit silent regroup.
+    const bool is_free = group_sizes[room.group_id] == 1;
+    const bool can_toggle = in_selected_group || is_free;
+    room_switch->set_sensitive(!is_self && can_toggle);
+    if (!is_self && !can_toggle)
+      room_switch->set_tooltip_text(
+          "Bereits mit einem anderen Raum gruppiert — dort zuerst entfernen, um ihn hier hinzuzufügen");
 
     // signal_state_set() (unlike notify::active) only fires for user
     // interaction, never for the set_active() call above. Deliberately not
@@ -1873,9 +1989,16 @@ void GnomosWindow::RebuildGroupingPopover()
   }
 }
 
-void GnomosWindow::ShowDeviceInfoDialog(std::string player_uuid, std::string room_name)
+void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_name)
 {
-  DeviceInfo info = backend_->GetDeviceInfo(player_uuid);
+  // Every room sharing this group_id is a member of the zone right now —
+  // same "no dedicated member-list field, so derive it from RoomInfo"
+  // technique RebuildGroupingPopover() already uses for its own free/
+  // grouped check.
+  std::vector<RoomInfo> members;
+  for (const RoomInfo& room : backend_->Rooms())
+    if (room.group_id == group_id)
+      members.push_back(room);
 
   auto* dialog = new Gtk::Window();
   dialog->set_title("Geräteinfo");
@@ -1889,59 +2012,79 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string player_uuid, std::string roo
   content->set_margin_start(18);
   content->set_margin_end(18);
 
-  auto* heading = Gtk::make_managed<Gtk::Label>(room_name);
+  auto* heading = Gtk::make_managed<Gtk::Label>(zone_name);
   heading->set_wrap(true);
   heading->add_css_class("title-2");
   heading->set_halign(Gtk::Align::START);
   content->append(*heading);
 
-  if (info.is_gen1)
+  // One section per member room — not just the coordinator's — since
+  // zone_name/the heading above already names the whole zone as a unit.
+  std::string clipboard_text = zone_name;
+  bool first = true;
+  for (const RoomInfo& member : members)
   {
-    auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
-    badge->add_css_class("dim-label");
-    badge->add_css_class("caption");
-    badge->set_halign(Gtk::Align::START);
-    content->append(*badge);
+    if (!first)
+      content->append(*Gtk::make_managed<Gtk::Separator>());
+    first = false;
+
+    DeviceInfo info = backend_->GetDeviceInfo(member.player_uuid);
+
+    auto* room_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+    room_row->set_margin_top(6);
+    auto* room_heading = Gtk::make_managed<Gtk::Label>(member.name);
+    room_heading->add_css_class("heading");
+    room_heading->set_halign(Gtk::Align::START);
+    room_row->append(*room_heading);
+    if (info.is_gen1)
+    {
+      auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
+      badge->add_css_class("dim-label");
+      badge->add_css_class("caption");
+      room_row->append(*badge);
+    }
+    content->append(*room_row);
+
+    auto* grid = Gtk::make_managed<Gtk::Grid>();
+    grid->set_row_spacing(6);
+    grid->set_column_spacing(12);
+    grid->set_margin_top(6);
+
+    // (label, value) — a field libnoson couldn't resolve (e.g. an offline
+    // room that dropped out of the topology between opening the popover
+    // and clicking its info button) shows as "—" rather than an empty cell.
+    const std::vector<std::pair<std::string, std::string>> fields = {
+        {"Modell", info.model_number.empty() ? "—" : info.model_number},
+        {"IP-Adresse", info.ip.empty() ? "—" : info.ip},
+        {"MAC-Adresse", info.mac.empty() ? "—" : info.mac},
+        {"Software-Version", info.software_version.empty() ? "—" : info.software_version},
+    };
+    int row = 0;
+    for (const auto& [label_text, value_text] : fields)
+    {
+      auto* label = Gtk::make_managed<Gtk::Label>(label_text);
+      label->set_halign(Gtk::Align::START);
+      label->add_css_class("dim-label");
+      grid->attach(*label, 0, row);
+
+      auto* value = Gtk::make_managed<Gtk::Label>(value_text);
+      value->set_halign(Gtk::Align::START);
+      value->set_selectable(true);
+      grid->attach(*value, 1, row);
+      ++row;
+    }
+    content->append(*grid);
+
+    clipboard_text += "\n\n" + member.name + "\nModell: " + (info.model_number.empty() ? "—" : info.model_number) +
+                       "\nIP-Adresse: " + (info.ip.empty() ? "—" : info.ip) +
+                       "\nMAC-Adresse: " + (info.mac.empty() ? "—" : info.mac) +
+                       "\nSoftware-Version: " + (info.software_version.empty() ? "—" : info.software_version);
   }
-
-  auto* grid = Gtk::make_managed<Gtk::Grid>();
-  grid->set_row_spacing(6);
-  grid->set_column_spacing(12);
-  grid->set_margin_top(6);
-
-  // (label, value) — a field libnoson couldn't resolve (e.g. an offline
-  // room that dropped out of the topology between opening the popover and
-  // clicking its info button) shows as "—" rather than an empty cell.
-  const std::vector<std::pair<std::string, std::string>> fields = {
-      {"Modell", info.model_number.empty() ? "—" : info.model_number},
-      {"IP-Adresse", info.ip.empty() ? "—" : info.ip},
-      {"MAC-Adresse", info.mac.empty() ? "—" : info.mac},
-      {"Software-Version", info.software_version.empty() ? "—" : info.software_version},
-  };
-  int row = 0;
-  for (const auto& [label_text, value_text] : fields)
-  {
-    auto* label = Gtk::make_managed<Gtk::Label>(label_text);
-    label->set_halign(Gtk::Align::START);
-    label->add_css_class("dim-label");
-    grid->attach(*label, 0, row);
-
-    auto* value = Gtk::make_managed<Gtk::Label>(value_text);
-    value->set_halign(Gtk::Align::START);
-    value->set_selectable(true);
-    grid->attach(*value, 1, row);
-    ++row;
-  }
-  content->append(*grid);
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
   auto* copy_button = Gtk::make_managed<Gtk::Button>("Kopieren");
-  std::string clipboard_text = room_name + "\nModell: " + (info.model_number.empty() ? "—" : info.model_number) +
-                                "\nIP-Adresse: " + (info.ip.empty() ? "—" : info.ip) +
-                                "\nMAC-Adresse: " + (info.mac.empty() ? "—" : info.mac) +
-                                "\nSoftware-Version: " + (info.software_version.empty() ? "—" : info.software_version);
   copy_button->signal_clicked().connect([this, clipboard_text] { get_clipboard()->set_text(clipboard_text); });
   button_box->append(*copy_button);
   auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");

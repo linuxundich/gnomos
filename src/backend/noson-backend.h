@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <map>
 #include <memory>
@@ -342,6 +343,14 @@ public:
   // internally by the device itself when a real Alarm object fires.
   void PreviewAlarmSound(const std::string& room_uuid, unsigned sound_index);
 
+  // Fires whenever tasks_ transitions between idle and busy — a burst of
+  // one or more queued actions (any of the near-200 blocking libnoson
+  // calls this class wraps) counts as one continuous busy period, not one
+  // event per action — see TaskQueue's own constructor comment. Backs a
+  // header-bar spinner showing "waiting on the Sonos system right now",
+  // distinct from signal_discovery_done()'s own spinner-worthy state
+  // (zone discovery specifically) — GnomosWindow combines both.
+  sigc::signal<void(bool)>& signal_busy_changed() { return signal_busy_changed_; }
   sigc::signal<void(bool)>& signal_discovery_done() { return signal_discovery_done_; }
   sigc::signal<void()>& signal_zones_changed() { return signal_zones_changed_; }
   sigc::signal<void()>& signal_player_ready() { return signal_player_ready_; }
@@ -478,7 +487,17 @@ private:
   Glib::Dispatcher sound_settings_dispatcher_;
   Glib::Dispatcher service_link_ready_dispatcher_;
   Glib::Dispatcher position_dispatcher_;
+  Glib::Dispatcher busy_dispatcher_;
+  // Written on tasks_'s own worker thread (TaskQueue's on_busy_changed
+  // callback, passed in the constructor), read on the main thread once
+  // busy_dispatcher_ wakes it up — the same "atomic handoff variable
+  // alongside a Dispatcher" pattern this class has no other use for
+  // elsewhere, since every other dispatcher here only ever signals "go
+  // re-read some already-locked, already-consistent state" rather than
+  // carrying a value of its own.
+  std::atomic<bool> pending_busy_state_{false};
 
+  sigc::signal<void(bool)> signal_busy_changed_;
   sigc::signal<void(bool)> signal_discovery_done_;
   sigc::signal<void()> signal_zones_changed_;
   sigc::signal<void()> signal_player_ready_;

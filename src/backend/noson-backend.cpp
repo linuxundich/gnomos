@@ -145,7 +145,16 @@ std::string RadioStreamMatchKey(const std::string& url)
 }  // namespace
 
 NosonBackend::NosonBackend()
+// TaskQueue's own busy callback fires on tasks_'s worker thread — see its
+// constructor comment — so it only ever hands the new state off through
+// pending_busy_state_ and wakes busy_dispatcher_, exactly like every
+// other cross-thread notification in this class already does.
+: tasks_([this](bool busy) {
+    pending_busy_state_ = busy;
+    busy_dispatcher_.emit();
+  })
 {
+  busy_dispatcher_.connect([this] { signal_busy_changed_.emit(pending_busy_state_.load()); });
   system_dispatcher_.connect([this] { HandleSystemEvent(); });
   player_dispatcher_.connect([this] { HandlePlayerEvent(); });
   discovery_dispatcher_.connect([this] { HandleDiscoveryDone(); });
@@ -3349,8 +3358,19 @@ void NosonBackend::HandleSystemEvent()
       zones_by_uuid_.clear();
       for (const auto& kv : system_->GetZoneList())
         zones_by_uuid_[kv.first] = kv.second;
+      // room_volumes_ (backing the grouping popover's own per-room
+      // sliders) is otherwise only refreshed by a real
+      // SVCEvent_RenderingControlChanged — not guaranteed to fire just
+      // because group membership changed, and reported live as not
+      // reliably doing so: a room newly joined to the selected zone had
+      // no volume slider at all until something else happened to also
+      // trigger a volume refresh. player_ may be null this early (no
+      // zone selected yet) — RefreshVolumeLocked() already handles that
+      // itself, same guard every other caller relies on.
+      RefreshVolumeLocked();
     }
     signal_zones_changed_.emit();
+    signal_volume_changed_.emit();
     RefreshGen1StatusAsync();
   }
   if (mask & NSROOT::SVCEvent_ContentDirectoryChanged)

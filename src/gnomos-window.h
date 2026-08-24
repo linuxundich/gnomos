@@ -49,11 +49,13 @@ private:
   void SaveLastRoom(const std::string& coordinator_uuid) const;
   std::string LoadLastRoomUuid() const;
   void RebuildGroupingPopover();
-  // Read-only IP/MAC/software-version/model dialog for one specific room —
-  // player_uuid is that room's own coordinator (see the room popover's own
-  // info button, which is what opens this), not necessarily
-  // selected_group_id_'s coordinator.
-  void ShowDeviceInfoDialog(std::string player_uuid, std::string room_name);
+  // Read-only IP/MAC/software-version/model dialog for a whole zone (see
+  // the room popover's own info button, which is what opens this) — one
+  // section per member room, not just the coordinator's own. Confirmed
+  // live: a merged zone's info button used to only ever show the
+  // coordinator (the room the group was originally opened from), with no
+  // way to see a later-added member's own IP/MAC/etc. at all.
+  void ShowDeviceInfoDialog(std::string group_id, std::string zone_name);
   // room_button_'s own label — the current room name, so it still reads
   // correctly without opening room_popover_. Called after every zone
   // selection and every zones_list_box_ rebuild (a topology change can
@@ -115,6 +117,14 @@ private:
   void OnServiceLinkReady(std::string url, std::string code);
 
   void OnDiscoveryDone(bool ok);
+  // backend_->signal_busy_changed() — a burst of one or more queued
+  // backend actions (any button/switch/slider anywhere in the app) counts
+  // as one continuous busy period. Combined with discovering_ (both drive
+  // the same activity_spinner_, see UpdateActivitySpinner()) rather than
+  // each owning it outright, since either one alone stopping shouldn't
+  // stop a spinner the other one still wants running.
+  void OnBusyChanged(bool busy);
+  void UpdateActivitySpinner();
   void OnZonesChanged();
   void OnPlayerReady();
   void OnNowPlayingChanged();
@@ -198,7 +208,14 @@ private:
   GtkWidget* toast_overlay_ = nullptr;
 
   Gtk::Label window_title_;
-  Gtk::Spinner discovery_spinner_;
+  // Spins while either discovering_ (zone discovery in progress) or
+  // backend_busy_ (any other action currently waiting on the Sonos
+  // system) is true — see UpdateActivitySpinner()'s own comment for why
+  // both conditions share the one spinner rather than each getting its
+  // own indicator.
+  Gtk::Spinner activity_spinner_;
+  bool discovering_ = false;
+  bool backend_busy_ = false;
   Gtk::Button refresh_button_;
   Gtk::MenuButton primary_menu_button_;
 

@@ -1286,6 +1286,217 @@ actually browsing "R:0/0" first, the same way `CoverThumbnail` would):
 `ArtCache::Instance().Get(uri)` now returns a real, non-null texture for
 exactly the URI that would previously have been silently stuck empty.
 
+### Reworked: joining a room to a group now requires it to be free first
+
+Requested directly, as an explicit rule set: selecting a standalone
+device makes it its own (single-member) group; a genuinely free room
+(alone in its own group) can be added to the currently selected one
+directly; but a room already merged into *some other*, non-selected
+group can no longer be joined straight across — it has to be removed
+from its current group first (a separate action there), then added to
+the target group as its own step. Sonos's own protocol has no problem
+moving a device directly from one group to another in a single action —
+this is a deliberate app-level UX choice, not a limitation being worked
+around.
+
+`RoomInfo` has no member-list field of its own, but every room sharing
+the same `group_id` is by definition a member of that group, so
+`RebuildGroupingPopover()` now does one pass over `backend_->Rooms()`
+building a `group_id -> count` map before the render pass, giving an
+O(1) "is this room's own group free (count == 1) or does it have other
+members (count > 1)" check per row. A room in the selected group can
+still be switched off (leave) same as before; a genuinely free room can
+still be switched on (join) same as before; a room merged elsewhere now
+gets `set_sensitive(false)` with a tooltip explaining why, instead of a
+switch that would have silently regrouped it. The bulk "Alle Räume
+gruppieren" button (which reuses the exact same
+`JoinRoomToCurrentZone()` each row's switch calls) got the identical
+`group_id -> count` check, so it now only ever picks up genuinely free
+rooms too, plus an updated tooltip saying so — before this, it would
+have silently regrouped an already-grouped room the same way an
+individual switch could.
+
+Verified directly against the real household's live topology (`gdb`,
+reading `backend_->Rooms()` mid-session): confirmed a genuine 2-member
+group currently exists (two rooms sharing one `group_id`, a different
+coordinator each), alongside two standalone single-member ones — working
+the new logic through by hand against that real data lands exactly where
+the rule set says it should (the 2-member group's rooms disabled unless
+selected, both standalone rooms freely joinable).
+
+### Fixed: the room picker's device info only ever showed the group's coordinator
+
+Reported live: the room picker's "Geräteinfo" button, for a merged zone,
+only ever showed the info of whichever room the group was originally
+opened from (`ZoneInfo::coordinator_uuid`) — a room added to that group
+*later* had no way to see its own IP/MAC/model/software version at all.
+
+`ShowDeviceInfoDialog()` took a single `player_uuid` (always the
+coordinator's, from the room popover's own info button — see
+`OnZonesChanged()`); a merged zone has no member-list field of its own
+in `ZoneInfo` either. Fixed by changing the dialog to take the zone's
+`group_id` instead of one specific `player_uuid`, and — same "derive
+membership by matching `RoomInfo::group_id`" technique the grouping
+rework above already introduced — collecting every room that currently
+shares it. The dialog now renders one section per member (its own name,
+Gen 1 badge if applicable, and the same Modell/IP/MAC/Software-Version
+grid as before), separated by a `Gtk::Separator`, with "Kopieren"
+copying all of them at once rather than just the first.
+
+*Aside — a gdb limitation worth noting*: verifying the new dialog
+directly by calling `ShowDeviceInfoDialog()` from `gdb` failed with
+"Couldn't find method std::string::std::string" — its two parameters are
+`std::string` passed *by value*, and `gdb`'s expression evaluator in
+this environment can't synthesize the copy-construction an existing
+`std::string` lvalue argument needs for a by-value parameter, a
+different flavor of the same string-construction limitation noted
+earlier in this document. Verified instead by direct data inspection: the
+member-collection loop is textually the same
+`if (room.group_id == group_id) members.push_back(room)` pattern already
+proven correct for the grouping popover above, over the exact same
+`backend_->Rooms()` data already confirmed live to have "Arbeitszimmer"
+and "Wohnzimmer" sharing one `group_id` — sufficient to be confident
+without a direct call.
+
+### Fixed: a room newly joined to a group had no volume slider
+
+Reported live: the grouping popover's per-room volume sliders (see the
+grouping rework above) were missing for some members of a real group.
+Root cause: `room_volumes_` (what `GetRoomVolume()` reads, gating
+whether a row gets a slider at all) is only ever repopulated by
+`RefreshVolumeLocked()`, called from `SelectZone()` once and from
+`HandlePlayerEvent()`'s own `SVCEvent_RenderingControlChanged` branch —
+but *not* from anywhere reacting to a topology change. Joining a room to
+a group is not guaranteed to also fire a `RenderingControlChanged` event
+for the selected player, so a room added *after* the zone was first
+selected could go the rest of the session with no entry in
+`room_volumes_` at all, and therefore no slider — the exact "the
+original members have one, something added later doesn't" pattern
+reported.
+
+Fixed by also calling `RefreshVolumeLocked()` (and emitting
+`signal_volume_changed_`) from `HandleSystemEvent()`'s own
+`SVCEvent_ZGTopologyChanged` branch, right alongside the existing
+`zones_by_uuid_` refresh — a join/remove already fires that event
+reliably (it's what keeps the zone list itself correct), so piggybacking
+the volume refresh on it needs no new event subscription.
+`RefreshVolumeLocked()` already no-ops safely when `player_` is null
+(no zone selected yet), the same guard every other caller already relies
+on.
+
+Verified directly against the real household (`gdb`, calling
+`backend_->SelectZone()` with an existing zone's own `coordinator_uuid`
+— a `const std::string&` parameter, unlike `ShowDeviceInfoDialog()`
+above, so no by-value copy-construction problem to work around): with
+all four real rooms now merged into one group, `backend_->room_volumes_`
+correctly held an entry for every one of them, including the room
+specifically reported missing. (One dead end on the way there worth
+noting: the household's topology had changed mid-investigation — down
+to one 4-member group instead of the earlier 2-member one — and reusing
+a stale zone-list index from an earlier check crashed *that specific
+gdb-driven test process* outright. Harmless in isolation, since it was
+never the user-facing persistent instance, but a reminder that this
+technique needs re-reading live state fresh each time, not assuming it
+matches an earlier check in the same conversation.)
+
+### A header-bar activity spinner for any backend action in flight
+
+Requested directly: a spinner showing whenever the app is waiting on the
+Sonos system, not just during zone discovery (`activity_spinner_`,
+renamed from `discovery_spinner_` to match its now-broader purpose —
+every reference updated together).
+
+`TaskQueue` (`src/backend/task-queue.h`) serializes every one of
+libnoson's ~200 blocking SOAP calls onto its own single worker thread —
+already the one choke point every backend action already passes
+through, regardless of which of NosonBackend's many public methods
+triggered it. Gained an optional `on_busy_changed` constructor callback,
+fired `true` right before the first task of a new burst starts and
+`false` only once the queue is genuinely empty again — not once per
+task — so a rapid sequence of back-to-back actions (a fast volume drag,
+a burst of library prefetches) reads as one continuous busy period
+rather than flickering the spinner on and off between each one.
+
+The callback fires on `tasks_`'s own worker thread, so `NosonBackend`
+marshals it to the main thread the same way every other cross-thread
+notification in this class already does — a new `busy_dispatcher_` plus
+an `std::atomic<bool> pending_busy_state_` handoff variable (the one
+place this class needs that pattern; every *other* dispatcher here only
+ever means "go re-read some already-consistent state," not "here's a
+value"), surfaced as `signal_busy_changed(bool)`. `GnomosWindow` combines
+this with the pre-existing `discovering_` flag (`OnDiscoveryDone()`'s own
+state) — either one being true keeps `activity_spinner_` running,
+neither being true stops it — since a spinner started by one shouldn't
+be stopped by the other finishing first.
+
+### Compacted the sound popover so it no longer needs scrolling
+
+Reported live: with every section (bass/treble/sub-gain, loudness/night
+mode/fixed volume, the Autoplay section added earlier this session, and
+status LED) always expanded, the popover no longer fit on screen without
+scrolling. Folded the two most rarely-touched sections — Autoplay
+(Line-In) and Status-LED, five rows between them — behind one collapsed
+`Gtk::Expander` ("Erweitert"), the same pattern already proven for the
+radio dialog's own manual-entry fallback. Default visible height drops
+from every row always shown to just the expander's own collapsed title
+row for that whole section, while everything still works identically
+once expanded — nothing was removed, just deferred behind an extra
+click for the settings most people won't touch every session.
+
+*Aside*: verifying the popover's actual rendered height directly via
+`gdb` (`sound_popover_.popup()`, then `get_height()`) didn't pan out —
+`gdb` reported "Couldn't find method Gtk::Popover::popup" (and the same
+for `Gtk::MenuButton::activate()` as a fallback), consistent with
+`gtkmm` methods that are never directly called anywhere in this app's
+own compiled code (driven entirely through signals/property bindings
+instead) simply having no callable symbol for `gdb` to find, a different
+flavor of the `gdb` limitations already noted elsewhere in this
+document. Confidence here rests on the row count actually removed from
+the default-visible layout, not a measured pixel height.
+
+### Fixed the actual scrolling popover — the grouping one, not the sound one
+
+Follow-up, with a screenshot: the compaction above targeted
+`sound_popover_` (bass/treble/loudness/autoplay/...), but the popover the
+user actually meant by "Lautstärke Popup" (it has its own per-room
+*volume* sliders, hence the name) was `grouping_popover_` — the room
+picker's grouping list, showing a real 4-room group with the last row's
+slider visibly cut off mid-scroll. That popover's `grouping_scroller_`
+already had a hardcoded `set_max_content_height(320)` — with each room
+row taking roughly 90-100px (a name/switch row plus its own volume
+slider row), 320px barely fit three rooms, not four. Raised to 640 —
+`set_propagate_natural_height(true)` was already in place, so this is
+only a ceiling (a smaller group still sizes down to its own actual
+content), and `Gtk::Popover`'s own screen-edge avoidance still protects
+against a household with even more rooms than that overflowing off
+screen. The sound popover compaction from the entry above stands on its
+own merits regardless — it was a real improvement to a popover that
+really had grown tall over the session — just not the one this specific
+report was about.
+
+### Replaced the sound popover's plain Gtk::Expander with a proper row
+
+Reported live with two screenshots (collapsed and expanded): the
+`Gtk::Expander` from the compaction above "sieht komisch eingepasst
+aus" — looks oddly squeezed in. Fair: every *other* row in this popover
+(Loudness/Night Mode/Feste Lautstärke) is a label on the left, a control
+flush right; `Gtk::Expander` brings its own distinct look instead (an
+indented disclosure triangle + label), which reads as a foreign widget
+dropped into an otherwise consistent list rather than one more row of
+it.
+
+Rebuilt as a flat `Gtk::Button` styled to look exactly like a sibling
+row — the same label-left, chevron-right layout as an `Gtk::Image`
+(`pan-end-symbolic`/`pan-down-symbolic`, flipped on click) standing in
+for where a switch would normally sit — driving a `Gtk::Revealer`
+(`SLIDE_DOWN` transition) instead of `Gtk::Expander`'s own default
+disclosure behavior. `Gtk::Expander` itself is untouched everywhere else
+it's used (the radio dialog's own manual-entry fallback still uses it —
+a plain settings-style dialog, not a row-based popover, where the
+default look already fits fine) — this was specifically about matching
+*this* popover's own established row language, not a blanket "replace
+every expander" change.
+
 ## Bugs found during hardware testing
 
 All of the following were found by running Gnomos against a real

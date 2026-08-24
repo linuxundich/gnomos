@@ -44,7 +44,9 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 
 ## Features
 
-- Discovery of Sonos zones on the local network
+- Discovery of Sonos zones on the local network, with a header-bar
+  spinner showing whenever the app is actually waiting on a response
+  from the Sonos system
 - Playback controls, volume and mute — aware of multi-room groups, not just
   a single speaker
 - Shuffle and repeat, including repeat-one, with both greyed out on

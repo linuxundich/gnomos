@@ -20,7 +20,19 @@ namespace gnomos
 class TaskQueue
 {
 public:
-  TaskQueue() : worker_([this] { Run(); }) {}
+  // on_busy_changed, if given, fires on this queue's own worker thread —
+  // any caller touching GTK/main-thread-only state from it needs its own
+  // marshaling (a Glib::Dispatcher, same as every other cross-thread
+  // notification in this codebase). Called with true right before the
+  // first task of a new burst starts, and false only once the queue is
+  // genuinely empty again afterward — not once per task — so a rapid
+  // sequence of back-to-back actions (e.g. a fast volume drag) reads as
+  // one continuous busy period rather than flickering on/off between
+  // each individual task.
+  explicit TaskQueue(std::function<void(bool)> on_busy_changed = {})
+  : on_busy_changed_(std::move(on_busy_changed)), worker_([this] { Run(); })
+  {
+  }
 
   ~TaskQueue()
   {
@@ -62,10 +74,20 @@ private:
         task = std::move(tasks_.front());
         tasks_.pop_front();
       }
+      if (on_busy_changed_)
+        on_busy_changed_(true);
       task();
+      bool more_pending;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        more_pending = !tasks_.empty();
+      }
+      if (!more_pending && on_busy_changed_)
+        on_busy_changed_(false);
     }
   }
 
+  std::function<void(bool)> on_busy_changed_;
   std::mutex mutex_;
   std::condition_variable cv_;
   std::deque<std::function<void()>> tasks_;
