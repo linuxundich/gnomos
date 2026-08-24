@@ -8,6 +8,30 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.6.0] - 2026-08-24
+
+### Added
+- A header-bar spinner that shows whenever the app is waiting on a
+  response from the Sonos system, not just during zone discovery.
+- The room picker's "Geräteinfo" dialog now shows every device in a
+  merged zone, not just the one it was originally opened from.
+
+### Changed
+- Joining a room to a group now requires it to be free first — a room
+  already merged into another group can no longer be joined directly;
+  it has to be removed from its current group first, then added to the
+  new one as a separate step. Applies to both the per-room switches and
+  "Alle Räume gruppieren".
+
+### Fixed
+- A room newly joined to a group could have no volume slider at all in
+  the grouping popover until something unrelated happened to refresh
+  it.
+- The grouping popover's room list forced scrolling for as few as 4
+  rooms.
+- The sound popover's "Erweitert" section used a disclosure widget that
+  didn't visually match the rest of the popover.
+
 ## [0.5.2] - 2026-08-24
 
 ### Fixed

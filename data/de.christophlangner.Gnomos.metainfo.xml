@@ -15,6 +15,15 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.6.0" date="2026-08-24">
+      <description>
+        <p>A header-bar spinner for any Sonos activity, a room-info
+        dialog that shows every device in a merged zone, a stricter
+        (and clearer) room-grouping flow, and fixes for a missing
+        volume slider, two popovers that forced scrolling, and a
+        mismatched disclosure widget.</p>
+      </description>
+    </release>
     <release version="0.5.2" date="2026-08-24">
       <description>
         <p>Fixed a radio station's Now Playing icon getting permanently
