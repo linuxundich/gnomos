@@ -1588,10 +1588,23 @@ libadwaita 1.9 / gtkmm-4.0 4.22):
 - Zone grouping/ungrouping works.
 - Favorites list and play-favorite work.
 - Alarms: list/enable/disable/delete/create all confirmed working live.
+- **Flatpak build** (`build-aux/flatpak/`) — builds, installs (`--user`),
+  and runs cleanly against `org.gnome.Platform`//49. Getting there needed
+  several version-pin fixes over the original tags-only manifest: libsigc++/
+  glibmm/cairomm/pangomm/gtkmm switched from git tags to release tarballs
+  (a git checkout lacks the generated `.cc`/`.h` files that `mm-common`'s
+  codegen would normally produce, and that tool isn't available in the
+  sandboxed build), gtkmm pinned to 4.20.0 to match the runtime's actual
+  GTK4 4.20.4, and glibmm bumped to 2.86.0 — older pins don't have the
+  multi-slot `register_object()` overload `mpris-service.cpp` calls (added
+  in glibmm 2.82). Two more fixes were specific to this build host lacking
+  a registered gdk-pixbuf SVG loader: `appstream-compose` is disabled in
+  the manifest (appstreamcli can't rasterize the SVG icon for its catalog),
+  and the `gnomos` module's `post-install` rasterizes the icon to a 256×256
+  PNG via `rsvg-convert` and regenerates the icon cache, since Flatpak's
+  own export-time icon validation hits the same gdk-pixbuf gap.
 
 Still unverified:
-- **Flatpak manifest tags/module list** (`build-aux/flatpak/`) — written
-  without a full build attempt; expect to fix version pins.
 - Queue reordering via drag and drop is the one feature that's genuinely
   hard to test without a human hand on a mouse, so it's the least-verified
   piece of UI in the app.

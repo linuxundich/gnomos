@@ -15,6 +15,8 @@ work, patch versions (0.x.y) are smaller additions and fixes on top of it.
   response from the Sonos system, not just during zone discovery.
 - The room picker's "Geräteinfo" dialog now shows every device in a
   merged zone, not just the one it was originally opened from.
+- A verified Flatpak manifest (`build-aux/flatpak/`) — not published, but
+  built and installed sporadically by the author for local testing.
 
 ### Changed
 - Joining a room to a group now requires it to be free first — a room

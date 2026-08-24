@@ -141,9 +141,19 @@ fetches it too) and is built together with Gnomos; you don't need to
 install it separately. If you already cloned without that flag, run
 `git submodule update --init` to fetch it afterwards.
 
-A Flatpak manifest exists under `build-aux/flatpak/` but hasn't been
-verified end to end yet — see [ARCHITECTURE.md](ARCHITECTURE.md) for
-details.
+A Flatpak manifest exists under `build-aux/flatpak/` and has been verified
+end to end (builds, installs, and runs against `org.gnome.Platform`//49).
+It isn't published anywhere — the author builds it sporadically, for local
+testing, rather than as a release channel kept in sync with every version.
+To build and install it yourself:
+
+```sh
+cd build-aux/flatpak
+flatpak-builder --user --install --force-clean --repo=.flatpak-repo .flatpak-build de.christophlangner.Gnomos.json
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the manifest's version
+pins.
 
 ## Status
 

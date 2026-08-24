@@ -1,9 +1,10 @@
 {
     "app-id": "de.christophlangner.Gnomos",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "47",
+    "runtime-version": "49",
     "sdk": "org.gnome.Sdk",
     "command": "gnomos",
+    "appstream-compose": false,
     "finish-args": [
         "--share=ipc",
         "--socket=wayland",
@@ -21,50 +22,62 @@
     ],
     "modules": [
         {
-            "name": "glibmm",
+            "name": "libsigc++",
             "buildsystem": "meson",
-            "config-opts": ["-Dbuild-documentation=false", "-Dbuild-tests=false"],
+            "config-opts": ["-Dbuild-documentation=false", "-Dmaintainer-mode=false"],
             "sources": [
                 {
                     "type": "git",
-                    "url": "https://gitlab.gnome.org/GNOME/glibmm.git",
-                    "tag": "2.78.1"
+                    "url": "https://github.com/libsigcplusplus/libsigcplusplus.git",
+                    "tag": "3.6.0"
+                }
+            ]
+        },
+        {
+            "name": "glibmm",
+            "buildsystem": "meson",
+            "config-opts": ["-Dbuild-documentation=false", "-Dmaintainer-mode=false"],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://download.gnome.org/sources/glibmm/2.86/glibmm-2.86.0.tar.xz",
+                    "sha256": "39c0e9f6da046d679390774efdb9ad564436236736dc2f7825e614b2d4087826"
                 }
             ]
         },
         {
             "name": "cairomm",
             "buildsystem": "meson",
-            "config-opts": ["-Dbuild-documentation=false", "-Dbuild-tests=false"],
+            "config-opts": ["-Dbuild-documentation=false", "-Dmaintainer-mode=false"],
             "sources": [
                 {
-                    "type": "git",
-                    "url": "https://gitlab.freedesktop.org/cairo/cairomm.git",
-                    "tag": "1.16.2"
+                    "type": "archive",
+                    "url": "https://www.cairographics.org/releases/cairomm-1.16.2.tar.xz",
+                    "sha256": "6a63bf98a97dda2b0f55e34d1b5f3fb909ef8b70f9b8d382cb1ff3978e7dc13f"
                 }
             ]
         },
         {
             "name": "pangomm",
             "buildsystem": "meson",
-            "config-opts": ["-Dbuild-documentation=false"],
+            "config-opts": ["-Dbuild-documentation=false", "-Dmaintainer-mode=false"],
             "sources": [
                 {
-                    "type": "git",
-                    "url": "https://gitlab.gnome.org/GNOME/pangomm.git",
-                    "tag": "2.54.0"
+                    "type": "archive",
+                    "url": "https://download.gnome.org/sources/pangomm/2.54/pangomm-2.54.0.tar.xz",
+                    "sha256": "4a5b1fd1b7c47a1af45277ea82b5abeaca8e08fb10a27daa6394cf88d74e7acf"
                 }
             ]
         },
         {
             "name": "gtkmm",
             "buildsystem": "meson",
-            "config-opts": ["-Dbuild-documentation=false", "-Dbuild-tests=false", "-Dbuild-demos=false"],
+            "config-opts": ["-Dbuild-documentation=false", "-Dbuild-demos=false", "-Dmaintainer-mode=false"],
             "sources": [
                 {
-                    "type": "git",
-                    "url": "https://gitlab.gnome.org/GNOME/gtkmm.git",
-                    "tag": "4.14.0"
+                    "type": "archive",
+                    "url": "https://download.gnome.org/sources/gtkmm/4.20/gtkmm-4.20.0.tar.xz",
+                    "sha256": "daad9bf9b70f90975f91781fc7a656c923a91374261f576c883cd3aebd59c833"
                 }
             ]
         },
@@ -76,6 +89,12 @@
                     "type": "dir",
                     "path": "../.."
                 }
+            ],
+            "post-install": [
+                "mkdir -p /app/share/icons/hicolor/256x256/apps",
+                "rsvg-convert -w 256 -h 256 /app/share/icons/hicolor/scalable/apps/de.christophlangner.Gnomos.svg -o /app/share/icons/hicolor/256x256/apps/de.christophlangner.Gnomos.png",
+                "rm /app/share/icons/hicolor/scalable/apps/de.christophlangner.Gnomos.svg",
+                "gtk4-update-icon-cache -f -t /app/share/icons/hicolor"
             ]
         }
     ]

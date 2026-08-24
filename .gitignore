@@ -1,6 +1,8 @@
 build/
 builddir/
 .flatpak-builder/
+.flatpak-build/
+.flatpak-repo/
 _flatpak_build/
 *.o
 *.swp
