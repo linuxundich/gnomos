@@ -883,9 +883,14 @@ void GnomosWindow::RebuildLibraryNavEntries()
   // BrowseLibraryAsync()'s own comment on that prefix) and "Dienste"
   // (everything else content actually comes from outside that share: Sonos-
   // native saved playlists, the radio directory, and linked third-party
-  // services). "Dienst verknüpfen…" opens a dialog, not a place to browse
-  // into, so it's excluded from both groups — not a useful permanent
-  // sidebar destination.
+  // services). "Dienst verknüpfen…" lives in "Dienste" too, alongside
+  // whatever's already linked — it used to be excluded from the sidebar
+  // entirely (it opens a dialog rather than browsing into anything), which
+  // meant the *only* way to ever discover it was clicking the top-level
+  // "Bibliothek" nav row itself rather than any of its sub-items, landing
+  // on the true library root where it's shown as a regular entry — not
+  // obvious, confirmed live as a real "how do I even link a service"
+  // question once "Dienste" existed as an obvious place to expect it.
   auto append_header = [this](const char* title) {
     auto* header_label = Gtk::make_managed<Gtk::Label>(title);
     header_label->set_halign(Gtk::Align::START);
@@ -912,6 +917,16 @@ void GnomosWindow::RebuildLibraryNavEntries()
     row_label->set_margin_end(8);
     nav_list_box_.append(*row_label);
 
+    // Same special-case OnLibraryEntryActivated() already has for clicking
+    // this same entry from the actual root level — opens the picker
+    // dialog directly rather than trying to "browse into" a sentinel
+    // object_id that was never a real container to begin with.
+    if (entry.object_id == kLinkServiceSentinel)
+    {
+      nav_row_actions_.push_back([this] { ShowLinkServiceDialog(); });
+      return;
+    }
+
     std::string object_id = entry.object_id;
     std::string title = entry.title;
     nav_row_actions_.push_back([this, object_id, title] {
@@ -928,10 +943,8 @@ void GnomosWindow::RebuildLibraryNavEntries()
 
   bool has_library = std::any_of(library_root_entries_.begin(), library_root_entries_.end(),
                                   [](const LibraryEntry& e) { return e.object_id.compare(0, 2, "A:") == 0; });
-  bool has_services =
-      std::any_of(library_root_entries_.begin(), library_root_entries_.end(), [](const LibraryEntry& e) {
-        return e.object_id.compare(0, 2, "A:") != 0 && e.object_id != kLinkServiceSentinel;
-      });
+  bool has_services = std::any_of(library_root_entries_.begin(), library_root_entries_.end(),
+                                   [](const LibraryEntry& e) { return e.object_id.compare(0, 2, "A:") != 0; });
 
   if (has_library)
   {
@@ -944,7 +957,7 @@ void GnomosWindow::RebuildLibraryNavEntries()
   {
     append_header("Dienste");
     for (const LibraryEntry& entry : library_root_entries_)
-      if (entry.object_id.compare(0, 2, "A:") != 0 && entry.object_id != kLinkServiceSentinel)
+      if (entry.object_id.compare(0, 2, "A:") != 0)
         append_entry(entry);
   }
 }
