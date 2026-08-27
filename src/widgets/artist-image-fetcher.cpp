@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 
+#include <glibmm/main.h>
 #include <glibmm/uriutils.h>
 #include <json-glib/json-glib.h>
 
@@ -86,6 +88,30 @@ std::string ExtractBestPictureUrl(const std::string& body, const std::string& ar
   g_object_unref(parser);
   return result;
 }
+
+// Deezer signals its own rate limit via a 200 OK carrying
+// {"error":{"code":4,"message":"Quota limit exceeded",...}} rather than an
+// HTTP 429 — confirmed live by deliberately bursting requests past it. A
+// genuine "no results" response has no "error" member at all, just an
+// empty (or populated) "data" array, so checking for this key is what
+// distinguishes "Deezer never actually looked, try again shortly" from
+// "Deezer looked and found nothing" — the latter is safe to cache
+// permanently (see cache_'s own comment), the former must never be, or
+// every artist unlucky enough to be queued past the quota would silently
+// show no photo for the rest of the session.
+bool IsRateLimited(const std::string& body)
+{
+  JsonParser* parser = json_parser_new();
+  bool rate_limited = false;
+  if (json_parser_load_from_data(parser, body.c_str(), static_cast<gssize>(body.size()), nullptr))
+  {
+    JsonNode* root = json_parser_get_root(parser);
+    if (root && JSON_NODE_HOLDS_OBJECT(root))
+      rate_limited = json_object_has_member(json_node_get_object(root), "error");
+  }
+  g_object_unref(parser);
+  return rate_limited;
+}
 }  // namespace
 
 ArtistImageFetcher& ArtistImageFetcher::Instance()
@@ -121,6 +147,9 @@ void ArtistImageFetcher::RequestArtistImage(const std::string& artist_name, std:
 
 void ArtistImageFetcher::StartNext()
 {
+  if (std::chrono::steady_clock::now() < rate_limit_until_)
+    return;  // a wakeup is already scheduled for when this lifts — see OnResponse()
+
   while (in_flight_ < kMaxConcurrent && !queue_.empty())
   {
     std::string artist_name = queue_.front();
@@ -152,6 +181,26 @@ void ArtistImageFetcher::PrioritizeArtist(const std::string& artist_name)
 
 void ArtistImageFetcher::OnResponse(const std::string& artist_name, const std::string& body)
 {
+  if (IsRateLimited(body))
+  {
+    // Not resolved and not cached — see cache_'s own comment for why
+    // that distinction matters. Put back at the front of queue_ so it's
+    // the very next thing tried once the cooldown lifts, same effect
+    // PrioritizeArtist() has for a still-genuinely-queued entry.
+    queue_.push_front(artist_name);
+    if (in_flight_ > 0)
+      --in_flight_;
+    // 5s is Deezer's own documented sliding window for this limit — safe
+    // to just wait it out rather than guess at a shorter retry and risk
+    // hitting it again immediately. Any other in-flight/queued response
+    // that also comes back rate-limited (likely, several requests were
+    // probably in flight together when the quota hit) only ever extends
+    // this, never shortens it — harmless, since StartNext() is idempotent
+    // and safe to call more than once.
+    rate_limit_until_ = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    Glib::signal_timeout().connect_once([this] { StartNext(); }, 5100);
+    return;
+  }
   Resolve(artist_name, ExtractBestPictureUrl(body, artist_name));
 }
 

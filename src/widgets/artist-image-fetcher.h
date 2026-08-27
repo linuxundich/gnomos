@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <chrono>
 #include <deque>
 #include <functional>
 #include <string>
@@ -67,11 +68,21 @@ private:
 
   // Empty string is itself a valid, cached "looked up, nothing found"
   // result — distinguished from "never looked up at all" via find()
-  // against this map, not by checking the string's own emptiness.
+  // against this map, not by checking the string's own emptiness. Never
+  // written for a rate-limited response (see OnResponse()'s own comment) —
+  // only for a response Deezer actually answered, whether or not it
+  // contained a match.
   std::unordered_map<std::string, std::string> cache_;
   std::unordered_map<std::string, std::vector<std::function<void(std::string)>>> pending_callbacks_;
   std::deque<std::string> queue_;
   size_t in_flight_ = 0;
+  // Set by OnResponse() on detecting Deezer's own rate-limit response (a
+  // 200 OK carrying {"error":{"code":4,...}} — confirmed live, "Quota
+  // limit exceeded" — not an HTTP 429) — StartNext() dispatches nothing
+  // new while now() is still before this. Defaults to the epoch, i.e.
+  // already in the past, so it never gates anything until a real limit is
+  // actually hit.
+  std::chrono::steady_clock::time_point rate_limit_until_;
 };
 
 }  // namespace gnomos
