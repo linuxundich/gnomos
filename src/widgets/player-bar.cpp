@@ -286,6 +286,11 @@ PlayerBar::PlayerBar()
   secondary_row->append(mute_button_);
 
   volume_scale_.set_range(0, 100);
+  // step/page increments — Gtk::Range's own built-in scroll-wheel handling
+  // (hovering + scrolling adjusts the value, no extra wiring needed) reads
+  // these from the underlying Adjustment; left unset, they default to 0,
+  // so scrolling technically works but visibly changes nothing at all.
+  volume_scale_.set_increments(2, 10);
   volume_scale_.set_size_request(120, -1);
   volume_scale_.set_valign(Gtk::Align::CENTER);
   volume_scale_.signal_value_changed().connect([this] {

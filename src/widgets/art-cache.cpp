@@ -3,6 +3,7 @@
 #include "art-cache.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <vector>
 
 #include <glib.h>
@@ -26,6 +27,56 @@ namespace
 std::string SettingsPath()
 {
   return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "art-cache.ini");
+}
+
+bool IsPrivateHost(const std::string& host)
+{
+  if (host.compare(0, 3, "10.") == 0 || host.compare(0, 8, "192.168.") == 0)
+    return true;
+  if (host.compare(0, 4, "172.") == 0)
+  {
+    size_t dot = host.find('.', 4);
+    if (dot != std::string::npos)
+    {
+      int second_octet = std::atoi(host.substr(4, dot - 4).c_str());
+      return second_octet >= 16 && second_octet <= 31;
+    }
+  }
+  return false;
+}
+
+// NosonBackend::ResolveArtUri() has to bake the Sonos player's *current*
+// host:port into a local album/artist art_uri to make it fetchable at
+// all (see its own comment) — but the actual image is identified by
+// Sonos's own "getaa" endpoint entirely via its path+query (e.g.
+// "/getaa?u=...&v=..." — the u= parameter is the item's own content
+// identifier, not tied to any network location). Hashing the *full*
+// absolute URL as the disk-cache key means a DHCP lease change (a new IP
+// for the very same physical speaker) silently orphans the entire
+// local-library art cache: every uri changes, nothing on disk matches on
+// the next lookup, and the same images get re-fetched and re-cached
+// under new keys every time — confirmed live as the reported "covers
+// need to be re-read after every restart" behavior. Stripping host:port
+// before hashing keeps the key stable across a private/LAN host's IP
+// changing — but only for a private host: an external URL's host is
+// part of its real identity (two different sites could each host their
+// own distinct image at the same generic path, e.g. "/favicon.ico"),
+// so this must never touch anything that isn't clearly a local Sonos
+// device to begin with.
+std::string CacheKeyFor(const std::string& uri)
+{
+  size_t scheme_end = uri.find("://");
+  if (scheme_end == std::string::npos)
+    return uri;
+  size_t host_start = scheme_end + 3;
+  size_t path_start = uri.find('/', host_start);
+  if (path_start == std::string::npos)
+    return uri;
+  std::string host_port = uri.substr(host_start, path_start - host_start);
+  std::string host = host_port.substr(0, host_port.find(':'));
+  if (!IsPrivateHost(host))
+    return uri;
+  return uri.substr(path_start);
 }
 }  // namespace
 
@@ -79,7 +130,10 @@ std::string ArtCache::PathFor(const std::string& uri) const
   // SHA-256 of the URI as the filename: URIs contain characters that
   // aren't safe as-is (":", "/", "?", ...), and this also naturally caps
   // the filename length regardless of how long a real art_uri gets.
-  return Glib::build_filename(CacheDir(), Glib::Checksum::compute_checksum(Glib::Checksum::Type::SHA256, uri));
+  // CacheKeyFor() normalizes a local Sonos device's own host:port out of
+  // the key first — see its own comment.
+  return Glib::build_filename(CacheDir(),
+                               Glib::Checksum::compute_checksum(Glib::Checksum::Type::SHA256, CacheKeyFor(uri)));
 }
 
 void ArtCache::LoadSettings()

@@ -2018,6 +2018,10 @@ void GnomosWindow::RebuildGroupingPopover()
     {
       auto* volume_scale = Gtk::make_managed<Gtk::Scale>();
       volume_scale->set_range(0, 100);
+      // See PlayerBar's own identical call for why — Gtk::Range's built-in
+      // scroll-wheel support needs a non-zero step/page increment to
+      // actually move the value, not just consume the scroll event.
+      volume_scale->set_increments(2, 10);
       volume_scale->set_value(room_volume);
       volume_scale->set_draw_value(false);
       volume_scale->signal_value_changed().connect([this, volume_scale, uuid] {
