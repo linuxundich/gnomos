@@ -29,6 +29,7 @@
 #include <gtkmm/editable.h>
 #include <gtkmm/entry.h>
 #include <gtkmm/expander.h>
+#include <gtkmm/expression.h>
 #include <gtkmm/grid.h>
 #include <gtkmm/image.h>
 #include <gtkmm/linkbutton.h>
@@ -37,6 +38,7 @@
 #include <gtkmm/separator.h>
 #include <gtkmm/spinbutton.h>
 #include <gtkmm/stringlist.h>
+#include <gtkmm/stringobject.h>
 #include <gtkmm/togglebutton.h>
 #include <gtkmm/window.h>
 #include <pangomm/layout.h>
@@ -2312,6 +2314,11 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
     sound_entries.push_back(title);
   auto sound_model = Gtk::StringList::create(sound_entries);
   auto* sound_dropdown = Gtk::make_managed<Gtk::DropDown>(sound_model);
+  // See ShowLinkServiceDialog()'s identical call for why this expression
+  // is needed alongside set_enable_search() — without it the search entry
+  // shows but never actually filters anything.
+  sound_dropdown->set_expression(
+      Gtk::PropertyExpression<Glib::ustring>::create(Gtk::StringObject::get_type(), "string"));
   sound_dropdown->set_enable_search(true);
   sound_dropdown->set_selected(0);
   content->append(*sound_dropdown);
@@ -2737,6 +2744,13 @@ void GnomosWindow::ShowLinkServiceDialog()
     names.push_back(svc.name);
   auto model = Gtk::StringList::create(names);
   auto* dropdown = Gtk::make_managed<Gtk::DropDown>(model);
+  // set_enable_search() alone shows a search entry in the popup but never
+  // actually filters anything without this — confirmed live. Despite the
+  // gtkmm/GTK docs describing GtkStringList items as auto-detected, the
+  // search filter itself still needs an explicit expression telling it
+  // how to pull a comparable string out of each item.
+  dropdown->set_expression(
+      Gtk::PropertyExpression<Glib::ustring>::create(Gtk::StringObject::get_type(), "string"));
   dropdown->set_enable_search(true);
   content->append(*dropdown);
 
