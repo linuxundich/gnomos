@@ -8,6 +8,45 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.7.1] - 2026-08-27
+
+### Added
+- Volume sliders (the Now Playing bar and the per-room sliders in the
+  grouping popover) now respond to scrolling the mouse wheel while
+  hovered.
+
+### Fixed
+- In the Flatpak build specifically: radio-browser search and cover art/
+  artist-photo thumbnails never loaded at all — `Gio::File`'s http(s)
+  support depends on GVfs's own backend, which isn't part of the Flatpak
+  runtime. Replaced with a small HTTP client backed directly by libsoup
+  for all three.
+- A large cover-art grid (Albums/Artists, 1000+ entries) fired every
+  tile's fetch essentially at once, overwhelming the local Sonos
+  device's own tiny HTTP server — most requests failed outright and
+  never populated the cache, leaving tiles blank even on a later
+  revisit. Fetches are now capped to a handful concurrent, and whatever
+  actually scrolls into view gets bumped to the front of the queue
+  (covering both a direct art fetch and, separately, the Deezer
+  name-lookup stage an artist photo goes through first).
+- Artist photos could get permanently stuck on the fallback icon once
+  Deezer's API rate limit was hit — it signals the limit with a 200 OK
+  carrying an error body rather than an HTTP 429, which looked
+  indistinguishable from "no photo found" and got cached as such
+  forever. The rate limit is now detected and backed off instead.
+- Local album/artist cover art needed re-fetching after almost every
+  restart — the on-disk cache was keyed by the full art URL, which
+  bakes in the Sonos speaker's *current* IP address, so a DHCP lease
+  change silently orphaned the entire cache. The cache key now ignores
+  the device's address for local art specifically.
+- "Dienst verknüpfen…" (linking Spotify, bonob, …) had no way to be
+  found in the sidebar at all unless you happened to click the
+  top-level "Bibliothek" row itself rather than any of its sub-items —
+  it now shows as a regular entry under "Dienste".
+- The search field in both of the app's searchable dropdowns (the
+  service-link picker, the alarm sound picker) never actually filtered
+  anything typed into it.
+
 ## [0.7.0] - 2026-08-24
 
 ### Added

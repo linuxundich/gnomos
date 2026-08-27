@@ -15,6 +15,17 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.7.1" date="2026-08-27">
+      <description>
+        <p>Scroll-to-adjust volume sliders, and a round of fixes: radio
+        search and thumbnails never loading in the Flatpak build, cover
+        art overwhelming the Sonos speaker's own tiny HTTP server in a
+        large grid, artist photos getting stuck once Deezer's rate limit
+        was hit, the cover art cache needing a full re-fetch after most
+        restarts, "Dienst verknüpfen…" being hard to find in the sidebar,
+        and search fields in two dropdowns not filtering anything.</p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-08-24">
       <description>
         <p>Per-station MPRIS control for radio, so ad breaks between song
