@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <regex>
 
 #include <giomm/dbusintrospection.h>
 #include <giomm/dbusownname.h>
@@ -16,22 +15,6 @@ namespace gnomos
 
 namespace
 {
-
-// Wraps std::regex_search so a malformed user-supplied pattern (typed into
-// GnomosWindow's per-station MPRIS settings dialog) can't crash the app —
-// it just fails to match, same as any other non-matching content, so the
-// station simply stops accepting new "songs" until the pattern is fixed.
-bool RegexMatches(const std::string& content, const std::string& pattern)
-{
-  try
-  {
-    return std::regex_search(content, std::regex(pattern));
-  }
-  catch (const std::regex_error&)
-  {
-    return false;
-  }
-}
 
 // A single, fixed track id: Gnomos has no stable per-track identifier it
 // could turn into a valid D-Bus object path (real track URIs contain
@@ -129,7 +112,7 @@ const char* LoopStatusFor(RepeatMode mode)
 }  // namespace
 
 MprisService::MprisService(NosonBackend& backend, Gtk::ApplicationWindow& window)
-: backend_(backend), window_(window)
+: backend_(backend), window_(window), radio_filter_(backend)
 {
   own_name_id_ = Gio::DBus::own_name(Gio::DBus::BusType::SESSION, "org.mpris.MediaPlayer2.gnomos",
                                       sigc::mem_fun(*this, &MprisService::OnBusAcquired));
@@ -227,41 +210,9 @@ Glib::VariantBase MprisService::BuildMetadata()
   // Shell's media notification on every ad break, not just on a real song
   // change. Only radio-like sources (duration == 0) with a known stream
   // are affected — a queued track's artist is stable and passes through
-  // unchanged below.
+  // unchanged below. See RadioContentFilter for the actual filtering.
   if (np.duration == 0 && !np.stream_uri.empty())
-  {
-    if (np.stream_uri != radio_stream_key_)
-    {
-      // Station changed (or this is the first radio stream this session) —
-      // start this station's dedup state fresh rather than carrying over
-      // whatever the previous station last published.
-      radio_stream_key_ = np.stream_uri;
-      radio_last_matched_content_.clear();
-      radio_effective_artist_.clear();
-    }
-
-    RadioMprisSettings settings = backend_.GetRadioMprisSettings(np.stream_uri);
-    if (!settings.mpris_enabled)
-    {
-      // Opted out entirely for this station — MPRIS never sees its
-      // rotating content, only the (stable) station name in xesam:title.
-      radio_effective_artist_.clear();
-    }
-    else
-    {
-      bool matches = settings.regex.empty() || RegexMatches(np.artist, settings.regex);
-      if (matches && np.artist != radio_last_matched_content_)
-      {
-        // A genuinely new, regex-accepted song — advance both the dedup
-        // key and what's actually published.
-        radio_last_matched_content_ = np.artist;
-        radio_effective_artist_ = np.artist;
-      }
-      // else: ad/ident text that didn't match, or a repeat of the same
-      // song already published — leave radio_effective_artist_ untouched.
-    }
-    np.artist = radio_effective_artist_;
-  }
+    np.artist = radio_filter_.Filter(np.stream_uri, np.artist);
 
   std::map<Glib::ustring, Glib::VariantBase> dict;
   dict["mpris:trackid"] = Glib::Variant<Glib::DBusObjectPathString>::create(kTrackId);

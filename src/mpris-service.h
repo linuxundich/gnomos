@@ -10,6 +10,7 @@
 #include <sigc++/connection.h>
 
 #include "backend/noson-backend.h"
+#include "radio-content-filter.h"
 
 namespace gnomos
 {
@@ -68,16 +69,11 @@ private:
   sigc::connection now_playing_connection_;
   sigc::connection volume_connection_;
 
-  // Per-station dedup state for BuildMetadata()'s radio-content filtering
-  // (see its own comment) — reset whenever NowPlaying::stream_uri changes,
-  // i.e. whenever playback moves to a different station (or away from
-  // radio entirely). radio_effective_artist_ is what's actually published
-  // as xesam:artist right now; it only ever advances to a new value once a
-  // fresh, genuinely different, regex-accepted song comes in — ad text and
-  // repeats leave it untouched.
-  std::string radio_stream_key_;
-  std::string radio_last_matched_content_;
-  std::string radio_effective_artist_;
+  // BuildMetadata()'s own instance for radio-content spam filtering — see
+  // RadioContentFilter's own comment for why every consumer (this one,
+  // and GnomosWindow's History recording) owns a separate instance rather
+  // than sharing one.
+  RadioContentFilter radio_filter_;
 };
 
 }  // namespace gnomos

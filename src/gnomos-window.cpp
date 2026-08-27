@@ -792,6 +792,7 @@ GnomosWindow::GnomosWindow()
   backend_->signal_error().connect(sigc::mem_fun(*this, &GnomosWindow::OnBackendError));
 
   mpris_ = std::make_unique<MprisService>(*backend_, *this);
+  radio_history_filter_ = std::make_unique<RadioContentFilter>(*backend_);
 
   pending_restore_room_uuid_ = LoadLastRoomUuid();
 
@@ -1303,23 +1304,37 @@ void GnomosWindow::RecordHistoryIfTrackChanged(const NowPlaying& now_playing)
   if (!now_playing.valid || now_playing.title.empty())
     return;
 
-  std::string key = now_playing.title + "\x1f" + now_playing.artist;
+  // Radio: treat History (and, downstream, the desktop notification) the
+  // same way MprisService treats MPRIS Metadata — ad breaks/idents
+  // interspersed between song repeats shouldn't spam either one. See
+  // RadioContentFilter's own comment; only radio-like sources
+  // (duration == 0) with a known stream are affected, a queued track's
+  // artist is stable and passes through unchanged.
+  NowPlaying filtered = now_playing;
+  if (now_playing.duration == 0 && !now_playing.stream_uri.empty())
+  {
+    filtered.artist = radio_history_filter_->Filter(now_playing.stream_uri, now_playing.artist);
+    if (filtered.artist.empty() && !now_playing.artist.empty())
+      return;  // filler, a repeat, or this station opted out — not a real change
+  }
+
+  std::string key = filtered.title + "\x1f" + filtered.artist;
   if (key == last_history_key_)
     return;  // same track as last time — OnNowPlayingChanged() re-fired without a real change
   last_history_key_ = key;
 
   HistoryEntry entry;
-  entry.title = now_playing.title;
-  entry.artist = now_playing.artist;
-  entry.album = now_playing.album;
-  entry.art_uri = now_playing.art_uri;
+  entry.title = filtered.title;
+  entry.artist = filtered.artist;
+  entry.album = filtered.album;
+  entry.art_uri = filtered.art_uri;
   history_.insert(history_.begin(), entry);
   if (history_.size() > kMaxHistoryEntries)
     history_.resize(kMaxHistoryEntries);
 
   history_view_.SetItems(history_);
   SaveHistory();
-  SendTrackChangeNotification(now_playing);
+  SendTrackChangeNotification(filtered);
 }
 
 void GnomosWindow::CheckAlarmAndTransportStatus(const NowPlaying& now_playing)
@@ -2709,6 +2724,28 @@ void GnomosWindow::ShowSettingsDialog()
 
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(library_group));
 
+  // --- Radio ---
+  GtkWidget* radio_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(radio_group), "Radio");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(radio_group),
+      "Gilt zusätzlich zu einem eigenen Muster, das sich pro Sender über dessen Zahnrad-Symbol unter "
+      "„Radiosender“ einstellen lässt.");
+
+  GtkWidget* spam_filter_row = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(spam_filter_row), "Werbeinhalte automatisch erkennen");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(spam_filter_row),
+      "Behandelt Inhalte mit mehr als zwei aufeinanderfolgenden Leerzeichen als Werbung/Füllinhalt — "
+      "betrifft Benachrichtigungen (MPRIS) und den Verlauf gleichermaßen.");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(spam_filter_row), backend_->GetRadioSpamWhitespaceFilterEnabled());
+  g_signal_connect_data(
+      spam_filter_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
+      new std::function<void(bool)>([this](bool active) { backend_->SetRadioSpamWhitespaceFilterEnabled(active); }),
+      DeleteBoolCallback, static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(radio_group), spam_filter_row);
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(radio_group));
+
   adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
 }
@@ -3338,7 +3375,7 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   RadioMprisSettings settings = backend_->GetRadioMprisSettings(stream_uri);
 
   auto* dialog = new Gtk::Window();
-  dialog->set_title("MPRIS-Einstellungen: " + (entry.title.empty() ? "Radiosender" : entry.title));
+  dialog->set_title("Benachrichtigungen: " + (entry.title.empty() ? "Radiosender" : entry.title));
   dialog->set_transient_for(*this);
   dialog->set_modal(true);
   dialog->set_default_size(420, -1);
@@ -3349,7 +3386,7 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   content->set_margin_start(18);
   content->set_margin_end(18);
 
-  auto* enabled_check = Gtk::make_managed<Gtk::CheckButton>("MPRIS-Benachrichtigung aktiv");
+  auto* enabled_check = Gtk::make_managed<Gtk::CheckButton>("Titelwechsel für diesen Sender melden");
   enabled_check->set_active(settings.mpris_enabled);
   content->append(*enabled_check);
 
@@ -3364,15 +3401,16 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   regex_entry->set_activates_default(true);
   content->append(*regex_entry);
 
-  // Explains both halves of MprisService::BuildMetadata()'s filtering in
-  // one line: the regex decides what counts as a real song (ad text that
-  // doesn't match is ignored), and only a genuinely new match republishes
+  // Explains both halves of RadioContentFilter's own filtering in one
+  // line: the regex decides what counts as a real song (ad text that
+  // doesn't match is ignored), and only a genuinely new match is reported
   // — a repeat of the same song, or an ad in between, doesn't retrigger
-  // MPRIS clients like GNOME Shell's media notification.
+  // MPRIS clients like GNOME Shell's media notification, and doesn't add
+  // a spurious entry to "Verlauf" either.
   auto* help_label = Gtk::make_managed<Gtk::Label>(
-      "Nur Inhalte, die zu diesem Muster passen, werden an MPRIS übermittelt "
-      "— Werbung und Senderkennungen dazwischen werden ignoriert. Leer = "
-      "alles wird übermittelt.");
+      "Nur Inhalte, die zu diesem Muster passen, werden an MPRIS und den "
+      "Verlauf übermittelt — Werbung und Senderkennungen dazwischen werden "
+      "ignoriert. Leer = alles wird übermittelt.");
   help_label->set_halign(Gtk::Align::START);
   help_label->set_wrap(true);
   help_label->add_css_class("caption");

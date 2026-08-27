@@ -2852,6 +2852,48 @@ void NosonBackend::SetRadioMprisSettings(const std::string& stream_uri, const Ra
   }
 }
 
+bool NosonBackend::GetRadioSpamWhitespaceFilterEnabled() const
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (keyfile->load_from_file(RadioMprisSettingsPath()) && keyfile->has_group("global") &&
+        keyfile->has_key("global", "spam_whitespace_filter_enabled"))
+      return keyfile->get_boolean("global", "spam_whitespace_filter_enabled");
+  }
+  catch (const Glib::Error&)
+  {
+    // no global settings saved yet, or the file is otherwise unreadable —
+    // same as "never changed from the default" either way
+  }
+  return true;
+}
+
+void NosonBackend::SetRadioSpamWhitespaceFilterEnabled(bool enabled)
+{
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(RadioMprisSettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first global radio setting this install has ever saved
+  }
+  keyfile->set_boolean("global", "spam_whitespace_filter_enabled", enabled);
+  try
+  {
+    keyfile->save_to_file(RadioMprisSettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — the setting just won't survive a restart
+  }
+}
+
 void NosonBackend::RefreshAlarmsAsync()
 {
   tasks_.Push([this] {

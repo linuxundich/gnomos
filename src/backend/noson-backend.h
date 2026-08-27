@@ -271,19 +271,29 @@ public:
                         const std::string& favicon_url = "");
 
   // Per-station preferences for whether/how a radio station's rotating
-  // "now playing" content reaches MPRIS clients (see RadioMprisSettings'
-  // own comment for why: ad breaks interspersed between song repeats
-  // otherwise republish MPRIS Metadata on every rotation, not just on a
-  // real song change). Keyed the same way SaveRadioFavicon()/
-  // LoadRadioFavicons() key a station's favicon — the SHA-256 of its
-  // stream URL — in a separate radio-mpris-settings.ini, so a station with
-  // no saved preferences yet just returns RadioMprisSettings' own
-  // defaults (enabled, unfiltered). Called from both MprisService
-  // (read-only, every NowPlaying update) and GnomosWindow's settings
-  // dialog (read on open, write on save), so this needs to be public
-  // unlike the favicon pair, which only NosonBackend itself ever calls.
+  // "now playing" content reaches MPRIS clients *and* the History tab
+  // (see RadioMprisSettings' own comment for why, and RadioContentFilter,
+  // which both consumers apply this through — one instance each). Keyed
+  // the same way SaveRadioFavicon()/LoadRadioFavicons() key a station's
+  // favicon — the SHA-256 of its stream URL — in a separate
+  // radio-mpris-settings.ini, so a station with no saved preferences yet
+  // just returns RadioMprisSettings' own defaults (enabled, unfiltered).
+  // Called from both MprisService and GnomosWindow (read-only, every
+  // NowPlaying update, via their own RadioContentFilter) and GnomosWindow's
+  // settings dialog (read on open, write on save), so this needs to be
+  // public unlike the favicon pair, which only NosonBackend itself ever
+  // calls.
   RadioMprisSettings GetRadioMprisSettings(const std::string& stream_uri) const;
   void SetRadioMprisSettings(const std::string& stream_uri, const RadioMprisSettings& settings);
+
+  // Global (not per-station) companion to the regex above — RadioContentFilter
+  // treats content with more than two consecutive spaces as filler
+  // whenever this is on, regardless of whether the current station has
+  // its own regex configured. Defaults to on; stored alongside the
+  // per-station settings in the same radio-mpris-settings.ini, under a
+  // "global" group rather than a per-station one.
+  bool GetRadioSpamWhitespaceFilterEnabled() const;
+  void SetRadioSpamWhitespaceFilterEnabled(bool enabled);
 
   // Third-party service linking (Spotify, bonob, ...). AppLink/DeviceLink
   // services need this before they'll browse — see the "Third-party

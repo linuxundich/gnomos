@@ -321,15 +321,17 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
     }
 
     // Only ever true while browsing "R:0/0" — not "SQ:", saved playlists
-    // have no MPRIS-relevant settings. Opens GnomosWindow's per-station
-    // MPRIS settings dialog (mpris_enabled + regex, see RadioMprisSettings).
+    // have no notification-relevant settings. Opens GnomosWindow's
+    // per-station settings dialog (mpris_enabled + regex, see
+    // RadioMprisSettings) — governs both MPRIS reporting and Verlauf
+    // recording for this station now, not just MPRIS.
     if (show_radio_settings_action)
     {
       auto* radio_settings_button = Gtk::make_managed<Gtk::Button>();
       radio_settings_button->set_icon_name("emblem-system-symbolic");
       radio_settings_button->add_css_class("flat");
       radio_settings_button->set_valign(Gtk::Align::CENTER);
-      radio_settings_button->set_tooltip_text("MPRIS-Einstellungen");
+      radio_settings_button->set_tooltip_text("Benachrichtigungen");
       radio_settings_button->signal_clicked().connect(
           [this, index] { signal_radio_settings_requested_.emit(index); });
       row_box->append(*radio_settings_button);

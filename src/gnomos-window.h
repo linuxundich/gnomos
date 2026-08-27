@@ -24,6 +24,7 @@
 #include "backend/noson-backend.h"
 #include "backend/noson-types.h"
 #include "mpris-service.h"
+#include "radio-content-filter.h"
 #include "widgets/alarms-view.h"
 #include "widgets/favorites-view.h"
 #include "widgets/history-view.h"
@@ -99,11 +100,14 @@ private:
   // Title + stream URL entry for NosonBackend::AddRadioStation() — reached
   // from LibraryView's add_button_, only visible while browsing "R:0/0".
   void ShowAddRadioStationDialog();
-  // MPRIS-enabled switch + regex filter entry for one radio station's
-  // RadioMprisSettings — reached from LibraryView's per-row gear button,
-  // only visible while browsing "R:0/0". No-op if
-  // current_library_entries_[index].stream_uri is empty (shouldn't happen
-  // while browsing "R:0/0", but guards against an out-of-sync index).
+  // Enabled switch + regex filter entry for one radio station's
+  // RadioMprisSettings — governs MPRIS reporting *and* Verlauf recording
+  // for that station (both go through their own RadioContentFilter
+  // instance, reading the same per-station settings). Reached from
+  // LibraryView's per-row gear button, only visible while browsing
+  // "R:0/0". No-op if current_library_entries_[index].stream_uri is
+  // empty (shouldn't happen while browsing "R:0/0", but guards against an
+  // out-of-sync index).
   void ShowRadioMprisSettingsDialog(unsigned index);
   // Fetches the saved-playlist list fresh (NosonBackend::FetchSavedPlaylistsAsync())
   // and shows a picker once it arrives — reached from LibraryView's
@@ -335,6 +339,15 @@ private:
   // re-fire of OnNowPlayingChanged() for the same track (e.g. shuffle/repeat
   // toggles, which emit the same signal without changing the track).
   std::string last_history_key_;
+  // RecordHistoryIfTrackChanged()'s own instance for radio-content spam
+  // filtering — treats History (and, downstream, the track-change
+  // notification below) the same way MprisService treats MPRIS Metadata:
+  // ad breaks between song repeats shouldn't spam either one. Own
+  // instance, not shared with MprisService's — see RadioContentFilter's
+  // own comment for why. unique_ptr, not a plain member, since it needs
+  // *backend_ — only assigned in the constructor body, same reasoning as
+  // mpris_ below.
+  std::unique_ptr<RadioContentFilter> radio_history_filter_;
   // Whether to send a desktop notification on a genuine track change —
   // reuses RecordHistoryIfTrackChanged()'s own dedup key, so this never
   // fires twice for the same track. Off by default (opt-in via Settings);
