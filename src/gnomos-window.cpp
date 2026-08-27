@@ -908,17 +908,35 @@ void GnomosWindow::RebuildLibraryNavEntries()
     // row that does nothing when clicked.
     nav_row_actions_.push_back([] {});
   };
+  // Icon + label, same construction kNavPages' own static rows use just
+  // above (row_icon/row_label/8px gap) — every row in a GtkListBox styled
+  // ".navigation-sidebar" carrying an icon is the actual GNOME convention
+  // here, not just the five top-level ones; a sub-item used to be a bare
+  // label. The extra margin_start (24 vs. the top-level rows' 8) is the
+  // only thing marking this as a nested entry rather than its own size or
+  // icon presence — a smaller step than the old plain-label version's 40,
+  // now that the icon itself already carries most of that visual weight.
   auto append_entry = [this](const LibraryEntry& entry) {
+    auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+    row_box->set_margin_top(6);
+    row_box->set_margin_bottom(6);
+    row_box->set_margin_start(24);
+    row_box->set_margin_end(8);
+    auto* row_icon = Gtk::make_managed<Gtk::Image>();
+    // Every root entry populates its own icon_name (BrowseLibraryAsync())
+    // except a genuinely unexpected one this list was never meant to
+    // handle — a plain folder glyph reads as "some kind of container"
+    // regardless, rather than leaving the row with no icon at all.
+    row_icon->set_from_icon_name(entry.icon_name.empty() ? "folder-symbolic" : entry.icon_name);
+    row_icon->add_css_class("dim-label");
+    row_box->append(*row_icon);
     auto* row_label = Gtk::make_managed<Gtk::Label>(entry.title);
     row_label->set_halign(Gtk::Align::START);
     row_label->set_ellipsize(Pango::EllipsizeMode::END);
     row_label->add_css_class("dim-label");
     row_label->add_css_class("caption");
-    row_label->set_margin_top(6);
-    row_label->set_margin_bottom(6);
-    row_label->set_margin_start(40);
-    row_label->set_margin_end(8);
-    nav_list_box_.append(*row_label);
+    row_box->append(*row_label);
+    nav_list_box_.append(*row_box);
 
     // Same special-case OnLibraryEntryActivated() already has for clicking
     // this same entry from the actual root level — opens the picker

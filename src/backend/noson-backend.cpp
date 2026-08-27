@@ -1777,7 +1777,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
           {"A:ALBUMARTIST", "Interpreten", "", true, "", false, "avatar-default-symbolic"},
           {"A:ALBUM", "Alben", "", true, "", false, "media-optical-cd-symbolic"},
           {"A:GENRE", "Genres", "", true, "", false, "folder-music-symbolic"},
-          {"A:TRACKS", "Titel", "", true, "", false, ""},
+          {"A:TRACKS", "Titel", "", true, "", false, "audio-x-generic-symbolic"},
           {"SQ:", "Playlisten", "", true, "", false, "media-playlist-consecutive-symbolic"},
           {"A:PLAYLISTS", "Playlisten (lokale Freigabe)", "", true, "", false, "media-playlist-consecutive-symbolic"},
           {"R:0/0", "Radiosender", "", true, "", false, "network-wireless-symbolic"},
@@ -1793,11 +1793,17 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
         entry.object_id = std::string(kServiceRootPrefix) + svc->GetId();
         entry.title = CapitalizeFirst(svc->GetName());
         entry.is_container = true;
+        // No brand icon bundled for any specific service — this is the
+        // one generic stand-in for "content that lives on a remote
+        // third-party service", distinct from "folder-music-symbolic"
+        // (the local-share namespace) and "network-wireless-symbolic"
+        // (the radio directory).
+        entry.icon_name = "folder-remote-symbolic";
         roots.push_back(std::move(entry));
       }
       // GnomosWindow recognizes this exact object_id and opens the service
       // picker/link dialog instead of trying to browse into it.
-      roots.push_back({kLinkServiceSentinel, "Dienst verknüpfen…", "", true, "", false, ""});
+      roots.push_back({kLinkServiceSentinel, "Dienst verknüpfen…", "", true, "", false, "list-add-symbolic"});
 
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
