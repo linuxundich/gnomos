@@ -3431,6 +3431,20 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   dialog->set_modal(true);
   dialog->set_default_size(420, -1);
 
+  // A plain Gtk::Window (unlike Adw::Dialog/AdwPreferencesDialog, used
+  // everywhere else in this file) has no built-in Escape-to-close — add it
+  // explicitly, same as cancel_button below.
+  auto escape_controller = Gtk::EventControllerKey::create();
+  escape_controller->signal_key_pressed().connect(
+      [dialog](guint keyval, guint, Gdk::ModifierType) {
+        if (keyval != GDK_KEY_Escape)
+          return false;
+        dialog->close();
+        return true;
+      },
+      false);
+  dialog->add_controller(escape_controller);
+
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
   content->set_margin_bottom(18);
