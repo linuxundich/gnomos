@@ -66,15 +66,23 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Local music library browsing, with a toggle between list and cover art
   grid for Albums/Artists and similar (local and third-party services
   alike), consistent GNOME iconography per category (artist/album/genre/
-  playlist), a live filter for narrowing down a long list as you type,
+  playlist) — while a linked service's own root-menu categories (Albums,
+  Random, Favourites, Top Rated, ...) keep that service's own icon
+  instead — a live filter for narrowing down a long list as you type,
   "play all"/"add all to queue" for a track listing, adding a custom
   internet radio station (searched for by name/country against
   radio-browser.info's public directory, complete with a thumbnail where
   available, with manual name+URL entry as a fallback) and deleting one,
   deleting a saved Sonos playlist, adding a track to an existing saved
-  playlist and reordering its tracks, and a
-  cache so revisiting a level doesn't refetch it over the network every
-  time
+  playlist and reordering its tracks, and a cache (art compressed to WebP
+  on disk) so revisiting a level doesn't refetch it over the network
+  every time
+- Album tiles show the artist name beneath the title, in the grid and the
+  list view alike
+- An ID3 genre tag with several genres packed into one string (e.g.
+  "Rap; Metal; Hard-Core") is split into separate entries in the Genres
+  view, with the separator character(s) configurable in Settings →
+  Genres
 - Optional real artist photos in the library, looked up by name against
   Deezer's public API — off by default, since it's the one thing in this
   app that leaves the local Sonos household (Settings → Bibliothek)
@@ -119,11 +127,11 @@ Gnomos isn't packaged anywhere yet, so building from source is currently
 the only way to run it.
 
 Dependencies: `meson`, `ninja`, a C++17 compiler, `pkgconf`, `openssl`,
-`zlib`, `gtkmm-4.0` (>= 4.10), `libadwaita-1` (>= 1.4) and `json-glib-1.0`.
-On Arch Linux:
+`zlib`, `gtkmm-4.0` (>= 4.10), `libadwaita-1` (>= 1.4), `json-glib-1.0`,
+`libsoup-3.0` and `libwebp`. On Arch Linux:
 
 ```sh
-sudo pacman -S meson ninja gcc pkgconf openssl zlib gtkmm-4.0 libadwaita json-glib
+sudo pacman -S meson ninja gcc pkgconf openssl zlib gtkmm-4.0 libadwaita json-glib libsoup3 libwebp
 ```
 
 Then:

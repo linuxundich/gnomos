@@ -8,6 +8,34 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.8.0] - 2026-08-28
+
+### Added
+- Album tiles (local library and third-party services alike) now show the
+  artist name in a smaller, dimmed line beneath the title.
+- An ID3 genre tag with more than one genre packed into a single string
+  (e.g. "Rap; Metal; Hard-Core") is now split into separate entries in the
+  Genres view. The separator character(s) are configurable in a new
+  Settings → Genres section (defaults to ";"); genres that only differ
+  before splitting are merged back into one entry covering both.
+- The cover art disk cache is now stored as WebP instead of whatever
+  format the source served (typically JPEG/PNG), shrinking its footprint
+  on disk.
+
+### Fixed
+- A linked service's (bonob, Spotify, ...) own category icons in its root
+  menu (Albums, Random, Favourites, Top Rated, Recently added, Recently
+  played, Most played, ...) were being discarded in favor of Gnomos's own
+  fallback icon, which doesn't distinguish between most of those
+  categories at all and showed the same generic note glyph for each. The
+  service's own icon is used instead now.
+- The per-station radio notification settings dialog couldn't be closed
+  with Escape.
+
+### Changed
+- Trimmed and unified the grid spacing shared by the Albums and Artists
+  views (and any other grid-eligible listing).
+
 ## [0.7.1] - 2026-08-27
 
 ### Added
