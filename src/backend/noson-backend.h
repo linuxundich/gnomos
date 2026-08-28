@@ -295,6 +295,18 @@ public:
   bool GetRadioSpamWhitespaceFilterEnabled() const;
   void SetRadioSpamWhitespaceFilterEnabled(bool enabled);
 
+  // Every character in this string is treated as its own genre-tag
+  // separator when BrowseLibraryAsync() builds the "Genres" level — e.g.
+  // ";" splits an ID3 genre tag of "Rap; Metal; Hard-Core" into three
+  // separate entries ("New Metal", with no separator character present,
+  // stays a single entry). User-configurable since taggers disagree on
+  // convention (";", "/", "|", ...); defaults to ";" alone, the most
+  // common one, so nobody sees their genres unexpectedly split until they
+  // opt in to more. Stored in library-settings.ini, not the per-station
+  // radio-mpris-settings.ini — this has nothing to do with radio.
+  std::string GetGenreSeparators() const;
+  void SetGenreSeparators(const std::string& separators);
+
   // Third-party service linking (Spotify, bonob, ...). AppLink/DeviceLink
   // services need this before they'll browse — see the "Third-party
   // service linking" section in README for the full protocol story.
@@ -434,6 +446,18 @@ private:
   // instead of serving a stale cached copy for up to the TTL. Worker-
   // thread only, like library_cache_ itself.
   void InvalidateLibraryCache();
+
+  // Rewrites the just-built "A:GENRE" level in place, splitting each
+  // entry's title on GetGenreSeparators() into one entry per resulting
+  // token (a title with no configured separator present comes back
+  // unchanged). When the same token results from more than one original
+  // entry (e.g. "Rap; Metal" and a separately tagged plain "Metal" both
+  // produce "Metal"), the duplicates collapse into a single entry whose
+  // object_id is a synthetic kMergedGenrePrefix id — BrowseLibraryAsync()
+  // recognizes that prefix and browses every underlying id it packs in,
+  // concatenating their children, so activating the merged entry shows
+  // the union rather than just one of the originals.
+  void SplitGenreEntries(std::vector<LibraryEntry>& entries, std::vector<NSROOT::DigitalItemPtr>& raw) const;
 
   // Local-only persistence for a custom radio station's favicon (see
   // AddRadioStation()'s own comment for why this can't just be sent to

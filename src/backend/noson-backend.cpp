@@ -130,6 +130,96 @@ std::string RadioMprisSettingsPath()
   return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "radio-mpris-settings.ini");
 }
 
+std::string LibrarySettingsPath()
+{
+  return Glib::build_filename(Glib::get_user_config_dir(), "gnomos", "library-settings.ini");
+}
+
+// Prefix for a synthetic object_id standing in for several distinct
+// on-device "A:GENRE" containers whose raw genre tag split to the same
+// token (see SplitGenreEntries()) — e.g. "Rap; Metal" and a separately
+// tagged plain "Metal" both produce a "Metal" entry, and browsing into it
+// needs to show the union of both rather than picking just one. "gnomos:"
+// mirrors kLinkServiceSentinel/kServiceRootPrefix's own convention for a
+// client-side-only id no real SMAPI service or local share would ever
+// return itself.
+constexpr const char* kMergedGenrePrefix = "gnomos:genre-merged:";
+// A control character can't appear in a real Sonos object_id (those are
+// plain ASCII identifiers/paths), so it's safe as the join delimiter
+// between the underlying ids packed into a kMergedGenrePrefix id.
+constexpr char kMergedGenreIdSeparator = '\x1f';
+
+bool IsMergedGenreId(const std::string& object_id)
+{
+  return object_id.compare(0, std::strlen(kMergedGenrePrefix), kMergedGenrePrefix) == 0;
+}
+
+std::vector<std::string> SplitMergedGenreId(const std::string& object_id)
+{
+  std::vector<std::string> ids;
+  std::string rest = object_id.substr(std::strlen(kMergedGenrePrefix));
+  size_t start = 0;
+  while (start <= rest.size())
+  {
+    size_t pos = rest.find(kMergedGenreIdSeparator, start);
+    ids.push_back(rest.substr(start, pos == std::string::npos ? std::string::npos : pos - start));
+    if (pos == std::string::npos)
+      break;
+    start = pos + 1;
+  }
+  return ids;
+}
+
+// Trimmed, non-empty tokens from splitting `text` on any character in
+// `separator_chars`, preserving first-seen order and duplicates (the
+// caller de-duplicates across entries, not within one). No separator
+// configured, or none present in `text`, yields `text` itself as the
+// single token — splitting should never make an already-plain genre
+// title (e.g. "New Metal") vanish.
+std::vector<std::string> SplitGenreTitle(const std::string& text, const std::string& separator_chars)
+{
+  std::vector<std::string> tokens;
+  if (!separator_chars.empty())
+  {
+    size_t start = 0;
+    while (start <= text.size())
+    {
+      size_t pos = text.find_first_of(separator_chars, start);
+      std::string token = text.substr(start, pos == std::string::npos ? std::string::npos : pos - start);
+      size_t first = token.find_first_not_of(" \t");
+      if (first != std::string::npos)
+      {
+        size_t last = token.find_last_not_of(" \t");
+        tokens.push_back(token.substr(first, last - first + 1));
+      }
+      if (pos == std::string::npos)
+        break;
+      start = pos + 1;
+    }
+  }
+  if (tokens.empty())
+    tokens.push_back(text);
+  return tokens;
+}
+
+// SMAPI's own item mapping (smapimetadata.cpp, SubType_album/SubType_audioItem
+// cases) stores the real artist under "dc:contributor" — populated from the
+// service's own "artist" attribute — for both a track and an album
+// container alike. "dc:creator" there instead holds a track's "composer" or
+// an album's "author", fields almost no service ever actually sends, so
+// reading it alone (as every subtitle read here used to) came back empty
+// for every third-party service (bonob, Spotify, ...), even though local
+// library items work fine reading "dc:creator" directly — Sonos's own
+// ContentDirectory has no such split, putting the real artist straight into
+// "dc:creator" for both tracks and album containers. Falling back to
+// "dc:creator" here (rather than only ever reading "dc:contributor") is
+// what keeps this one helper correct for both sources.
+std::string ArtistSubtitle(const NSROOT::DigitalItemPtr& item)
+{
+  std::string contributor = item->GetValue("dc:contributor");
+  return !contributor.empty() ? contributor : item->GetValue("dc:creator");
+}
+
 // A linked service reports its own display name verbatim (SMService::
 // GetName()) — some (e.g. bonob) report it all-lowercase. Capitalized to
 // match every other proper-noun label in the UI (Spotify, TuneIn, ...).
@@ -1746,6 +1836,58 @@ void NosonBackend::InvalidateLibraryCache()
   library_cache_.clear();
 }
 
+void NosonBackend::SplitGenreEntries(std::vector<LibraryEntry>& entries, std::vector<NSROOT::DigitalItemPtr>& raw) const
+{
+  const std::string separators = GetGenreSeparators();
+
+  // Preserves first-seen order — a std::map would alphabetize, unlike
+  // every other library level, which shows Sonos's own already-sorted
+  // "A:GENRE" order.
+  std::vector<std::string> order;
+  std::map<std::string, std::vector<size_t>> title_to_indices;
+  for (size_t i = 0; i < entries.size(); ++i)
+  {
+    for (const std::string& token : SplitGenreTitle(entries[i].title, separators))
+    {
+      auto result = title_to_indices.try_emplace(token);
+      if (result.second)
+        order.push_back(token);
+      result.first->second.push_back(i);
+    }
+  }
+
+  std::vector<LibraryEntry> split_entries;
+  std::vector<NSROOT::DigitalItemPtr> split_raw;
+  split_entries.reserve(order.size());
+  split_raw.reserve(order.size());
+  for (const std::string& title : order)
+  {
+    const std::vector<size_t>& indices = title_to_indices[title];
+    LibraryEntry entry = entries[indices[0]];
+    entry.title = title;
+    if (indices.size() > 1)
+    {
+      std::string merged_id = kMergedGenrePrefix;
+      for (size_t n = 0; n < indices.size(); ++n)
+      {
+        if (n)
+          merged_id += kMergedGenreIdSeparator;
+        merged_id += entries[indices[n]].object_id;
+      }
+      entry.object_id = merged_id;
+    }
+    split_entries.push_back(std::move(entry));
+    // Representative item for the merged case — favoriting a merged genre
+    // (AddLibraryItemToFavorites()) targets the first underlying genre
+    // container rather than something that doesn't exist on the device at
+    // all, since there's no single real DigitalItem for a client-side
+    // union.
+    split_raw.push_back(raw[indices[0]]);
+  }
+  entries = std::move(split_entries);
+  raw = std::move(split_raw);
+}
+
 void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
 {
   if (object_id.empty())
@@ -1865,7 +2007,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
     // service session instead, coming back empty rather than showing the
     // local level at all.
     bool looks_local = object_id.compare(0, 2, "A:") == 0 || object_id.compare(0, 3, "SQ:") == 0 ||
-                        object_id.compare(0, 2, "R:") == 0;
+                        object_id.compare(0, 2, "R:") == 0 || IsMergedGenreId(object_id);
     if (looks_local && active_smapi_)
     {
       active_smapi_.reset();
@@ -1903,8 +2045,29 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
     // level, e.g. a genre with no albums yet, showed a bogus "Bibliothek
     // konnte nicht geladen werden"). ExhaustBrowser() only calls Browse()
     // again when there's real additional data waiting.
-    NSROOT::ContentBrowser browser(libraryDirectory, object_id, 200);
-    ExhaustBrowser(browser);
+    //
+    // A kMergedGenrePrefix id (see SplitGenreEntries()) stands in for
+    // several distinct on-device genre containers whose raw tag split to
+    // the same token — its children come from browsing each of those
+    // separately and concatenating the results, rather than one Browse()
+    // call.
+    std::vector<NSROOT::DigitalItemPtr> items;
+    if (IsMergedGenreId(object_id))
+    {
+      for (const std::string& sub_id : SplitMergedGenreId(object_id))
+      {
+        NSROOT::ContentBrowser sub_browser(libraryDirectory, sub_id, 200);
+        ExhaustBrowser(sub_browser);
+        const auto& table = sub_browser.table();
+        items.insert(items.end(), table.begin(), table.end());
+      }
+    }
+    else
+    {
+      NSROOT::ContentBrowser browser(libraryDirectory, object_id, 200);
+      ExhaustBrowser(browser);
+      items = browser.table();
+    }
 
     // Local ContentDirectory has no per-item hint like SMAPI's own
     // displayType (see BrowseActiveServiceLocked()'s identical field) —
@@ -1927,16 +2090,21 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
 
     std::vector<LibraryEntry> entries;
     std::vector<NSROOT::DigitalItemPtr> raw;
-    entries.reserve(browser.table().size());
-    raw.reserve(browser.table().size());
-    for (const auto& item : browser.table())
+    entries.reserve(items.size());
+    raw.reserve(items.size());
+    for (const auto& item : items)
     {
       LibraryEntry entry;
       entry.object_id = item->GetObjectID();
       entry.title = item->GetValue("dc:title");
       entry.is_container = item->IsContainer();
-      if (!entry.is_container)
-        entry.subtitle = item->GetValue("dc:creator");
+      // A leaf track's own artist, or — for an album tile in a grid — the
+      // album artist, shown as a subtitle under the cover (see
+      // LibraryView::BuildGrid()). Every other container type (an artist,
+      // a genre, a playlist) has no single "creator" worth surfacing this
+      // way.
+      if (!entry.is_container || item->subType() == NSROOT::DigitalItem::SubType_album)
+        entry.subtitle = ArtistSubtitle(item);
       entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
       if (object_id == "R:0/0")
       {
@@ -1957,6 +2125,12 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       entries.push_back(std::move(entry));
       raw.push_back(item);
     }
+
+    // Only the top "Genres" listing itself gets split — not a merged
+    // genre's own children (a genre's tracks/albums, browsed via a
+    // kMergedGenrePrefix id), which are already the real, unsplit content.
+    if (object_id == "A:GENRE")
+      SplitGenreEntries(entries, raw);
 
     StoreLibraryCacheLevel(object_id, entries, raw);
     {
@@ -2021,15 +2195,15 @@ void NosonBackend::SearchActiveServiceAsync(const std::string& category, const s
         entry.object_id = smapi_item.item->GetObjectID();
         entry.title = smapi_item.item->GetValue("dc:title");
         entry.is_container = smapi_item.item->IsContainer();
-        if (!entry.is_container)
-          entry.subtitle = smapi_item.item->GetValue("dc:creator");
+        // See BrowseLibraryAsync()'s identical check.
+        if (!entry.is_container || smapi_item.item->subType() == NSROOT::DigitalItem::SubType_album)
+          entry.subtitle = ArtistSubtitle(smapi_item.item);
         entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
         entry.icon_name = IconNameForSubType(smapi_item.item->subType());
-        // See BrowseActiveServiceLocked()'s identical check for why —
-        // Grid marks a category tile, not real content, so its own
-        // service-branded icon image gives way to icon_name here.
-        if (smapi_item.displayType == NSROOT::SMAPIItem::Grid)
-          entry.art_uri.clear();
+        // See BrowseActiveServiceLocked()'s identical check — Grid marks a
+        // category tile, not real content, but its own service-branded
+        // icon image is kept rather than overridden by icon_name's mostly-
+        // undifferentiated fallback.
         // Trust the service's own displayType when it says Grid — but
         // don't require it: confirmed live against a real bonob server,
         // its "Albums" listing carries real per-album cover art but
@@ -2088,8 +2262,27 @@ void NosonBackend::SearchLocalLibraryAsync(const std::string& object_id, const s
     // already-empty level to search within it showed a bogus "Suche
     // fehlgeschlagen"). ExhaustBrowser() only calls Browse() again when
     // there's real additional data waiting.
-    NSROOT::ContentBrowser browser(libraryDirectory, object_id, 500);
-    ExhaustBrowser(browser);
+    //
+    // See BrowseLibraryAsync()'s identical check — object_id here is
+    // whatever level the search dialog was opened from (library_stack_'s
+    // own top), which can itself be a merged genre id.
+    std::vector<NSROOT::DigitalItemPtr> items;
+    if (IsMergedGenreId(object_id))
+    {
+      for (const std::string& sub_id : SplitMergedGenreId(object_id))
+      {
+        NSROOT::ContentBrowser sub_browser(libraryDirectory, sub_id, 500);
+        ExhaustBrowser(sub_browser);
+        const auto& table = sub_browser.table();
+        items.insert(items.end(), table.begin(), table.end());
+      }
+    }
+    else
+    {
+      NSROOT::ContentBrowser browser(libraryDirectory, object_id, 500);
+      ExhaustBrowser(browser);
+      items = browser.table();
+    }
 
     std::string term_lower = term;
     std::transform(term_lower.begin(), term_lower.end(), term_lower.begin(),
@@ -2097,14 +2290,15 @@ void NosonBackend::SearchLocalLibraryAsync(const std::string& object_id, const s
 
     std::vector<LibraryEntry> entries;
     std::vector<NSROOT::DigitalItemPtr> raw;
-    for (const auto& item : browser.table())
+    for (const auto& item : items)
     {
       LibraryEntry entry;
       entry.object_id = item->GetObjectID();
       entry.title = item->GetValue("dc:title");
       entry.is_container = item->IsContainer();
-      if (!entry.is_container)
-        entry.subtitle = item->GetValue("dc:creator");
+      // See BrowseLibraryAsync()'s identical check.
+      if (!entry.is_container || item->subType() == NSROOT::DigitalItem::SubType_album)
+        entry.subtitle = ArtistSubtitle(item);
       entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
       entry.icon_name = IconNameForSubType(item->subType());
       if (!ContainsCaseInsensitive(entry.title, term_lower) && !ContainsCaseInsensitive(entry.subtitle, term_lower))
@@ -2163,8 +2357,9 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
       entry.object_id = smapi_item.item->GetObjectID();
       entry.title = smapi_item.item->GetValue("dc:title");
       entry.is_container = smapi_item.item->IsContainer();
-      if (!entry.is_container)
-        entry.subtitle = smapi_item.item->GetValue("dc:creator");
+      // See BrowseLibraryAsync()'s identical check.
+      if (!entry.is_container || smapi_item.item->subType() == NSROOT::DigitalItem::SubType_album)
+        entry.subtitle = ArtistSubtitle(smapi_item.item);
       entry.art_uri = ResolveArtUri(smapi_item.item->GetValue("upnp:albumArtURI"));
       entry.icon_name = IconNameForSubType(smapi_item.item->subType());
       // A service's root menu ("Albums"/"Random"/"Internet Radio"/... —
@@ -2190,16 +2385,17 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
       // displayType == Grid is bonob's (and, per this same field's use
       // elsewhere, apparently every SMAPI service's) way of marking a
       // *category* tile — its own root menu ("Artists"/"Albums"/"Random"/
-      // ...), not a specific piece of real content — confirmed live: every
-      // one of those tiles carries its own distinct service-branded icon
-      // image, visually inconsistent with the rest of a GNOME app (a
-      // microphone, a target/circle, shuffle arrows, ...). Discarding that
-      // image in favor of icon_name here, rather than only falling back to
-      // it when art_uri is empty, is what actually fixes that — a real
-      // album's/artist's own genuine cover art (deeper levels, where
-      // displayType isn't Grid) is untouched.
-      if (smapi_item.displayType == NSROOT::SMAPIItem::Grid)
-        entry.art_uri.clear();
+      // ...), not a specific piece of real content. This used to also
+      // clear entry.art_uri here so icon_name's generic fallback took over
+      // instead, on the theory that a category tile's own service-branded
+      // icon image (a microphone, a target/circle, shuffle arrows, ...)
+      // read as visually inconsistent with the rest of a GNOME app — but
+      // confirmed live, that traded a small style mismatch for something
+      // worse: most of IconNameForSubType()'s mappings don't distinguish
+      // between category types at all (Random/Favourites/Top Rated/
+      // Recently added/Recently played/Most played all fell back to the
+      // exact same generic note glyph), so the service's own varied icons,
+      // even if stylistically different, are strictly more useful here.
       // Trust the service's own displayType when it says Grid — but don't
       // require it: confirmed live against a real bonob server, its own
       // "Albums" listing carries real per-album cover art but doesn't set
@@ -2898,6 +3094,51 @@ void NosonBackend::SetRadioSpamWhitespaceFilterEnabled(bool enabled)
   {
     // non-fatal — the setting just won't survive a restart
   }
+}
+
+std::string NosonBackend::GetGenreSeparators() const
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (keyfile->load_from_file(LibrarySettingsPath()) && keyfile->has_group("genre") &&
+        keyfile->has_key("genre", "separators"))
+      return keyfile->get_string("genre", "separators").raw();
+  }
+  catch (const Glib::Error&)
+  {
+    // no library settings saved yet, or the file is otherwise unreadable —
+    // same as "never changed from the default" either way
+  }
+  return ";";
+}
+
+void NosonBackend::SetGenreSeparators(const std::string& separators)
+{
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(LibrarySettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first library setting this install has ever saved
+  }
+  keyfile->set_string("genre", "separators", separators);
+  try
+  {
+    keyfile->save_to_file(LibrarySettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — the setting just won't survive a restart
+  }
+  // Otherwise a cached "A:GENRE" (or a kMergedGenrePrefix) level built with
+  // the old separator set would keep showing until the app restarts.
+  tasks_.Push([this] { InvalidateLibraryCache(); });
 }
 
 void NosonBackend::RefreshAlarmsAsync()

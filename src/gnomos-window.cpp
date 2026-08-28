@@ -2598,6 +2598,19 @@ extern "C" void DeleteDoubleCallback(gpointer data, GClosure*)
 {
   delete static_cast<std::function<void(double)>*>(data);
 }
+// AdwEntryRow implements GtkEditable rather than exposing its own text
+// property/signal, same "raw GObject + trampoline" approach as the rows
+// above.
+extern "C" void OnEntryRowTextChanged(GObject* object, GParamSpec*, gpointer user_data)
+{
+  auto* callback = static_cast<std::function<void(const std::string&)>*>(user_data);
+  const char* text = gtk_editable_get_text(GTK_EDITABLE(object));
+  (*callback)(text ? text : "");
+}
+extern "C" void DeleteStringCallback(gpointer data, GClosure*)
+{
+  delete static_cast<std::function<void(const std::string&)>*>(data);
+}
 }  // namespace
 
 void GnomosWindow::ShowSettingsDialog()
@@ -2741,6 +2754,26 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), refresh_index_row);
 
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(library_group));
+
+  // --- Genres ---
+  GtkWidget* genre_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(genre_group), "Genres");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(genre_group),
+      "Jedes Zeichen hier trennt mehrere in einem Genre-Tag zusammengefasste Genres in der Genre-Ansicht "
+      "der Bibliothek auf, z. B. \";\" bei \"Rap; Metal; Hard-Core\" — mehrere Zeichen sind möglich (z. B. "
+      "\";/|\").");
+
+  GtkWidget* genre_separators_row = adw_entry_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(genre_separators_row), "Trennzeichen");
+  gtk_editable_set_text(GTK_EDITABLE(genre_separators_row), backend_->GetGenreSeparators().c_str());
+  g_signal_connect_data(
+      genre_separators_row, "notify::text", G_CALLBACK(OnEntryRowTextChanged),
+      new std::function<void(const std::string&)>(
+          [this](const std::string& text) { backend_->SetGenreSeparators(text); }),
+      DeleteStringCallback, static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(genre_group), genre_separators_row);
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(genre_group));
 
   // --- Radio ---
   GtkWidget* radio_group = adw_preferences_group_new();
