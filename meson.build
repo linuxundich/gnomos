@@ -47,6 +47,12 @@ json_glib_dep = dependency('json-glib-1.0')
 # org.gnome.Platform//49) — libsoup itself, unlike GVfs, is already part of
 # that same runtime, with no extra Flatpak module needed.
 soup_dep = dependency('libsoup-3.0')
+# ArtCache's own disk-cache compression — gdk-pixbuf can only *save*
+# jpeg/png/tiff/ico/bmp (its docs list no WebP writer; WebP support there is
+# decode-only, via whatever loader plugin the system has), so producing a
+# WebP file means calling libwebp's own encoder directly rather than going
+# through GdkPixbuf::save().
+webp_dep = dependency('libwebp')
 
 subdir('data')
 subdir('src')

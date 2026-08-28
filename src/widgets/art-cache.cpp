@@ -18,6 +18,7 @@
 #include <glibmm/fileutils.h>
 #include <glibmm/keyfile.h>
 #include <glibmm/miscutils.h>
+#include <webp/encode.h>
 
 namespace gnomos
 {
@@ -77,6 +78,51 @@ std::string CacheKeyFor(const std::string& uri)
   if (!IsPrivateHost(host))
     return uri;
   return uri.substr(path_start);
+}
+
+// gdk-pixbuf can only ever *save* jpeg/tiff/png/ico/bmp (its own docs list
+// no WebP writer — WebP there is decode-only, via whatever loader plugin
+// happens to be installed), so producing a WebP file means calling
+// libwebp's own encoder directly on the decoded pixels rather than going
+// through GdkPixbuf::save(). Returns an empty RefPtr on any failure (an
+// image gdk-pixbuf itself can't decode, or libwebp refusing) — Put() falls
+// back to writing raw_bytes as-is in that case, so a cache entry is never
+// lost over this, just left uncompressed.
+Glib::RefPtr<Glib::Bytes> EncodeWebP(const Glib::RefPtr<Glib::Bytes>& raw_bytes)
+{
+  Glib::RefPtr<Gdk::Pixbuf> pixbuf;
+  try
+  {
+    auto stream = Gio::MemoryInputStream::create();
+    gsize size = 0;
+    gconstpointer data = raw_bytes->get_data(size);
+    stream->add_data(data, static_cast<gssize>(size), nullptr);
+    pixbuf = Gdk::Pixbuf::create_from_stream(stream);
+  }
+  catch (const Glib::Error&)
+  {
+    return {};
+  }
+  if (!pixbuf)
+    return {};
+
+  uint8_t* encoded = nullptr;
+  // 82 balances file size against visible quality for photographic cover
+  // art — WebP's own recommended "visually lossless" range starts well
+  // above this, but this cache is a disk-space optimization, not an
+  // archival copy, so there's no reason to spend bytes chasing that.
+  constexpr float kQuality = 82.0f;
+  size_t encoded_size = pixbuf->get_has_alpha()
+                            ? WebPEncodeRGBA(pixbuf->get_pixels(), pixbuf->get_width(), pixbuf->get_height(),
+                                             pixbuf->get_rowstride(), kQuality, &encoded)
+                            : WebPEncodeRGB(pixbuf->get_pixels(), pixbuf->get_width(), pixbuf->get_height(),
+                                            pixbuf->get_rowstride(), kQuality, &encoded);
+  if (encoded_size == 0 || !encoded)
+    return {};
+
+  auto result = Glib::Bytes::create(encoded, encoded_size);
+  WebPFree(encoded);
+  return result;
 }
 }  // namespace
 
@@ -344,12 +390,21 @@ Glib::RefPtr<Gdk::Texture> ArtCache::Put(const std::string& uri, const Glib::Ref
   // Best-effort disk write — a failure here (disk full, permissions, ...)
   // just means this particular art won't survive a restart, not a reason
   // to fail the whole operation; the caller already has a perfectly good
-  // decoded texture either way.
+  // decoded texture either way. Written as WebP rather than whatever
+  // format the source served (typically JPEG/PNG) to shrink the on-disk
+  // footprint — read-back needs no format bookkeeping either way, since
+  // Gdk::Texture::create_from_bytes() (Get()'s disk-fallback path) already
+  // sniffs the format from the file's own contents rather than assuming
+  // one. Falls back to the original bytes verbatim if EncodeWebP() can't
+  // produce a smaller version at all, rather than losing the cache entry.
   try
   {
     g_mkdir_with_parents(CacheDir().c_str(), 0700);
+    Glib::RefPtr<Glib::Bytes> to_write = EncodeWebP(raw_bytes);
+    if (!to_write)
+      to_write = raw_bytes;
     gsize size = 0;
-    gconstpointer data = raw_bytes->get_data(size);
+    gconstpointer data = to_write->get_data(size);
     Glib::file_set_contents(PathFor(uri), static_cast<const gchar*>(data), static_cast<gssize>(size));
     EnforceDiskLimit();
   }

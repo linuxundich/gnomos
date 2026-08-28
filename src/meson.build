@@ -24,6 +24,6 @@ executable(
   gnomos_sources,
   config_h,
   include_directories: config_inc,
-  dependencies: [gtkmm_dep, adwaita_dep, noson_dep, json_glib_dep, soup_dep],
+  dependencies: [gtkmm_dep, adwaita_dep, noson_dep, json_glib_dep, soup_dep, webp_dep],
   install: true,
 )
