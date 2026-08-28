@@ -140,12 +140,17 @@ LibraryView::LibraryView()
   // the available width, rather than a plain list.
   flow_box_.set_selection_mode(Gtk::SelectionMode::NONE);
   flow_box_.set_homogeneous(true);
-  flow_box_.set_row_spacing(12);
-  flow_box_.set_column_spacing(12);
-  flow_box_.set_margin_top(12);
-  flow_box_.set_margin_bottom(12);
-  flow_box_.set_margin_start(12);
-  flow_box_.set_margin_end(12);
+  // Same value on every side and between rows/columns — Albums and
+  // Artists (and any other grid-eligible level, e.g. a bonob category)
+  // all render through this one flow_box_, so there's nothing left to
+  // unify between them; trimmed down from 12 across the board, which
+  // read as more air than the tiles themselves needed.
+  flow_box_.set_row_spacing(8);
+  flow_box_.set_column_spacing(8);
+  flow_box_.set_margin_top(8);
+  flow_box_.set_margin_bottom(8);
+  flow_box_.set_margin_start(8);
+  flow_box_.set_margin_end(8);
   flow_box_.set_valign(Gtk::Align::START);
   flow_box_.set_activate_on_single_click(true);
   flow_box_.signal_child_activated().connect([this](Gtk::FlowBoxChild* child) {
