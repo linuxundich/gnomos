@@ -2690,8 +2690,23 @@ void GnomosWindow::ShowSettingsDialog()
   AdwDialog* dialog = adw_preferences_dialog_new();
   adw_preferences_dialog_set_search_enabled(ADW_PREFERENCES_DIALOG(dialog), false);
 
-  GtkWidget* page = adw_preferences_page_new();
-  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(page), "Einstellungen");
+  // Three pages rather than one long one — AdwPreferencesDialog already
+  // renders more than one page as a proper tab/page switcher on its own
+  // (a sidebar on a wide window, a bottom switcher once narrow), no extra
+  // widgetry needed; this had grown to six groups stacked on a single
+  // page, confirmed live as "the settings window is too big now, it's
+  // all just one long column".
+  GtkWidget* general_page = adw_preferences_page_new();
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(general_page), "Allgemein");
+  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(general_page), "applications-system-symbolic");
+
+  GtkWidget* library_page = adw_preferences_page_new();
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(library_page), "Bibliothek");
+  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(library_page), "folder-music-symbolic");
+
+  GtkWidget* radio_page = adw_preferences_page_new();
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(radio_page), "Radio");
+  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(radio_page), "network-wireless-symbolic");
 
   // --- Erscheinungsbild ---
   GtkWidget* appearance_group = adw_preferences_group_new();
@@ -2720,7 +2735,7 @@ void GnomosWindow::ShowSettingsDialog()
   g_signal_connect_data(scheme_row, "notify::selected", G_CALLBACK(OnComboRowSelectedChanged), scheme_callback,
                          DeleteGuintCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), scheme_row);
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(appearance_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(appearance_group));
 
   // --- Benachrichtigungen ---
   GtkWidget* notifications_group = adw_preferences_group_new();
@@ -2734,7 +2749,7 @@ void GnomosWindow::ShowSettingsDialog()
       new std::function<void(bool)>([this](bool active) { SetNotifyOnTrackChange(active); }), DeleteBoolCallback,
       static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(notifications_group), notify_row);
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(notifications_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(notifications_group));
 
   // --- Cover-Art-Cache ---
   GtkWidget* cache_group = adw_preferences_group_new();
@@ -2766,7 +2781,7 @@ void GnomosWindow::ShowSettingsDialog()
   g_signal_connect_data(clear_row, "activated", G_CALLBACK(OnButtonRowActivated), clear_callback,
                          DeleteVoidCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(cache_group), clear_row);
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(cache_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(library_page), ADW_PREFERENCES_GROUP(cache_group));
 
   // --- Bibliothek ---
   GtkWidget* library_group = adw_preferences_group_new();
@@ -2811,22 +2826,32 @@ void GnomosWindow::ShowSettingsDialog()
   adw_action_row_add_suffix(ADW_ACTION_ROW(deezer_terms_row), GTK_WIDGET(deezer_link_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), deezer_terms_row);
 
-  GtkWidget* refresh_index_row = adw_button_row_new();
+  // AdwButtonRow (used for clear_row above) has no subtitle property at
+  // all — G_DECLARE_FINAL_TYPE straight off AdwPreferencesRow, just a
+  // title plus start/end icons — so the explanatory text below needs an
+  // AdwActionRow instead, matching deezer_terms_row's own suffix-button
+  // pattern just above. Confirmed live: the AdwButtonRow version compiled
+  // fine but hit an invalid-cast GLib-GObject-CRITICAL at runtime the
+  // moment this dialog opened, from adw_action_row_set_subtitle() being
+  // called on a row that was never an AdwActionRow to begin with.
+  GtkWidget* refresh_index_row = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(refresh_index_row), "Bibliothek neu einlesen");
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(refresh_index_row),
       "Lässt Sonos die eingebundene lokale Freigabe neu einlesen — etwa nach dem Hinzufügen neuer Dateien");
-  adw_button_row_set_start_icon_name(ADW_BUTTON_ROW(refresh_index_row), "view-refresh-symbolic");
-  auto* refresh_index_callback = new std::function<void()>([this] {
+  auto* refresh_index_button = Gtk::make_managed<Gtk::Button>();
+  refresh_index_button->set_icon_name("view-refresh-symbolic");
+  refresh_index_button->set_valign(Gtk::Align::CENTER);
+  refresh_index_button->add_css_class("flat");
+  refresh_index_button->signal_clicked().connect([this] {
     backend_->RefreshLibraryIndex();
     ShowToast("Bibliotheks-Scan gestartet");
     StartLibraryIndexProgressPolling();
   });
-  g_signal_connect_data(refresh_index_row, "activated", G_CALLBACK(OnButtonRowActivated), refresh_index_callback,
-                         DeleteVoidCallback, static_cast<GConnectFlags>(0));
+  adw_action_row_add_suffix(ADW_ACTION_ROW(refresh_index_row), GTK_WIDGET(refresh_index_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), refresh_index_row);
 
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(library_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(library_page), ADW_PREFERENCES_GROUP(library_group));
 
   // --- Genres ---
   GtkWidget* genre_group = adw_preferences_group_new();
@@ -2861,7 +2886,7 @@ void GnomosWindow::ShowSettingsDialog()
       DeleteBoolCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(genre_group), genre_first_only_row);
 
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(genre_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(library_page), ADW_PREFERENCES_GROUP(genre_group));
 
   // --- Radio ---
   GtkWidget* radio_group = adw_preferences_group_new();
@@ -2883,9 +2908,11 @@ void GnomosWindow::ShowSettingsDialog()
       new std::function<void(bool)>([this](bool active) { backend_->SetRadioSpamWhitespaceFilterEnabled(active); }),
       DeleteBoolCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(radio_group), spam_filter_row);
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(radio_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(radio_page), ADW_PREFERENCES_GROUP(radio_group));
 
-  adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(page));
+  adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(general_page));
+  adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(library_page));
+  adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(radio_page));
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
 }
 
