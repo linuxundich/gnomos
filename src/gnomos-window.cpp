@@ -3431,6 +3431,13 @@ void GnomosWindow::ShowTrackInfoDialog()
     auto* lyrics_label = Gtk::make_managed<Gtk::Label>("Songtext wird geladen …");
     lyrics_label->set_wrap(true);
     lyrics_label->set_selectable(true);
+    // A selectable Label is keyboard-focusable, and GTK auto-focuses the
+    // first focusable widget when a window is presented — confirmed live,
+    // that made the *entire* lyrics text look auto-highlighted the moment
+    // this dialog opened. Selection by mouse (click-drag, to copy) still
+    // works fine either way; this only opts it out of *keyboard* focus/tab
+    // order, which nothing here actually needs.
+    lyrics_label->set_can_focus(false);
     lyrics_label->set_justify(Gtk::Justification::LEFT);
     lyrics_label->set_halign(Gtk::Align::START);
     lyrics_label->set_valign(Gtk::Align::START);
@@ -3445,6 +3452,14 @@ void GnomosWindow::ShowTrackInfoDialog()
     // of lines at once even on a tall display; 480 shows meaningfully more
     // without the dialog itself dominating the whole screen.
     lyrics_scroller->set_max_content_height(480);
+    // Claims any leftover height once this dialog's own size started
+    // tracking this window's height (see track_info_dialog_width_'s own
+    // comment) rather than shrinking to fit — without an expanding child
+    // somewhere, that leftover space landed wherever Gtk::Box's own
+    // layout happened to put it, leaving content's fixed top/bottom
+    // margins looking disproportionately thin. Also means more available
+    // height genuinely shows more lyrics, not just a bigger blank gap.
+    lyrics_scroller->set_vexpand(true);
     content->append(*lyrics_scroller);
 
     // Unlike the art load above, HttpFetch() (which LyricsFetcher sits on
@@ -3465,6 +3480,17 @@ void GnomosWindow::ShowTrackInfoDialog()
           lyrics_label->set_text(lyrics.empty() ? "Kein Songtext gefunden." : lyrics);
         },
         lyrics_cancellable);
+  }
+  else
+  {
+    // No lyrics section this time (disabled, or nothing matched) — same
+    // reasoning as lyrics_scroller's own set_vexpand(true) above: without
+    // something here claiming leftover height, it landed wherever Box's
+    // own layout happened to put it instead of leaving content's margins
+    // looking consistent regardless of how tall this dialog ends up.
+    auto* spacer = Gtk::make_managed<Gtk::Box>();
+    spacer->set_vexpand(true);
+    content->append(*spacer);
   }
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
