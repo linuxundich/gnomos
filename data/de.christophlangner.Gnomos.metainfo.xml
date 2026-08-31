@@ -15,6 +15,15 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.12.0" date="2026-08-31">
+      <description>
+        <p>New: a "Komponisten" library category, one-off stream playback,
+        "Überall stummschalten," radio genre browsing, a proportional
+        group-volume master fader, and drag-and-drop room grouping. Also
+        fixes room volumes going missing after regrouping and some visual
+        clutter in the grouping popover.</p>
+      </description>
+    </release>
     <release version="0.11.2" date="2026-08-31">
       <description>
         <p>"Titel-Details" now opens at a stable, remembered size instead

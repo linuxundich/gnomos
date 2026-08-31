@@ -8,6 +8,37 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.12.0] - 2026-08-31
+
+### Added
+- The Bibliothek gained a "Komponisten" category, browsing the local
+  library's composer index alongside the existing Interpreten/Alben/
+  Genres/Titel ones.
+- "Stream abspielen…" in the main menu plays an arbitrary stream address
+  once, without saving it as a favorite (the existing "Radiosender
+  hinzufügen" always persists one).
+- "Überall stummschalten" in the main menu mutes every room in the
+  household at once, regardless of current grouping.
+- "Radiosender hinzufügen" gained a genre filter alongside the existing
+  country one, and now opens already showing the directory's most
+  popular stations.
+- The grouping popover's per-room volume sliders now have an "Alle
+  Räume" master fader above them, scaling every room proportionally
+  while preserving each room's relative balance.
+- Rooms can now be regrouped by dragging one room switcher row onto
+  another, in addition to the existing per-room switches in the
+  grouping popover.
+
+### Fixed
+- The grouping popover's per-room volume sliders (and the new master
+  fader) could end up missing a room entirely after regrouping — its
+  volume was read from a list that stopped updating once a zone was
+  selected, so a room that joined the group afterward was never
+  reflected. Volumes are now fetched fresh whenever the popover opens,
+  independent of grouping history.
+- Removed two extra divider lines in the grouping popover that made it
+  look cluttered, reported live after the master fader was added.
+
 ## [0.11.2] - 2026-08-31
 
 ### Fixed
