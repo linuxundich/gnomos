@@ -563,8 +563,31 @@ GnomosWindow::GnomosWindow()
     nav_list_box_.append(*row_box);
 
     std::string page_name = name;
-    nav_row_actions_.push_back(
-        [this, page_name] { adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str()); });
+    if (page_name == "library")
+    {
+      // Unlike every other static row here, "Bibliothek" wasn't just
+      // switching to an already-fresh page — library_view_ keeps showing
+      // whatever level was last browsed, so clicking this while already
+      // deep in a browse (e.g. a specific album's tracks) did nothing
+      // visible at all, confirmed live as exactly that "this button
+      // doesn't seem to do anything" report. Jumping back to the root
+      // overview mirrors what a specific sub-item row already does below
+      // (RebuildLibraryNavEntries()'s own append_entry lambda) — just with
+      // no category pushed on top, since this one means the overview
+      // itself, not a specific category within it.
+      nav_row_actions_.push_back([this, page_name] {
+        library_stack_.clear();
+        library_stack_.push_back({"", "Bibliothek"});
+        backend_->BrowseLibraryAsync("");
+        adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str());
+      });
+    }
+    else
+    {
+      nav_row_actions_.push_back([this, page_name] {
+        adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str());
+      });
+    }
   }
   auto* nav_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
   nav_scroller->set_child(nav_list_box_);
@@ -2151,6 +2174,8 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
         {"IP-Adresse", info.ip.empty() ? "—" : info.ip},
         {"MAC-Adresse", info.mac.empty() ? "—" : info.mac},
         {"Software-Version", info.software_version.empty() ? "—" : info.software_version},
+        {"Hardware-Version", info.hardware_version.empty() ? "—" : info.hardware_version},
+        {"Seriennummer", info.serial_number.empty() ? "—" : info.serial_number},
     };
     int row = 0;
     for (const auto& [label_text, value_text] : fields)
@@ -2171,7 +2196,9 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
     clipboard_text += "\n\n" + member.name + "\nModell: " + (info.model_number.empty() ? "—" : info.model_number) +
                        "\nIP-Adresse: " + (info.ip.empty() ? "—" : info.ip) +
                        "\nMAC-Adresse: " + (info.mac.empty() ? "—" : info.mac) +
-                       "\nSoftware-Version: " + (info.software_version.empty() ? "—" : info.software_version);
+                       "\nSoftware-Version: " + (info.software_version.empty() ? "—" : info.software_version) +
+                       "\nHardware-Version: " + (info.hardware_version.empty() ? "—" : info.hardware_version) +
+                       "\nSeriennummer: " + (info.serial_number.empty() ? "—" : info.serial_number);
   }
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
@@ -2489,6 +2516,51 @@ void GnomosWindow::ShowToast(const std::string& message)
   adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(toast_overlay_), toast);
 }
 
+void GnomosWindow::StartLibraryIndexProgressPolling()
+{
+  // A re-click while a previous poll is still running (or still waiting to
+  // ever see ShareIndexInProgress go true) shouldn't stack up a second
+  // timer/connection alongside the first.
+  library_index_poll_connection_.disconnect();
+  library_index_status_connection_.disconnect();
+
+  auto seen_in_progress = std::make_shared<bool>(false);
+  auto ticks_without_progress = std::make_shared<int>(0);
+  library_index_status_connection_ = backend_->signal_library_index_status_changed().connect(
+      [this, seen_in_progress, ticks_without_progress] {
+        if (backend_->GetLibraryIndexInProgress())
+        {
+          *seen_in_progress = true;
+          *ticks_without_progress = 0;
+          return;
+        }
+        if (!*seen_in_progress && ++*ticks_without_progress < 5)
+          // Sonos may not have flipped ShareIndexInProgress to true yet —
+          // give it a few more ticks before giving up silently, rather
+          // than risk a false "completed" toast for a scan that hasn't
+          // actually registered as running at all yet.
+          return;
+
+        library_index_poll_connection_.disconnect();
+        library_index_status_connection_.disconnect();
+        if (*seen_in_progress)
+        {
+          std::string error = backend_->GetLibraryIndexLastError();
+          ShowToast(error.empty() ? "Bibliotheks-Scan abgeschlossen" : "Bibliotheks-Scan fehlgeschlagen: " + error);
+        }
+        // Never observed running at all (too fast to catch between polls,
+        // or the scan silently did nothing) — RefreshLibraryIndex()'s own
+        // "gestartet" toast already set expectations, so this stays quiet
+        // rather than risk a misleading message either way.
+      });
+  library_index_poll_connection_ = Glib::signal_timeout().connect(
+      [this] {
+        backend_->CheckLibraryIndexProgressAsync();
+        return true;  // signal_library_index_status_changed()'s own handler above stops this
+      },
+      2000);
+}
+
 void GnomosWindow::ShowAboutDialog()
 {
   AdwDialog* dialog = adw_about_dialog_new();
@@ -2748,6 +2820,7 @@ void GnomosWindow::ShowSettingsDialog()
   auto* refresh_index_callback = new std::function<void()>([this] {
     backend_->RefreshLibraryIndex();
     ShowToast("Bibliotheks-Scan gestartet");
+    StartLibraryIndexProgressPolling();
   });
   g_signal_connect_data(refresh_index_row, "activated", G_CALLBACK(OnButtonRowActivated), refresh_index_callback,
                          DeleteVoidCallback, static_cast<GConnectFlags>(0));
@@ -2773,6 +2846,21 @@ void GnomosWindow::ShowSettingsDialog()
           [this](const std::string& text) { backend_->SetGenreSeparators(text); }),
       DeleteStringCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(genre_group), genre_separators_row);
+
+  GtkWidget* genre_first_only_row = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(genre_first_only_row), "Nur erstes Genre verwenden");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(genre_first_only_row),
+      "Zeigt nur das erste Genre vor dem ersten Trennzeichen an, statt alle aufzuteilen — hilfreich, wenn "
+      "Sonos einen langen, zusammengesetzten Genre-Tag selbst schon abschneidet und nachfolgende Genres "
+      "dadurch unvollständig ankommen (z. B. „Elec“ statt „Electronic“)");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(genre_first_only_row), backend_->GetGenreUseFirstOnly());
+  g_signal_connect_data(
+      genre_first_only_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
+      new std::function<void(bool)>([this](bool active) { backend_->SetGenreUseFirstOnly(active); }),
+      DeleteBoolCallback, static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(genre_group), genre_first_only_row);
+
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(genre_group));
 
   // --- Radio ---
@@ -3143,11 +3231,6 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
   *connection = backend_->signal_saved_playlists_changed().connect([this, library_index, connection] {
     connection->disconnect();
     std::vector<LibraryEntry> playlists = backend_->GetSavedPlaylists();
-    if (playlists.empty())
-    {
-      ShowToast("Keine Playlisten vorhanden.");
-      return;
-    }
 
     auto* dialog = new Gtk::Window();
     dialog->set_title("Zu Playlist hinzufügen");
@@ -3165,13 +3248,30 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
     label->set_halign(Gtk::Align::START);
     content->append(*label);
 
+    // "Neue Playlist…" always sits first — mirrors the "Dienst
+    // verknüpfen…" sentinel row pattern (library-view.cpp's own root
+    // categories) for the same reason: creating one shouldn't require
+    // already having a queue to save first, which was the only way to
+    // create a playlist at all before this (confirmed live: an empty
+    // playlist list here used to just toast "Keine Playlisten vorhanden"
+    // and refuse to open a dialog at all).
     std::vector<Glib::ustring> names;
-    names.reserve(playlists.size());
+    names.reserve(playlists.size() + 1);
+    names.push_back("Neue Playlist…");
     for (const LibraryEntry& entry : playlists)
       names.push_back(entry.title.empty() ? "Unbenannt" : entry.title);
     auto model = Gtk::StringList::create(names);
     auto* dropdown = Gtk::make_managed<Gtk::DropDown>(model);
     content->append(*dropdown);
+
+    // Only actually used while "Neue Playlist…" (index 0) is selected —
+    // kept unconditionally visible rather than shown/hidden reactively as
+    // the dropdown selection changes, since it's still perfectly clear
+    // from the placeholder alone which choice it belongs to.
+    auto* new_playlist_entry = Gtk::make_managed<Gtk::Entry>();
+    new_playlist_entry->set_placeholder_text("Name für „Neue Playlist…“");
+    new_playlist_entry->set_activates_default(true);
+    content->append(*new_playlist_entry);
 
     auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
     button_box->set_halign(Gtk::Align::END);
@@ -3181,18 +3281,36 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
     button_box->append(*cancel_button);
     auto* confirm_button = Gtk::make_managed<Gtk::Button>("Hinzufügen");
     confirm_button->add_css_class("suggested-action");
-    confirm_button->signal_clicked().connect([this, dialog, dropdown, playlists, library_index] {
-      guint selected = dropdown->get_selected();
-      if (selected == GTK_INVALID_LIST_POSITION || selected >= playlists.size())
-        return;
-      backend_->AddLibraryItemToPlaylist(library_index, playlists[selected].object_id);
-      ShowToast("Zu Playlist hinzugefügt");
-      dialog->close();
-    });
+    confirm_button->signal_clicked().connect(
+        [this, dialog, dropdown, new_playlist_entry, playlists, library_index] {
+          guint selected = dropdown->get_selected();
+          if (selected == GTK_INVALID_LIST_POSITION)
+            return;
+          if (selected == 0)
+          {
+            std::string title = new_playlist_entry->get_text().raw();
+            if (title.empty())
+            {
+              new_playlist_entry->grab_focus();
+              return;
+            }
+            backend_->CreatePlaylistAndAddLibraryItem(library_index, title);
+            ShowToast("Playlist erstellt und Titel hinzugefügt");
+          }
+          else
+          {
+            if (selected - 1 >= playlists.size())
+              return;
+            backend_->AddLibraryItemToPlaylist(library_index, playlists[selected - 1].object_id);
+            ShowToast("Zu Playlist hinzugefügt");
+          }
+          dialog->close();
+        });
     button_box->append(*confirm_button);
     content->append(*button_box);
 
     dialog->set_child(*content);
+    dialog->set_default_widget(*confirm_button);
     dialog->present();
   });
 }

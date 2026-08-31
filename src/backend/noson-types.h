@@ -347,6 +347,12 @@ struct DeviceInfo
   std::string software_version;
   std::string model_number;
   bool is_gen1 = false;
+  // DeviceProperties::GetZoneInfo()'s own "SerialNumber"/"HardwareVersion"
+  // fields — a real UPnP call to the room's own device (see
+  // NosonBackend::RefreshZoneInfoAsync()), unlike every other DeviceInfo
+  // field above, which comes from data already gathered at discovery time.
+  std::string serial_number;
+  std::string hardware_version;
 };
 
 }  // namespace gnomos

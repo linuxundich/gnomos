@@ -12,7 +12,6 @@
 #include <memory>
 #include <thread>
 
-#include <giomm/file.h>
 #include <glib.h>
 #include <glibmm/checksum.h>
 #include <glibmm/keyfile.h>
@@ -20,11 +19,14 @@
 
 #include <alarm.h>
 #include <contentdirectory.h>
+#include <deviceproperties.h>
 #include <didlparser.h>
 #include <digitalitem.h>
 #include <musicservices.h>
 #include <smaccount.h>
 #include <sonostypes.h>
+
+#include "widgets/http-fetch.h"
 
 namespace gnomos
 {
@@ -270,6 +272,7 @@ NosonBackend::NosonBackend()
   alarms_dispatcher_.connect([this] { signal_alarms_changed_.emit(); });
   library_dispatcher_.connect([this] { signal_library_changed_.emit(); });
   saved_playlists_dispatcher_.connect([this] { signal_saved_playlists_changed_.emit(); });
+  library_index_status_dispatcher_.connect([this] { signal_library_index_status_changed_.emit(); });
   sleep_timer_dispatcher_.connect([this] { signal_sleep_timer_changed_.emit(); });
   sound_settings_dispatcher_.connect([this] { signal_sound_settings_changed_.emit(); });
   service_link_ready_dispatcher_.connect([this] {
@@ -297,6 +300,11 @@ NosonBackend::NosonBackend()
 
 NosonBackend::~NosonBackend()
 {
+  // See alive_'s own header comment — must happen before anything else
+  // below, for the same "before any dependent teardown" reasoning as the
+  // sleep-signal unsubscribe just after it.
+  *alive_ = false;
+
   // Explicitly unsubscribed here, before any member starts being
   // destroyed (including tasks_/system_ below) — OnPrepareForSleep()
   // calls DiscoverAsync() (pushes onto tasks_) and
@@ -585,6 +593,12 @@ DeviceInfo NosonBackend::GetDeviceInfo(const std::string& player_uuid) const
       {
         info.model_number = model_it->second;
         info.is_gen1 = is_gen1_model(model_it->second);
+      }
+      auto zone_info_it = zone_info_by_uuid_.find(player_uuid);
+      if (zone_info_it != zone_info_by_uuid_.end())
+      {
+        info.serial_number = zone_info_it->second.first;
+        info.hardware_version = zone_info_it->second.second;
       }
       return info;
     }
@@ -1839,6 +1853,7 @@ void NosonBackend::InvalidateLibraryCache()
 void NosonBackend::SplitGenreEntries(std::vector<LibraryEntry>& entries, std::vector<NSROOT::DigitalItemPtr>& raw) const
 {
   const std::string separators = GetGenreSeparators();
+  const bool first_only = GetGenreUseFirstOnly();
 
   // Preserves first-seen order — a std::map would alphabetize, unlike
   // every other library level, which shows Sonos's own already-sorted
@@ -1847,7 +1862,12 @@ void NosonBackend::SplitGenreEntries(std::vector<LibraryEntry>& entries, std::ve
   std::map<std::string, std::vector<size_t>> title_to_indices;
   for (size_t i = 0; i < entries.size(); ++i)
   {
-    for (const std::string& token : SplitGenreTitle(entries[i].title, separators))
+    std::vector<std::string> tokens = SplitGenreTitle(entries[i].title, separators);
+    // See GetGenreUseFirstOnly()'s own comment — whatever comes first in a
+    // truncated tag is the part most likely to have survived intact.
+    if (first_only && tokens.size() > 1)
+      tokens.resize(1);
+    for (const std::string& token : tokens)
     {
       auto result = title_to_indices.try_emplace(token);
       if (result.second)
@@ -2885,6 +2905,83 @@ void NosonBackend::AddLibraryItemToPlaylist(unsigned library_index, const std::s
   });
 }
 
+void NosonBackend::CreatePlaylistAndAddLibraryItem(unsigned library_index, const std::string& title)
+{
+  tasks_.Push([this, library_index, title] {
+    NSROOT::DigitalItemPtr item;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (library_index >= library_raw_.size())
+        return;
+      item = library_raw_[library_index];
+    }
+    auto player = SnapshotPlayer();
+    bool queueable = item && NSROOT::System::CanQueueItem(item);
+    if (!player || !queueable || !player->CreateSavedQueue(title))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = !queueable ? "Dieser Titel kann nicht zu einer Playlist hinzugefügt werden."
+                                   : "Playlist konnte nicht erstellt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+
+    // CreateSavedQueue() has no way to hand back the new playlist's own
+    // object_id — re-browse "SQ:" and match on the title just given it to
+    // find it, the same way every other saved playlist is discovered.
+    // Reused as the fresh GetSavedPlaylists() cache below too, so a picker
+    // dialog still open doesn't need a second round trip of its own.
+    NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    NSROOT::ContentBrowser sq_browser(libraryDirectory, "SQ:", 200);
+    ExhaustBrowser(sq_browser);
+
+    std::vector<LibraryEntry> playlists;
+    std::string new_playlist_id;
+    playlists.reserve(sq_browser.table().size());
+    for (const auto& sq_item : sq_browser.table())
+    {
+      LibraryEntry entry;
+      entry.object_id = sq_item->GetObjectID();
+      entry.title = sq_item->GetValue("dc:title");
+      entry.is_container = sq_item->IsContainer();
+      // Sonos assigns playlist object_ids in increasing order, so among
+      // any same-titled playlists (a pre-existing one, or a mistaken
+      // double-click creating two), the highest-numbered match is the one
+      // just created here.
+      if (entry.title == title)
+        new_playlist_id = entry.object_id;
+      playlists.push_back(std::move(entry));
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      saved_playlists_ = playlists;
+    }
+    saved_playlists_dispatcher_.emit();
+
+    if (new_playlist_id.empty())
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Neu erstellte Playlist konnte nicht gefunden werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+
+    // Same containerUpdateID dance AddLibraryItemToPlaylist() does — see
+    // its own comment.
+    NSROOT::ContentBrowser item_browser(libraryDirectory, new_playlist_id, 1);
+    if (!item_browser.Browse(0, 1) ||
+        player->AddURIToSavedQueue(new_playlist_id, item, item_browser.GetUpdateID()) == 0)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Titel konnte nicht zur neuen Playlist hinzugefügt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+    InvalidateLibraryCache();
+  });
+}
+
 void NosonBackend::ReorderLibraryPlaylistTrack(const std::string& playlist_object_id, unsigned from, unsigned to)
 {
   tasks_.Push([this, playlist_object_id, from, to] {
@@ -2928,6 +3025,31 @@ void NosonBackend::RefreshLibraryIndex()
       error_dispatcher_.emit();
     }
   });
+}
+
+void NosonBackend::CheckLibraryIndexProgressAsync()
+{
+  tasks_.Push([this] {
+    NSROOT::ContentProperty prop = system_->GetContentProperty();
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      library_index_in_progress_ = prop.ShareIndexInProgress;
+      library_index_last_error_ = prop.ShareIndexLastError;
+    }
+    library_index_status_dispatcher_.emit();
+  });
+}
+
+bool NosonBackend::GetLibraryIndexInProgress() const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  return library_index_in_progress_;
+}
+
+std::string NosonBackend::GetLibraryIndexLastError() const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  return library_index_last_error_;
 }
 
 void NosonBackend::AddRadioStation(const std::string& title, const std::string& stream_url,
@@ -3138,6 +3260,50 @@ void NosonBackend::SetGenreSeparators(const std::string& separators)
   }
   // Otherwise a cached "A:GENRE" (or a kMergedGenrePrefix) level built with
   // the old separator set would keep showing until the app restarts.
+  tasks_.Push([this] { InvalidateLibraryCache(); });
+}
+
+bool NosonBackend::GetGenreUseFirstOnly() const
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (keyfile->load_from_file(LibrarySettingsPath()) && keyfile->has_group("genre") &&
+        keyfile->has_key("genre", "use_first_only"))
+      return keyfile->get_boolean("genre", "use_first_only");
+  }
+  catch (const Glib::Error&)
+  {
+    // no library settings saved yet, or the file is otherwise unreadable —
+    // same as "never changed from the default" either way
+  }
+  return false;
+}
+
+void NosonBackend::SetGenreUseFirstOnly(bool enabled)
+{
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(LibrarySettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first library setting this install has ever saved
+  }
+  keyfile->set_boolean("genre", "use_first_only", enabled);
+  try
+  {
+    keyfile->save_to_file(LibrarySettingsPath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — the setting just won't survive a restart
+  }
+  // See SetGenreSeparators()'s own comment.
   tasks_.Push([this] { InvalidateLibraryCache(); });
 }
 
@@ -3664,51 +3830,86 @@ void NosonBackend::OnPlayerEvent(void* handle)
 
 void NosonBackend::RefreshGen1StatusAsync()
 {
+  // Runs directly on the calling thread — always the GTK main thread in
+  // practice, since the one caller (HandleSystemEvent()) is itself a
+  // dispatcher slot — rather than via tasks_ like every other libnoson
+  // call in this file. HttpFetch() is main-thread-only (see its own header
+  // comment: an unlocked shared queue, callbacks delivered through GLib's
+  // default main context), unlike the Gio::File::create_for_uri() this
+  // used to call instead — confirmed live as the actual cause of "Modell"
+  // always reading "—" under Flatpak: Gio::File's http(s) support depends
+  // on GVfs's own backend, which isn't part of the Flatpak runtime, the
+  // exact same root cause HttpFetch() itself already exists to work around
+  // for cover art and radio search (see HttpFetch()'s own header comment).
+  std::vector<std::pair<std::string, std::string>> to_fetch;  // (uuid, device_description.xml URL)
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    for (const auto& kv : zones_by_uuid_)
+      for (const NSROOT::ZonePlayerPtr& zp : *kv.second)
+        if (model_number_by_uuid_.find(zp->GetUUID()) == model_number_by_uuid_.end())
+          to_fetch.push_back({zp->GetUUID(), zp->GetLocation()});
+  }
+
+  for (const auto& [uuid, location] : to_fetch)
+  {
+    if (location.empty())
+      continue;
+    auto alive = alive_;  // captured by value — see its own header comment
+    HttpFetch(location, [this, uuid, alive](std::string xml) {
+      if (!*alive)
+        return;  // this NosonBackend was destroyed before the fetch finished
+      if (xml.empty())
+        return;  // left unset — retried on the next topology change
+
+      static const std::string kOpenTag = "<modelNumber>";
+      size_t start = xml.find(kOpenTag);
+      if (start == std::string::npos)
+        return;
+      start += kOpenTag.size();
+      size_t end = xml.find("</modelNumber>", start);
+      if (end == std::string::npos)
+        return;
+
+      {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        model_number_by_uuid_[uuid] = xml.substr(start, end - start);
+      }
+      // Already on the main thread (HttpFetch()'s own callback contract)
+      // — no dispatcher hop needed to reach signal_zones_changed_'s own
+      // listeners safely, unlike a worker-thread completion elsewhere in
+      // this file.
+      signal_zones_changed_.emit();
+    });
+  }
+}
+
+void NosonBackend::RefreshZoneInfoAsync()
+{
   tasks_.Push([this] {
-    std::vector<std::pair<std::string, std::string>> to_fetch;  // (uuid, device_description.xml URL)
+    std::vector<std::pair<std::string, NSROOT::ZonePlayerPtr>> to_fetch;
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       for (const auto& kv : zones_by_uuid_)
         for (const NSROOT::ZonePlayerPtr& zp : *kv.second)
-          if (model_number_by_uuid_.find(zp->GetUUID()) == model_number_by_uuid_.end())
-            to_fetch.push_back({zp->GetUUID(), zp->GetLocation()});
+          if (zone_info_by_uuid_.find(zp->GetUUID()) == zone_info_by_uuid_.end())
+            to_fetch.push_back({zp->GetUUID(), zp});
     }
     if (to_fetch.empty())
       return;
 
     bool any_resolved = false;
-    for (const auto& [uuid, location] : to_fetch)
+    for (const auto& [uuid, zp] : to_fetch)
     {
-      if (location.empty())
+      if (!zp->IsValid())
         continue;
-      try
-      {
-        auto file = Gio::File::create_for_uri(location);
-        char* contents = nullptr;
-        gsize length = 0;
-        if (!file->load_contents(contents, length) || !contents)
-          continue;
-        std::string xml(contents, length);
-        g_free(contents);
+      NSROOT::DeviceProperties device_properties(zp->GetHost(), zp->GetPort());
+      NSROOT::ElementList vars;
+      if (!device_properties.GetZoneInfo(vars))
+        continue;  // left unset — retried on the next topology change
 
-        static const std::string kOpenTag = "<modelNumber>";
-        size_t start = xml.find(kOpenTag);
-        if (start == std::string::npos)
-          continue;
-        start += kOpenTag.size();
-        size_t end = xml.find("</modelNumber>", start);
-        if (end == std::string::npos)
-          continue;
-
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        model_number_by_uuid_[uuid] = xml.substr(start, end - start);
-        any_resolved = true;
-      }
-      catch (const Glib::Error&)
-      {
-        // Left unset — retried on the next topology change rather than
-        // permanently cached as "not gen1" from a transient network hiccup.
-      }
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      zone_info_by_uuid_[uuid] = {vars.GetValue("SerialNumber"), vars.GetValue("HardwareVersion")};
+      any_resolved = true;
     }
     if (any_resolved)
       signal_zones_changed_.emit();
@@ -3739,6 +3940,7 @@ void NosonBackend::HandleSystemEvent()
     signal_zones_changed_.emit();
     signal_volume_changed_.emit();
     RefreshGen1StatusAsync();
+    RefreshZoneInfoAsync();
   }
   if (mask & NSROOT::SVCEvent_ContentDirectoryChanged)
   {

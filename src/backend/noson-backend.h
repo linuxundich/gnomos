@@ -244,6 +244,15 @@ public:
   // the call — see its own comment for why that can't be cached from
   // whenever the playlist was last browsed.
   void AddLibraryItemToPlaylist(unsigned library_index, const std::string& playlist_object_id);
+  // Player::CreateSavedQueue(title), then the same AddURIToSavedQueue()
+  // call AddLibraryItemToPlaylist() makes — CreateSavedQueue() itself has
+  // no way to hand back the new playlist's own object_id, so this
+  // re-browses "SQ:" and matches on the title just given it to find it,
+  // the same way every other saved playlist is discovered. Also updates
+  // GetSavedPlaylists()' own cache and fires signal_saved_playlists_changed()
+  // with the fresh list, so a picker dialog still open shows the new
+  // playlist without a separate re-fetch.
+  void CreatePlaylistAndAddLibraryItem(unsigned library_index, const std::string& title);
   // 0-based positions within playlist_object_id's own current track
   // listing (same convention as ReorderQueueItem()'s from/to) — only
   // meaningful while GnomosWindow is showing that exact playlist's
@@ -254,6 +263,20 @@ public:
   // a NAS share). Fire-and-forget: libnoson has no way to observe when the
   // scan itself finishes, only that the request was accepted.
   void RefreshLibraryIndex();
+  // System::GetContentProperty()'s ShareIndexInProgress/ShareIndexLastError
+  // — RefreshLibraryIndex() above only reports a failure to *start* the
+  // scan; this is how GnomosWindow finds out once a scan that did start
+  // actually finishes (or fails partway through), by calling this once per
+  // tick of its own polling timer (StartLibraryIndexProgressPolling())
+  // after triggering RefreshLibraryIndex(). GetContentProperty() itself is
+  // a locked in-memory read of the last event ContentDirectory pushed, not
+  // a fresh network round trip — same category as GetTransportProperty()/
+  // GetRenderingProperty() — but still routed through tasks_ like every
+  // other libnoson call here, not read directly from the GTK main thread.
+  void CheckLibraryIndexProgressAsync();
+  bool GetLibraryIndexInProgress() const;
+  std::string GetLibraryIndexLastError() const;
+  sigc::signal<void()>& signal_library_index_status_changed() { return signal_library_index_status_changed_; }
   // System::CreateRadio() — adds a custom internet radio stream, which
   // then shows up browsing "R:0/0" ("Radiosender") alongside the built-in
   // directory, same namespace either way (confirmed in CreateRadio()'s own
@@ -306,6 +329,21 @@ public:
   // radio-mpris-settings.ini — this has nothing to do with radio.
   std::string GetGenreSeparators() const;
   void SetGenreSeparators(const std::string& separators);
+
+  // Sonos's own local-library indexer has been confirmed live to truncate
+  // a multi-genre ID3 tag at a fixed total length before ever handing it
+  // to noson — a genuinely long tag (several genres joined by the
+  // configured separator) can come back with its later genre(s) cut off
+  // mid-word ("Elec" instead of "Electronic"), nothing Gnomos/noson can
+  // recover after the fact. Since whatever comes first in the tag is the
+  // part least likely to have been cut, this restricts SplitGenreEntries()
+  // to just the first resulting token per entry instead of every one —
+  // trading "see every genre, including truncated fragments" for "see
+  // only the reliable one." Off by default (today's split-everything
+  // behavior); stored alongside GetGenreSeparators() in the same
+  // library-settings.ini.
+  bool GetGenreUseFirstOnly() const;
+  void SetGenreUseFirstOnly(bool enabled);
 
   // Third-party service linking (Spotify, bonob, ...). AppLink/DeviceLink
   // services need this before they'll browse — see the "Third-party
@@ -427,6 +465,15 @@ private:
   // permanently sticking as "not gen1".
   void RefreshGen1StatusAsync();
 
+  // A real UPnP call (DeviceProperties::GetZoneInfo(), unlike
+  // RefreshGen1StatusAsync()'s plain XML fetch above) to each not-yet-known
+  // zone player's own device, for its SerialNumber/HardwareVersion —
+  // shown in GnomosWindow's "Geräteinfo" dialog alongside the fields
+  // GetDeviceInfo() already resolves from data gathered at discovery time.
+  // Same "only ever fetched once per uuid, retried on the next topology
+  // change if it failed" caching as RefreshGen1StatusAsync().
+  void RefreshZoneInfoAsync();
+
   // Callers must hold state_mutex_. Only touch the now_playing_/volume_
   // cache and cheap, non-blocking libnoson getters (GetTransportProperty(),
   // GetRenderingProperty() are locked in-memory reads, not network calls).
@@ -537,6 +584,7 @@ private:
   Glib::Dispatcher service_link_ready_dispatcher_;
   Glib::Dispatcher position_dispatcher_;
   Glib::Dispatcher busy_dispatcher_;
+  Glib::Dispatcher library_index_status_dispatcher_;
   // Written on tasks_'s own worker thread (TaskQueue's on_busy_changed
   // callback, passed in the constructor), read on the main thread once
   // busy_dispatcher_ wakes it up — the same "atomic handoff variable
@@ -562,6 +610,7 @@ private:
   sigc::signal<void()> signal_sound_settings_changed_;
   sigc::signal<void(std::string)> signal_error_;
   sigc::signal<void()> signal_position_changed_;
+  sigc::signal<void()> signal_library_index_status_changed_;
 
   // Independent of libnoson entirely, and explicitly unsubscribed at the
   // very top of ~NosonBackend()'s body (before any member starts being
@@ -578,12 +627,26 @@ private:
   sigc::connection volume_debounce_connection_;
   std::map<std::string, sigc::connection> room_volume_debounce_connections_;
 
+  // RefreshGen1StatusAsync()'s HttpFetch() callbacks capture this by value
+  // and check it before touching `this` — unlike every other async
+  // completion here (a Glib::Dispatcher, or a lambda pushed onto tasks_,
+  // both of which this destructor already accounts for above), HttpFetch()
+  // holds these callbacks in its own module-global queue, entirely outside
+  // NosonBackend's control, so one can still fire after this object is
+  // gone. Same "captured shared_ptr<bool>, flipped in the destructor"
+  // pattern CoverThumbnail already uses for its own HttpFetch() calls.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+
   mutable std::mutex state_mutex_;
   std::map<std::string, NSROOT::ZonePtr> zones_by_uuid_;
   // player uuid -> device_description.xml <modelNumber> — see
   // RefreshGen1StatusAsync(). is_gen1_model() is derived from this on
   // demand in Zones()/Rooms(), rather than cached separately.
   std::map<std::string, std::string> model_number_by_uuid_;
+  // player uuid -> (SerialNumber, HardwareVersion) — see
+  // RefreshZoneInfoAsync(). GetDeviceInfo() reads from this the same way
+  // it already reads model_number_by_uuid_.
+  std::map<std::string, std::pair<std::string, std::string>> zone_info_by_uuid_;
   NowPlaying now_playing_;
   unsigned position_ = 0;
   // "<CurrentTrack>|<CurrentTrackURI>" as of the last
@@ -623,6 +686,9 @@ private:
   // See FetchSavedPlaylistsAsync()'s own comment for why this is kept
   // separate from library_entries_ rather than reusing it.
   std::vector<LibraryEntry> saved_playlists_;
+  // Last CheckLibraryIndexProgressAsync() result — see its own comment.
+  bool library_index_in_progress_ = false;
+  std::string library_index_last_error_;
   std::string pending_link_url_;
   std::string pending_link_code_;
   // Cached (not read live from active_smapi_, which is worker-thread-only —

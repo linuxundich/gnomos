@@ -202,6 +202,14 @@ private:
   bool OnKeyPressed(guint keyval, guint keycode, Gdk::ModifierType state);
 
   void ShowToast(const std::string& message);
+  // Polls NosonBackend::CheckLibraryIndexProgressAsync() every 2s after a
+  // "Bibliothek neu einlesen" click, since RefreshLibraryIndex() itself only
+  // reports a failure to *start* the scan — surfaces a completion/failure
+  // toast once ShareIndexInProgress is actually observed dropping back to
+  // false after having been true, or gives up silently after a handful of
+  // ticks if it's never observed running at all (a scan too fast to catch
+  // between polls, or one that never really started).
+  void StartLibraryIndexProgressPolling();
 
   std::unique_ptr<NosonBackend> backend_;
   // Constructed after backend_ (needs it) and destroyed before it
@@ -428,6 +436,13 @@ private:
   // actively playing, so there's no need to start/stop it around zone
   // selection.
   sigc::connection position_timer_connection_;
+
+  // See StartLibraryIndexProgressPolling()'s own comment — both
+  // disconnected together once a scan is observed finishing (or polling
+  // gives up on ever seeing it start), and re-created on each new "Bibliothek
+  // neu einlesen" click, so back-to-back clicks don't stack up timers.
+  sigc::connection library_index_poll_connection_;
+  sigc::connection library_index_status_connection_;
 
   // Space = play/pause when no text-entry field has focus — see
   // OnKeyPressed()'s header comment for why an Editable check is needed.
