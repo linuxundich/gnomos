@@ -13,6 +13,7 @@ gnomos_sources = files(
   'widgets/favorites-view.cpp',
   'widgets/history-view.cpp',
   'widgets/http-fetch.cpp',
+  'widgets/lastfm-scrobbler.cpp',
   'widgets/library-view.cpp',
   'widgets/listenbrainz-scrobbler.cpp',
   'widgets/lyrics-fetcher.cpp',

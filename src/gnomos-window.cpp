@@ -24,6 +24,7 @@
 #include <glibmm/bytes.h>
 #include <glibmm/error.h>
 #include <glibmm/keyfile.h>
+#include <glibmm/uriutils.h>
 #include <json-glib/json-glib.h>
 #include <glibmm/main.h>
 #include <glibmm/miscutils.h>
@@ -55,6 +56,7 @@
 #include "widgets/art-cache.h"
 #include "widgets/cover-thumbnail.h"
 #include "widgets/http-fetch.h"
+#include "widgets/lastfm-scrobbler.h"
 #include "widgets/listenbrainz-scrobbler.h"
 #include "widgets/lyrics-fetcher.h"
 #include "widgets/radio-browser-service.h"
@@ -898,6 +900,7 @@ GnomosWindow::GnomosWindow()
   LoadLyricsSetting();
   LoadTrackInfoDialogSize();
   LoadListenBrainzToken();
+  LoadLastFmSettings();
   LoadScenes();
   LoadFallbackIconScaleSetting();
   // CoverThumbnail's own scale is a static, process-wide default — needs
@@ -1551,7 +1554,9 @@ void GnomosWindow::RecordHistoryIfTrackChanged(const NowPlaying& now_playing)
 
 void GnomosWindow::MaybeScheduleScrobble(const NowPlaying& np)
 {
-  if (listenbrainz_token_.empty())
+  bool listenbrainz_enabled = !listenbrainz_token_.empty();
+  bool lastfm_enabled = !lastfm_session_key_.empty();
+  if (!listenbrainz_enabled && !lastfm_enabled)
     return;
   // Radio/live streams (duration == 0) have no fixed length to gauge
   // "listened long enough" against, and scrobbling an endless stream makes
@@ -1569,15 +1574,16 @@ void GnomosWindow::MaybeScheduleScrobble(const NowPlaying& np)
   last_scrobble_scheduled_key_ = key;
   scrobble_timer_connection_.disconnect();
 
-  // ListenBrainz's own submission guideline: a track counts as "listened"
-  // once played for half its length or 4 minutes, whichever is lower.
-  // Measured from wall-clock time since this track was first detected, not
-  // actual accumulated playback time — a simplification: pausing for a
-  // long stretch mid-track can make the real scrobble land later than
-  // ListenBrainz's own intent (or, rarely, never, if the track changes
-  // again before this fires) rather than tracking true accumulated play
-  // time across pause/resume, which would need meaningfully more state for
-  // a background convenience feature.
+  // ListenBrainz's own submission guideline (Last.fm's is the same in
+  // spirit): a track counts as "listened" once played for half its length
+  // or 4 minutes, whichever is lower. Measured from wall-clock time since
+  // this track was first detected, not actual accumulated playback time —
+  // a simplification: pausing for a long stretch mid-track can make the
+  // real scrobble land later than that guideline's own intent (or,
+  // rarely, never, if the track changes again before this fires) rather
+  // than tracking true accumulated play time across pause/resume, which
+  // would need meaningfully more state for a background convenience
+  // feature.
   unsigned threshold_seconds = std::min(np.duration / 2, 240u);
   if (threshold_seconds == 0)
     return;  // pathologically short track — nothing meaningful to wait for
@@ -1586,7 +1592,7 @@ void GnomosWindow::MaybeScheduleScrobble(const NowPlaying& np)
   std::string title = np.title;
   std::string album = np.album;
   scrobble_timer_connection_ = Glib::signal_timeout().connect_seconds(
-      [this, key, artist, title, album] {
+      [this, key, artist, title, album, listenbrainz_enabled, lastfm_enabled] {
         // Re-check: only scrobble if this exact track is still the one
         // actually playing right now, not paused and not superseded by a
         // skip that happened to leave the same dedup key stale.
@@ -1594,8 +1600,12 @@ void GnomosWindow::MaybeScheduleScrobble(const NowPlaying& np)
         if (current.valid && current.state == TransportState::Playing &&
             (current.title + "\x1f" + current.artist) == key)
         {
-          ListenBrainzScrobbler::Instance().Scrobble(listenbrainz_token_, artist, title, album,
-                                                      std::chrono::system_clock::now());
+          auto now = std::chrono::system_clock::now();
+          if (listenbrainz_enabled)
+            ListenBrainzScrobbler::Instance().Scrobble(listenbrainz_token_, artist, title, album, now);
+          if (lastfm_enabled)
+            LastFmScrobbler::Instance().Scrobble(lastfm_api_key_, lastfm_shared_secret_, lastfm_session_key_, artist,
+                                                  title, album, now);
         }
         return false;  // one-shot
       },
@@ -2085,6 +2095,169 @@ void GnomosWindow::SetListenBrainzToken(const std::string& token)
   {
     // non-fatal — just means the token won't be remembered next launch
   }
+}
+
+void GnomosWindow::LoadLastFmSettings()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    // Each read is independent — a Glib::Error partway through (e.g. the
+    // session/username keys not existing yet because auth was never
+    // completed) only aborts the *remaining* reads, leaving whatever
+    // already succeeded (api_key/shared_secret here) in place, same
+    // graceful-partial-load behavior every other Load*() in this file
+    // relies on.
+    lastfm_api_key_ = keyfile->get_string("scrobbling", "lastfm_api_key");
+    lastfm_shared_secret_ = keyfile->get_string("scrobbling", "lastfm_shared_secret");
+    lastfm_session_key_ = keyfile->get_string("scrobbling", "lastfm_session_key");
+    lastfm_username_ = keyfile->get_string("scrobbling", "lastfm_username");
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — nothing saved yet, Last.fm scrobbling stays off (the default)
+  }
+}
+
+void GnomosWindow::SetLastFmApiCredentials(const std::string& api_key, const std::string& shared_secret)
+{
+  lastfm_api_key_ = api_key;
+  lastfm_shared_secret_ = shared_secret;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_string("scrobbling", "lastfm_api_key", api_key);
+  keyfile->set_string("scrobbling", "lastfm_shared_secret", shared_secret);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means this won't be remembered next launch
+  }
+}
+
+void GnomosWindow::SetLastFmSession(const std::string& session_key, const std::string& username)
+{
+  lastfm_session_key_ = session_key;
+  lastfm_username_ = username;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_string("scrobbling", "lastfm_session_key", session_key);
+  keyfile->set_string("scrobbling", "lastfm_username", username);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means this won't be remembered next launch
+  }
+}
+
+void GnomosWindow::DisconnectLastFm()
+{
+  SetLastFmSession("", "");
+}
+
+void GnomosWindow::StartLastFmAuth()
+{
+  if (lastfm_api_key_.empty() || lastfm_shared_secret_.empty())
+  {
+    ShowToast("Bitte zuerst API-Schlüssel und Shared Secret eintragen");
+    return;
+  }
+  std::string api_key = lastfm_api_key_;
+  std::string shared_secret = lastfm_shared_secret_;
+  LastFmScrobbler::Instance().RequestAuthToken(api_key, shared_secret, [this](std::string token) {
+    if (token.empty())
+    {
+      ShowToast("Last.fm-Anmeldung fehlgeschlagen — API-Schlüssel/Shared Secret prüfen");
+      return;
+    }
+    ShowLastFmAuthDialog(token);
+  });
+}
+
+void GnomosWindow::ShowLastFmAuthDialog(const std::string& token)
+{
+  auto* dialog = new Gtk::Window();
+  dialog->set_title("Last.fm-Anmeldung");
+  dialog->set_transient_for(*this);
+  dialog->set_modal(true);
+  dialog->set_default_size(420, -1);
+
+  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+  content->set_margin_top(18);
+  content->set_margin_bottom(18);
+  content->set_margin_start(18);
+  content->set_margin_end(18);
+
+  auto* instructions = Gtk::make_managed<Gtk::Label>(
+      "Öffne den folgenden Link in einem Browser, melde dich bei Last.fm an und erlaube den Zugriff. Komm "
+      "danach hierher zurück und klick auf \"Fertig\".");
+  instructions->set_wrap(true);
+  instructions->set_halign(Gtk::Align::START);
+  content->append(*instructions);
+
+  std::string auth_url =
+      "https://www.last.fm/api/auth/?api_key=" + Glib::uri_escape_string(lastfm_api_key_) +
+      "&token=" + Glib::uri_escape_string(token);
+  auto* link_button = Gtk::make_managed<Gtk::LinkButton>(auth_url, auth_url);
+  link_button->set_halign(Gtk::Align::START);
+  content->append(*link_button);
+
+  auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  button_box->set_halign(Gtk::Align::END);
+  button_box->set_margin_top(6);
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
+  auto* done_button = Gtk::make_managed<Gtk::Button>("Fertig");
+  done_button->add_css_class("suggested-action");
+  done_button->signal_clicked().connect([this, dialog, token] {
+    std::string api_key = lastfm_api_key_;
+    std::string shared_secret = lastfm_shared_secret_;
+    LastFmScrobbler::Instance().RequestSession(
+        api_key, shared_secret, token, [this](std::string session_key, std::string username) {
+          if (session_key.empty())
+          {
+            ShowToast("Anmeldung nicht abgeschlossen — im Browser fertig autorisieren und erneut versuchen");
+            return;
+          }
+          SetLastFmSession(session_key, username);
+          ShowToast(username.empty() ? "Last.fm verbunden" : "Last.fm verbunden als „" + username + "“");
+        });
+    dialog->close();
+  });
+  button_box->append(*cancel_button);
+  button_box->append(*done_button);
+  content->append(*button_box);
+
+  dialog->set_child(*content);
+  dialog->signal_hide().connect([dialog] { delete dialog; });
+  dialog->present();
 }
 
 void GnomosWindow::LoadFallbackIconScaleSetting()
@@ -3384,7 +3557,18 @@ void GnomosWindow::ShowSettingsDialog()
   // --- Scrobbling ---
   GtkWidget* scrobbling_group = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(scrobbling_group), "Scrobbling");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(scrobbling_group),
+      "Sendet, sobald ein Titel zu Ende gehört wurde, Interpret/Titel/Album an jeden hier aktivierten "
+      "Dienst — eine echte Übertragung über das Internet, kein lokaler Sonos-Zugriff. Radiosender werden "
+      "nie übertragen.");
 
+  // AdwEntryRow (unlike AdwActionRow) has no subtitle property at all —
+  // same "wrong widget type for a subtitle" issue already hit once before
+  // in this dialog with an AdwButtonRow (see refresh_index_row's own
+  // comment) — so the "leer = aus" explanation lives on
+  // listenbrainz_terms_row's subtitle below instead, the one row here
+  // that's actually an AdwActionRow.
   GtkWidget* listenbrainz_token_row = adw_entry_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(listenbrainz_token_row), "ListenBrainz-Benutzer-Token");
   gtk_editable_set_text(GTK_EDITABLE(listenbrainz_token_row), listenbrainz_token_.c_str());
@@ -3393,20 +3577,73 @@ void GnomosWindow::ShowSettingsDialog()
       new std::function<void(const std::string&)>([this](const std::string& text) { SetListenBrainzToken(text); }),
       DeleteStringCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), listenbrainz_token_row);
-  adw_preferences_group_set_description(
-      ADW_PREFERENCES_GROUP(scrobbling_group),
-      "Leer = aus. Ein Token trägt jeden zu Ende gehörten Titel (Interpret/Titel/Album) an "
-      "api.listenbrainz.org ein — eine echte Übertragung über das Internet, kein lokaler Sonos-Zugriff. "
-      "Radiosender werden nie übertragen.");
 
   GtkWidget* listenbrainz_terms_row = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(listenbrainz_terms_row), "ListenBrainz");
-  adw_action_row_set_subtitle(ADW_ACTION_ROW(listenbrainz_terms_row), "listenbrainz.org/settings");
-  auto* listenbrainz_link_button =
-      Gtk::make_managed<Gtk::LinkButton>("https://listenbrainz.org/settings", "Öffnen");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(listenbrainz_terms_row),
+                               "Leer = aus. Eigenes Token unter listenbrainz.org/settings.");
+  auto* listenbrainz_link_button = Gtk::make_managed<Gtk::LinkButton>("https://listenbrainz.org/settings", "Öffnen");
   listenbrainz_link_button->set_valign(Gtk::Align::CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(listenbrainz_terms_row), GTK_WIDGET(listenbrainz_link_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), listenbrainz_terms_row);
+
+  // Last.fm needs a *registered API application* (an api_key + shared
+  // secret pair from last.fm/api/account/create — something only the user
+  // themselves can obtain, Gnomos has no way to self-register one) plus a
+  // 3-step desktop-auth flow before it can scrobble anything, unlike
+  // ListenBrainz's single pasted token — see LastFmScrobbler's own header
+  // comment.
+  GtkWidget* lastfm_api_key_row = adw_entry_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_api_key_row), "Last.fm-API-Schlüssel");
+  gtk_editable_set_text(GTK_EDITABLE(lastfm_api_key_row), lastfm_api_key_.c_str());
+  g_signal_connect_data(
+      lastfm_api_key_row, "notify::text", G_CALLBACK(OnEntryRowTextChanged),
+      new std::function<void(const std::string&)>(
+          [this](const std::string& text) { SetLastFmApiCredentials(text, lastfm_shared_secret_); }),
+      DeleteStringCallback, static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), lastfm_api_key_row);
+
+  GtkWidget* lastfm_secret_row = adw_password_entry_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_secret_row), "Last.fm-Shared-Secret");
+  gtk_editable_set_text(GTK_EDITABLE(lastfm_secret_row), lastfm_shared_secret_.c_str());
+  g_signal_connect_data(
+      lastfm_secret_row, "notify::text", G_CALLBACK(OnEntryRowTextChanged),
+      new std::function<void(const std::string&)>(
+          [this](const std::string& text) { SetLastFmApiCredentials(lastfm_api_key_, text); }),
+      DeleteStringCallback, static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), lastfm_secret_row);
+
+  GtkWidget* lastfm_connect_row = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_connect_row), "Last.fm");
+  std::string lastfm_status_subtitle =
+      lastfm_session_key_.empty()
+          ? "Nicht verbunden — Konto unter last.fm/api/account/create anlegen"
+          : (lastfm_username_.empty() ? "Verbunden" : "Verbunden als „" + lastfm_username_ + "“");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(lastfm_connect_row), lastfm_status_subtitle.c_str());
+  if (lastfm_session_key_.empty())
+  {
+    auto* connect_button = Gtk::make_managed<Gtk::Button>("Anmelden");
+    connect_button->set_valign(Gtk::Align::CENTER);
+    // Not live-updated within this same open dialog — the row above still
+    // shows "Nicht verbunden" until Settings is reopened, same as
+    // elsewhere in this dialog nothing here rebuilds itself in place after
+    // an async action lands (RebuildGroupingPopover()'s own live rebuild
+    // is the exception, not the rule).
+    connect_button->signal_clicked().connect([this] { StartLastFmAuth(); });
+    adw_action_row_add_suffix(ADW_ACTION_ROW(lastfm_connect_row), GTK_WIDGET(connect_button->gobj()));
+  }
+  else
+  {
+    auto* disconnect_button = Gtk::make_managed<Gtk::Button>("Trennen");
+    disconnect_button->set_valign(Gtk::Align::CENTER);
+    disconnect_button->add_css_class("destructive-action");
+    disconnect_button->signal_clicked().connect([this] {
+      DisconnectLastFm();
+      ShowToast("Last.fm getrennt");
+    });
+    adw_action_row_add_suffix(ADW_ACTION_ROW(lastfm_connect_row), GTK_WIDGET(disconnect_button->gobj()));
+  }
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), lastfm_connect_row);
 
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(scrobbling_group));
 

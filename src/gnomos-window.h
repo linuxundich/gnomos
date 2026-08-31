@@ -222,10 +222,22 @@ private:
   // listenbrainz_token_'s own comment.
   void LoadListenBrainzToken();
   void SetListenBrainzToken(const std::string& token);
+  // [scrobbling] lastfm_api_key/lastfm_shared_secret/lastfm_session_key/
+  // lastfm_username in state.ini — see lastfm_session_key_'s own comment.
+  void LoadLastFmSettings();
+  void SetLastFmApiCredentials(const std::string& api_key, const std::string& shared_secret);
+  void SetLastFmSession(const std::string& session_key, const std::string& username);
+  void DisconnectLastFm();
+  // Desktop-auth flow (see LastFmScrobbler's own header comment for why
+  // this needs 3 steps instead of ListenBrainz's single pasted token):
+  // requests a token, then shows ShowLastFmAuthDialog() with the browser
+  // link to authorize it.
+  void StartLastFmAuth();
+  void ShowLastFmAuthDialog(const std::string& token);
   // Schedules (or cancels/reschedules, on a genuine track change) a
   // one-shot scrobble for `np` once it's been "listened to" long enough —
   // see its own definition for what that means and why. A no-op while
-  // listenbrainz_token_ is empty.
+  // neither listenbrainz_token_ nor lastfm_session_key_ is set.
   void MaybeScheduleScrobble(const NowPlaying& np);
   void SetPreferGridView(bool prefer_grid);
   // [library] fallback_icon_scale in state.ini — see fallback_icon_scale_'s
@@ -453,6 +465,22 @@ private:
   // artist/title/album to api.listenbrainz.org. Persisted to state.ini's
   // own [scrobbling] group.
   std::string listenbrainz_token_;
+  // Last.fm's own equivalent — see LastFmScrobbler's own header comment
+  // for why this needs three separate pieces of state instead of
+  // ListenBrainz's single pasted token: api_key/shared_secret are a
+  // registered API application's own credentials (obtained by the user at
+  // last.fm/api/account/create, entered in Settings), session_key is the
+  // long-lived credential the 3-step desktop-auth flow produces from
+  // those (see StartLastFmAuth()), and username is purely cosmetic — shown
+  // in Settings as "Verbunden als …" once linked. Scrobbling to Last.fm is
+  // active exactly when session_key is non-empty; api_key/shared_secret
+  // alone (entered but not yet authorized) don't enable anything on their
+  // own. All persisted to state.ini's [scrobbling] group, alongside
+  // listenbrainz_token_.
+  std::string lastfm_api_key_;
+  std::string lastfm_shared_secret_;
+  std::string lastfm_session_key_;
+  std::string lastfm_username_;
   // MaybeScheduleScrobble()'s own dedup key ("title\x1fartist" of the
   // track a scrobble is currently scheduled or already sent for) and
   // one-shot timer — see that method's own comment.
