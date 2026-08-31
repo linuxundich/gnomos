@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.11.2" date="2026-08-31">
+      <description>
+        <p>"Titel-Details" now opens at a stable, remembered size instead
+        of one that swung between too short and too tall, and its lyrics
+        no longer appear pre-selected on open.</p>
+      </description>
+    </release>
     <release version="0.11.1" date="2026-08-31">
       <description>
         <p>Fixes the room switcher's per-room live status and play/pause

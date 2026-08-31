@@ -8,6 +8,18 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.11.2] - 2026-08-31
+
+### Fixed
+- "Titel-Details" now opens at a stable, remembered size instead of one
+  that swung between too short and too tall depending on whether its
+  lyrics happened to already be cached — it defaults to this window's
+  own height (visibly inset from its top/bottom edges, not flush with
+  them) the first time, then remembers whatever size it's actually
+  closed at from then on.
+- The lyrics text no longer appears pre-selected/highlighted the moment
+  the dialog opens.
+
 ## [0.11.1] - 2026-08-31
 
 ### Fixed
