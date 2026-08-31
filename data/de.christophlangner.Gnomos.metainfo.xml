@@ -15,6 +15,16 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.9.0" date="2026-08-31">
+      <description>
+        <p>Settings is now split across three tabs instead of one long
+        page. "Bibliothek neu einlesen" reports whether the scan actually
+        finished or failed, Geräteinfo shows a room's serial number and
+        hardware version, a new setting works around Sonos truncating long
+        multi-genre tags, and a new playlist can be created directly from
+        "Zu Playlist hinzufügen".</p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-08-28">
       <description>
         <p>Artist names shown under album covers, ID3 genre tags with

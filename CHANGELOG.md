@@ -8,6 +8,34 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.9.0] - 2026-08-31
+
+### Added
+- "Bibliothek neu einlesen" now reports whether the scan actually
+  completed or failed, instead of only ever confirming that it started.
+- Geräteinfo now also shows a room's serial number and hardware
+  version.
+- A new "Nur erstes Genre verwenden" setting works around Sonos's own
+  indexer truncating a long multi-genre ID3 tag before ever handing it
+  to Gnomos, which could otherwise cut a later genre off mid-word.
+- "Zu Playlist hinzufügen" can create a brand new playlist inline
+  ("Neue Playlist…") instead of requiring an existing one to add to.
+- Settings is now split across three tabs (Allgemein, Bibliothek,
+  Radio) instead of one long stacked page.
+
+### Fixed
+- The "Bibliothek" sidebar row now jumps back to the library root when
+  clicked, even from deep inside a browse — previously did nothing
+  visible if you were already several levels in.
+- Gen1 hardware detection (device model lookup) could silently never
+  resolve under the Flatpak build — the same GVfs-unavailable-under-
+  Flatpak issue already fixed elsewhere for cover art and radio search,
+  missed in that pass since this fetch didn't go through either of
+  those code paths.
+- "Bibliothek neu einlesen" in Einstellungen → Bibliothek threw a GTK
+  warning on every open (an internal row built with the wrong widget
+  type for its subtitle).
+
 ## [0.8.0] - 2026-08-28
 
 ### Added
