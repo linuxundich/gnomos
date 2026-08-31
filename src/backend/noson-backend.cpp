@@ -671,6 +671,27 @@ void NosonBackend::JoinRoomToCurrentZone(const std::string& room_player_uuid)
   });
 }
 
+void NosonBackend::JoinRoomToZone(const std::string& room_player_uuid, const std::string& target_coordinator_uuid)
+{
+  tasks_.Push([this, room_player_uuid, target_coordinator_uuid] {
+    NSROOT::ZonePlayerPtr target;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      target = FindZonePlayer(zones_by_uuid_, room_player_uuid);
+    }
+    if (!target)
+      return;
+
+    NSROOT::Player roomPlayer(target);
+    if (!roomPlayer.JoinToGroup(target_coordinator_uuid))
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Raum konnte nicht gruppiert werden.";
+      error_dispatcher_.emit();
+    }
+  });
+}
+
 void NosonBackend::RemoveRoomFromGroup(const std::string& room_player_uuid)
 {
   tasks_.Push([this, room_player_uuid] {

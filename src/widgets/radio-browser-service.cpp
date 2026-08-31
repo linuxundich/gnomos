@@ -113,6 +113,44 @@ std::vector<RadioBrowserCountry> ParseCountries(const std::string& body)
   return countries;
 }
 
+std::vector<RadioBrowserTag> ParseTags(const std::string& body)
+{
+  std::vector<RadioBrowserTag> tags;
+
+  JsonParser* parser = json_parser_new();
+  GError* error = nullptr;
+  if (!json_parser_load_from_data(parser, body.c_str(), static_cast<gssize>(body.size()), &error))
+  {
+    if (error)
+      g_error_free(error);
+    g_object_unref(parser);
+    return tags;
+  }
+
+  JsonNode* root = json_parser_get_root(parser);
+  if (root && JSON_NODE_HOLDS_ARRAY(root))
+  {
+    JsonArray* array = json_node_get_array(root);
+    guint length = json_array_get_length(array);
+    tags.reserve(length);
+    for (guint i = 0; i < length; ++i)
+    {
+      JsonObject* entry = json_array_get_object_element(array, i);
+      if (!entry)
+        continue;
+      RadioBrowserTag tag;
+      tag.name = StringMember(entry, "name");
+      if (json_object_has_member(entry, "stationcount"))
+        tag.station_count = static_cast<int>(json_object_get_int_member(entry, "stationcount"));
+      if (!tag.name.empty())
+        tags.push_back(std::move(tag));
+    }
+  }
+
+  g_object_unref(parser);
+  return tags;
+}
+
 }  // namespace
 
 RadioBrowserService& RadioBrowserService::Instance()
@@ -122,6 +160,7 @@ RadioBrowserService& RadioBrowserService::Instance()
 }
 
 void RadioBrowserService::SearchStations(const std::string& name, const std::string& countrycode,
+                                          const std::string& tag,
                                           std::function<void(std::vector<RadioBrowserStation>)> callback)
 {
   std::string url = std::string(kApiBase) + "/json/stations/search?limit=" + std::to_string(kMaxResults) +
@@ -130,6 +169,8 @@ void RadioBrowserService::SearchStations(const std::string& name, const std::str
     url += "&name=" + Glib::uri_escape_string(name);
   if (!countrycode.empty())
     url += "&countrycode=" + Glib::uri_escape_string(countrycode);
+  if (!tag.empty())
+    url += "&tag=" + Glib::uri_escape_string(tag);
 
   // An empty body (network error, non-2xx status, ...) resolves as no
   // results below like any other empty/unparseable response — see
@@ -167,6 +208,38 @@ void RadioBrowserService::FetchCountries(std::function<void(std::vector<RadioBro
     pending_country_callbacks_.clear();
     for (auto& cb : callbacks)
       cb(countries);
+  });
+}
+
+void RadioBrowserService::FetchTags(std::function<void(std::vector<RadioBrowserTag>)> callback)
+{
+  if (tags_loaded_)
+  {
+    callback(tags_cache_);
+    return;
+  }
+
+  pending_tag_callbacks_.push_back(std::move(callback));
+  if (pending_tag_callbacks_.size() > 1)
+    return;  // already in flight — just added another waiting callback above
+
+  // Unlike /json/countries (a few hundred entries total), the tag
+  // directory is free-text and effectively unbounded — sorted by
+  // popularity and capped here rather than fetched in full, same
+  // kMaxResults-style reasoning as SearchStations() itself.
+  std::string url = std::string(kApiBase) + "/json/tags?order=stationcount&reverse=true&limit=200";
+  HttpFetch(url, [this](std::string body) {
+    std::vector<RadioBrowserTag> tags = ParseTags(body);
+    if (!tags.empty())
+    {
+      tags_cache_ = tags;
+      tags_loaded_ = true;
+    }
+
+    auto callbacks = std::move(pending_tag_callbacks_);
+    pending_tag_callbacks_.clear();
+    for (auto& cb : callbacks)
+      cb(tags);
   });
 }
 

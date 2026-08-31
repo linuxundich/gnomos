@@ -93,6 +93,11 @@ public:
   // event and updates Zones()/Rooms() the same way any other change would.
   void JoinRoomToCurrentZone(const std::string& room_player_uuid);
   void RemoveRoomFromGroup(const std::string& room_player_uuid);
+  // Same JoinToGroup() action as JoinRoomToCurrentZone() above, but against
+  // an arbitrary target coordinator rather than always the currently
+  // selected zone — backs the room switcher's drag-and-drop grouping
+  // (dragging one zone's row onto another's).
+  void JoinRoomToZone(const std::string& room_player_uuid, const std::string& target_coordinator_uuid);
 
   // Selects the zone to control. Building the Player subscribes to that
   // zone's AVTransport/RenderingControl/ContentDirectory events, which

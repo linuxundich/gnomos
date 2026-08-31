@@ -4,12 +4,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <map>
 #include <tuple>
 
 #include <gdk/gdkkeysyms.h>
+#include <gdkmm/contentprovider.h>
 #include <gdkmm/texture.h>
 #include <giomm/application.h>
 #include <giomm/asyncresult.h>
@@ -25,7 +27,9 @@
 #include <glibmm/miscutils.h>
 #include <gtkmm/box.h>
 #include <gtkmm/checkbutton.h>
+#include <gtkmm/dragsource.h>
 #include <gtkmm/dropdown.h>
+#include <gtkmm/droptarget.h>
 #include <gtkmm/editable.h>
 #include <gtkmm/entry.h>
 #include <gtkmm/expander.h>
@@ -1227,6 +1231,15 @@ void GnomosWindow::OnZonesChanged()
     row_box->set_margin_start(8);
     row_box->set_margin_end(8);
 
+    // Same drag-handle convention QueueView's own rows use — dragging one
+    // zone's row onto another merges every room currently in the dragged
+    // zone into the target zone's group, an alternative to opening the
+    // grouping popover and toggling each room's own switch there.
+    auto* drag_handle = Gtk::make_managed<Gtk::Image>();
+    drag_handle->set_from_icon_name("list-drag-handle-symbolic");
+    drag_handle->add_css_class("dim-label");
+    row_box->append(*drag_handle);
+
     // Icon-prefixed row, matching Euphonica's nav-list style
     // (https://github.com/htkhiem/euphonica) — its sidebar entries (Albums,
     // Artists, ...) are icon+label the same way.
@@ -1303,6 +1316,44 @@ void GnomosWindow::OnZonesChanged()
     std::string zone_name = zone.display_name;
     info_button->signal_clicked().connect([this, group_id, zone_name] { ShowDeviceInfoDialog(group_id, zone_name); });
     row_box->append(*info_button);
+
+    // Drag payload is the dragged zone's own group_id — the drop handler
+    // below looks up every room currently sharing it (Rooms() has no
+    // "give me this whole zone's members" call of its own, but filtering
+    // by group_id is exactly that) and joins each one to the row it was
+    // dropped on, same JoinRoomToZone() call the grouping popover's own
+    // per-room switches use, just against an arbitrary target instead of
+    // always the currently selected zone.
+    auto drag_source = Gtk::DragSource::create();
+    drag_source->set_actions(Gdk::DragAction::MOVE);
+    drag_source->signal_prepare().connect(
+        [group_id](double, double) -> Glib::RefPtr<Gdk::ContentProvider> {
+          Glib::Value<Glib::ustring> value;
+          value.init(Glib::Value<Glib::ustring>::value_type());
+          value.set(group_id);
+          return Gdk::ContentProvider::create(value);
+        },
+        false);
+    row_box->add_controller(drag_source);
+
+    std::string drop_coordinator_uuid = zone.coordinator_uuid;
+    auto drop_target = Gtk::DropTarget::create(Glib::Value<Glib::ustring>::value_type(), Gdk::DragAction::MOVE);
+    drop_target->signal_drop().connect(
+        [this, drop_coordinator_uuid, group_id](const Glib::ValueBase& value, double, double) -> bool {
+          if (value.gobj()->g_type != Glib::Value<Glib::ustring>::value_type())
+            return false;
+          Glib::Value<Glib::ustring> str_value;
+          str_value.init(value.gobj());
+          std::string source_group_id = str_value.get().raw();
+          if (source_group_id == group_id)
+            return false;  // dropped on its own row — nothing to do
+          for (const RoomInfo& room : backend_->Rooms())
+            if (room.group_id == source_group_id)
+              backend_->JoinRoomToZone(room.player_uuid, drop_coordinator_uuid);
+          return true;
+        },
+        false);
+    row_box->add_controller(drop_target);
 
     zones_list_box_.append(*row_box);
 
@@ -2210,6 +2261,69 @@ void GnomosWindow::RebuildGroupingPopover()
   for (const RoomInfo& room : rooms)
     ++group_sizes[room.group_id];
 
+  // "Alle Räume" master fader — a proportional scale (preserves each
+  // member's relative balance) rather than an absolute one, computed and
+  // applied entirely client-side: SetRoomVolume() per member, same call
+  // the individual sliders below already make, no native synced-group-
+  // volume SOAP action exists in this libnoson fork to call instead.
+  // room_scales lets dragging the master also move each member's own
+  // slider live, rather than waiting for the next RebuildGroupingPopover()
+  // (itself only triggered by a real volume-changed event coming back).
+  auto room_scales = std::make_shared<std::map<std::string, Gtk::Scale*>>();
+  std::vector<std::pair<std::string, uint8_t>> member_volumes;
+  for (const RoomInfo& room : rooms)
+  {
+    uint8_t v = 0;
+    if (room.group_id == selected_group_id_ && backend_->GetRoomVolume(room.player_uuid, v))
+      member_volumes.push_back({room.player_uuid, v});
+  }
+  // Redundant with the one per-room slider right below it for a
+  // single-member "group" — only worth showing once there's actually
+  // more than one room to balance against each other.
+  if (member_volumes.size() > 1)
+  {
+    int sum = 0;
+    for (const auto& [uuid, v] : member_volumes)
+      sum += v;
+    int average = sum / static_cast<int>(member_volumes.size());
+
+    auto* master_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
+    master_row->set_margin_top(6);
+    master_row->set_margin_bottom(6);
+    master_row->set_margin_start(6);
+    master_row->set_margin_end(6);
+    auto* master_label = Gtk::make_managed<Gtk::Label>("Alle Räume");
+    master_label->set_halign(Gtk::Align::START);
+    master_label->add_css_class("heading");
+    master_row->append(*master_label);
+    auto* master_scale = Gtk::make_managed<Gtk::Scale>();
+    master_scale->set_range(0, 100);
+    master_scale->set_increments(2, 10);
+    master_scale->set_value(average);
+    master_scale->set_draw_value(false);
+    master_row->append(*master_scale);
+    grouping_list_box_.append(*master_row);
+    grouping_list_box_.append(*Gtk::make_managed<Gtk::Separator>());
+
+    master_scale->signal_value_changed().connect([this, master_scale, member_volumes, average, room_scales] {
+      int new_value = static_cast<int>(master_scale->get_value());
+      for (const auto& [uuid, baseline] : member_volumes)
+      {
+        // average == 0 means every member started silent — nothing to
+        // scale proportionally (baseline * ratio stays 0 forever), so
+        // fall back to setting everyone to the same new value instead.
+        int scaled = average > 0
+                          ? static_cast<int>(std::lround(baseline * (static_cast<double>(new_value) / average)))
+                          : new_value;
+        scaled = std::clamp(scaled, 0, 100);
+        backend_->SetRoomVolume(uuid, static_cast<uint8_t>(scaled));
+        auto it = room_scales->find(uuid);
+        if (it != room_scales->end())
+          it->second->set_value(scaled);
+      }
+    });
+  }
+
   for (const RoomInfo& room : rooms)
   {
     auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
@@ -2298,6 +2412,7 @@ void GnomosWindow::RebuildGroupingPopover()
       volume_scale->signal_value_changed().connect([this, volume_scale, uuid] {
         backend_->SetRoomVolume(uuid, static_cast<uint8_t>(volume_scale->get_value()));
       });
+      (*room_scales)[uuid] = volume_scale;
       row_box->append(*volume_scale);
     }
 
@@ -3843,7 +3958,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
 
   auto* search_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   auto* search_entry = Gtk::make_managed<Gtk::Entry>();
-  search_entry->set_placeholder_text("Sendername…");
+  search_entry->set_placeholder_text("Sendername… (leer = beliebteste Sender)");
   search_entry->set_hexpand(true);
   search_row->append(*search_entry);
   // Populated once FetchCountries() resolves — "Alle Länder" (no filter) is
@@ -3852,6 +3967,11 @@ void GnomosWindow::ShowAddRadioStationDialog()
   auto country_model = Gtk::StringList::create({"Alle Länder"});
   auto* country_dropdown = Gtk::make_managed<Gtk::DropDown>(country_model);
   search_row->append(*country_dropdown);
+  // Same index-0-is-"no filter" convention as country_dropdown, populated
+  // once FetchTags() resolves — see genres' own comment below.
+  auto genre_model = Gtk::StringList::create({"Alle Genres"});
+  auto* genre_dropdown = Gtk::make_managed<Gtk::DropDown>(genre_model);
+  search_row->append(*genre_dropdown);
   auto* search_button = Gtk::make_managed<Gtk::Button>();
   search_button->set_icon_name("system-search-symbolic");
   search_row->append(*search_button);
@@ -3870,6 +3990,10 @@ void GnomosWindow::ShowAddRadioStationDialog()
   // FetchCountries() callback and every later search need to read it.
   auto countrycodes = std::make_shared<std::vector<std::string>>();
   countrycodes->push_back("");
+  // Same convention, index-aligned with genre_model — see FetchTags()'s own
+  // comment for why this is user-submitted free text, not a curated list.
+  auto genre_tags = std::make_shared<std::vector<std::string>>();
+  genre_tags->push_back("");
   // Index-aligned with whatever's currently in results_list, same
   // real-index convention every other list in this app already uses —
   // rebuilt fresh on every search, so always valid for the results
@@ -3892,15 +4016,20 @@ void GnomosWindow::ShowAddRadioStationDialog()
     ShowToast("„" + station.name + "“ hinzugefügt");
   };
 
-  auto run_search = [this, search_entry, country_dropdown, countrycodes, results, results_list, add_station] {
+  auto run_search = [this, search_entry, country_dropdown, countrycodes, genre_dropdown, genre_tags, results,
+                      results_list, add_station] {
     while (Gtk::Widget* child = results_list->get_first_child())
       results_list->remove(*child);
     std::string countrycode;
     guint selected = country_dropdown->get_selected();
     if (selected != GTK_INVALID_LIST_POSITION && selected < countrycodes->size())
       countrycode = (*countrycodes)[selected];
+    std::string tag;
+    guint genre_selected = genre_dropdown->get_selected();
+    if (genre_selected != GTK_INVALID_LIST_POSITION && genre_selected < genre_tags->size())
+      tag = (*genre_tags)[genre_selected];
     RadioBrowserService::Instance().SearchStations(
-        search_entry->get_text(), countrycode,
+        search_entry->get_text(), countrycode, tag,
         [results, results_list, add_station](std::vector<RadioBrowserStation> stations) {
           *results = std::move(stations);
           if (results->empty())
@@ -3989,6 +4118,18 @@ void GnomosWindow::ShowAddRadioStationDialog()
         }
       });
 
+  RadioBrowserService::Instance().FetchTags([genre_model, genre_tags](std::vector<RadioBrowserTag> tags) {
+    // Already sorted by station_count descending (FetchTags()' own query)
+    // — kept in that order rather than alphabetized like countries above,
+    // so the most useful genres land near the top of a long, uncurated
+    // list instead of wherever their name happens to sort to.
+    for (const RadioBrowserTag& tag : tags)
+    {
+      genre_model->append(tag.name + " (" + std::to_string(tag.station_count) + ")");
+      genre_tags->push_back(tag.name);
+    }
+  });
+
   auto* manual_expander = Gtk::make_managed<Gtk::Expander>("Manuell eingeben (Name und Stream-URL)");
   auto* manual_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 6);
   manual_box->set_margin_top(6);
@@ -4030,6 +4171,12 @@ void GnomosWindow::ShowAddRadioStationDialog()
 
   dialog->set_child(*content);
   dialog->present();
+  // SearchStations() with every filter empty is itself "globally popular
+  // stations" (see its own comment on the always-applied clickcount
+  // ordering) — running it immediately means opening this dialog already
+  // shows something browsable, rather than an empty list until the user
+  // types a name or picks a filter first.
+  run_search();
 }
 
 void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
