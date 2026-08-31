@@ -252,6 +252,16 @@ public:
   // queue, PlayFavorite() still needs a selected zone to play *into*.
   void RefreshFavoritesAsync();
   std::vector<FavoriteItem> GetFavorites() const;
+  // Every current favorite whose own "res" is a radio stream
+  // (x-rincon-mp3radio: scheme — the same wrapping AddRadioStation()'s own
+  // System::CreateRadio() call applies, stripped back off here so the
+  // result round-trips straight back through AddRadioStation() later, e.g.
+  // from a local backup file). Reads favorites_raw_ (already cached from
+  // the last RefreshFavoritesAsync(), same as GetFavorites() itself) — no
+  // network round trip. Every other favorite type (track, album, playlist,
+  // linked-service item) is silently excluded rather than guessed at; see
+  // ExportableRadioFavorite's own comment for why.
+  std::vector<ExportableRadioFavorite> GetExportableRadioFavorites() const;
   void PlayFavorite(unsigned index);
   // Appends without interrupting current playback (AVTransport::AddURIToQueue,
   // position 0 = append at end). Fails gracefully — same non-queueable

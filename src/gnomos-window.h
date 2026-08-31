@@ -93,6 +93,24 @@ private:
   // one-off, unsaved stream play, reached from the primary menu. Distinct
   // from ShowAddRadioStationDialog(), which always persists a favorite.
   void ShowPlayStreamDialog();
+  // Local JSON backup of radio favorites only — see
+  // NosonBackend::GetExportableRadioFavorites()'s own comment for why not
+  // every favorite type. Reached from the primary menu.
+  void ExportRadioFavorites();
+  void ImportRadioFavorites();
+  // Scenes (grouping presets) — captures every room's current group
+  // (which coordinator, if any, it's joined to) and, best-effort, its
+  // current volume, as a named preset restorable in one click. Purely
+  // client-side, composing JoinRoomToZone()/RemoveRoomFromGroup()/
+  // SetRoomVolume(), the same calls the grouping popover's own switches
+  // and sliders already make — no new backend/libnoson surface needed.
+  void LoadScenes();
+  void SaveScenes() const;
+  void CaptureCurrentAsScene(const std::string& name);
+  void ApplyScene(const std::string& name);
+  void DeleteScene(const std::string& name);
+  void ShowScenesDialog();
+  void ShowSaveSceneDialog();
   void ShowClearQueueConfirmDialog();
   // Same confirm-dialog treatment as ShowClearQueueConfirmDialog() — a
   // multi-item removal is just as unrecoverable as clearing the whole
@@ -200,6 +218,15 @@ private:
   // track_info_dialog_width_'s own comment.
   void LoadTrackInfoDialogSize();
   void SaveTrackInfoDialogSize(int width, int height);
+  // [scrobbling] listenbrainz_token in state.ini — see
+  // listenbrainz_token_'s own comment.
+  void LoadListenBrainzToken();
+  void SetListenBrainzToken(const std::string& token);
+  // Schedules (or cancels/reschedules, on a genuine track change) a
+  // one-shot scrobble for `np` once it's been "listened to" long enough —
+  // see its own definition for what that means and why. A no-op while
+  // listenbrainz_token_ is empty.
+  void MaybeScheduleScrobble(const NowPlaying& np);
   void SetPreferGridView(bool prefer_grid);
   // [library] fallback_icon_scale in state.ini — see fallback_icon_scale_'s
   // own comment.
@@ -420,6 +447,24 @@ private:
   // tracks whatever the user last resized it to.
   int track_info_dialog_width_ = 0;
   int track_info_dialog_height_ = 0;
+  // Empty means scrobbling is off — the token itself gates the feature,
+  // no separate on/off switch needed (there's nothing useful this could do
+  // without one anyway). Every enabled scrobble sends the current track's
+  // artist/title/album to api.listenbrainz.org. Persisted to state.ini's
+  // own [scrobbling] group.
+  std::string listenbrainz_token_;
+  // MaybeScheduleScrobble()'s own dedup key ("title\x1fartist" of the
+  // track a scrobble is currently scheduled or already sent for) and
+  // one-shot timer — see that method's own comment.
+  std::string last_scrobble_scheduled_key_;
+  sigc::connection scrobble_timer_connection_;
+  // Loaded once at startup (LoadScenes()), kept in memory and rewritten in
+  // full on every change — see SaveScenes()'s own comment. Persisted to
+  // its own scenes.ini, one Glib::KeyFile group per scene (its name is the
+  // group name), separate from state.ini since this can grow unbounded
+  // with the household's own room count/scene count, unlike everything
+  // else state.ini holds.
+  std::vector<RoomScene> scenes_;
   // How large a CoverThumbnail fallback icon's own glyph renders relative
   // to its tile — see CoverThumbnail::SetFallbackIconScale()'s own
   // comment for why this is the user's own call rather than a fixed

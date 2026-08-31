@@ -1851,6 +1851,27 @@ std::vector<FavoriteItem> NosonBackend::GetFavorites() const
   return favorites_;
 }
 
+std::vector<ExportableRadioFavorite> NosonBackend::GetExportableRadioFavorites() const
+{
+  static const std::string kMp3RadioPrefix = "x-rincon-mp3radio://";
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  std::vector<ExportableRadioFavorite> result;
+  for (const NSROOT::DigitalItemPtr& item : favorites_raw_)
+  {
+    if (!item)
+      continue;
+    std::string res = item->GetValue("res");
+    if (res.compare(0, kMp3RadioPrefix.size(), kMp3RadioPrefix) != 0)
+      continue;
+    ExportableRadioFavorite entry;
+    entry.title = item->GetValue("dc:title");
+    entry.stream_url = res.substr(kMp3RadioPrefix.size());
+    if (!entry.title.empty() && !entry.stream_url.empty())
+      result.push_back(std::move(entry));
+  }
+  return result;
+}
+
 void NosonBackend::PlayFavorite(unsigned index)
 {
   tasks_.Push([this, index] {

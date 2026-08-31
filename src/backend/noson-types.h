@@ -228,6 +228,20 @@ struct FavoriteItem
   unsigned index = 0;    // position in the favorites list, passed back to NosonBackend::PlayFavorite()
 };
 
+// A radio favorite's own title + plain stream URL — everything
+// NosonBackend::AddRadioStation() needs to recreate it later, e.g. from a
+// local backup file. Deliberately not a generic "any favorite" export:
+// FavoriteItem above carries no URI at all, and reconstructing a *generic*
+// re-addable favorite (arbitrary track/album/playlist/service item, with
+// its correct protocolInfo/service desc token/subType) risks silently
+// producing a broken one for anything that isn't a plain radio stream —
+// see NosonBackend::GetExportableRadioFavorites()'s own comment.
+struct ExportableRadioFavorite
+{
+  std::string title;
+  std::string stream_url;
+};
+
 // A past NowPlaying snapshot, recorded client-side (Sonos/UPnP has no
 // native play-history API) purely for display in the "Zuletzt gespielt"
 // tab. Deliberately has no object_id/URI to replay from — NowPlaying
@@ -387,6 +401,33 @@ struct RoomNowPlaying
   // since ToggleRoomPlayback() has no NowPlaying::can_pause of its own to
   // read (this struct doesn't carry it — see above).
   bool can_pause = true;
+};
+
+// One room's own recorded state within a RoomScene (see its own comment) —
+// purely a GnomosWindow-level concern (no backend/libnoson call reads or
+// writes this type directly), kept here only because every other small
+// UI-facing data struct already lives in this file.
+struct RoomSceneEntry
+{
+  std::string room_uuid;
+  // == room_uuid itself when this room was standalone (its own
+  // coordinator) at capture time, rather than a separate "is_standalone"
+  // flag — ApplyScene() already needs to compare the two either way to
+  // decide whether a JoinRoomToZone() call is even necessary.
+  std::string coordinator_uuid;
+  bool has_volume = false;
+  uint8_t volume = 0;
+};
+
+// A named grouping preset — every room's group membership and, best
+// effort, its volume, captured in one go and restorable in one click
+// (GnomosWindow's own "Szenen" dialog). Purely client-side: composes
+// JoinRoomToZone()/RemoveRoomFromGroup()/SetRoomVolume(), the same calls
+// the grouping popover's own switches and sliders already make.
+struct RoomScene
+{
+  std::string name;
+  std::vector<RoomSceneEntry> rooms;
 };
 
 }  // namespace gnomos

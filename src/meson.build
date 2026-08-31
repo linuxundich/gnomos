@@ -14,6 +14,7 @@ gnomos_sources = files(
   'widgets/history-view.cpp',
   'widgets/http-fetch.cpp',
   'widgets/library-view.cpp',
+  'widgets/listenbrainz-scrobbler.cpp',
   'widgets/lyrics-fetcher.cpp',
   'widgets/player-bar.cpp',
   'widgets/queue-view.cpp',
