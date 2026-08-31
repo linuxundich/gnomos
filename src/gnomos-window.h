@@ -90,6 +90,11 @@ private:
   void ShowLinkServiceDialog();
   void ShowSavePlaylistDialog();
   void ShowClearQueueConfirmDialog();
+  // Same confirm-dialog treatment as ShowClearQueueConfirmDialog() — a
+  // multi-item removal is just as unrecoverable as clearing the whole
+  // queue. indices are whatever QueueView::signal_remove_selected_requested()
+  // last carried (always non-empty — see that signal's own comment).
+  void ShowRemoveSelectedQueueItemsConfirmDialog(std::vector<unsigned> indices);
   void ShowDeleteFavoriteConfirmDialog(unsigned index);
   void ShowDeleteAlarmConfirmDialog(std::string alarm_id);
   // Handles both cases LibraryView::signal_delete_requested() can mean —

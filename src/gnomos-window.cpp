@@ -715,6 +715,8 @@ GnomosWindow::GnomosWindow()
 
   queue_view_.signal_item_activated().connect([this](unsigned index) { backend_->PlayQueueItem(index); });
   queue_view_.signal_item_remove_requested().connect([this](unsigned index) { backend_->RemoveQueueItem(index); });
+  queue_view_.signal_remove_selected_requested().connect(
+      sigc::mem_fun(*this, &GnomosWindow::ShowRemoveSelectedQueueItemsConfirmDialog));
   queue_view_.signal_clear_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowClearQueueConfirmDialog));
   queue_view_.signal_save_playlist_requested().connect(sigc::mem_fun(*this, &GnomosWindow::ShowSavePlaylistDialog));
   queue_view_.signal_reorder_requested().connect(
@@ -3211,6 +3213,17 @@ void GnomosWindow::ShowClearQueueConfirmDialog()
   ShowConfirmDialog("Warteschlange leeren?",
                      "Alle Titel aus der Warteschlange entfernen? Das kann nicht rückgängig gemacht werden.",
                      "Leeren", [this] { backend_->ClearQueue(); });
+}
+
+void GnomosWindow::ShowRemoveSelectedQueueItemsConfirmDialog(std::vector<unsigned> indices)
+{
+  std::string body = indices.size() == 1 ? "1 Titel aus der Warteschlange entfernen? Das kann nicht rückgängig "
+                                            "gemacht werden."
+                                          : std::to_string(indices.size()) +
+                                                " Titel aus der Warteschlange entfernen? Das kann nicht "
+                                                "rückgängig gemacht werden.";
+  ShowConfirmDialog("Ausgewählte entfernen?", body, "Entfernen",
+                     [this, indices] { backend_->RemoveQueueItems(indices); });
 }
 
 void GnomosWindow::ShowDeleteFavoriteConfirmDialog(unsigned index)

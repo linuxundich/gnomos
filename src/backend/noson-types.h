@@ -156,6 +156,17 @@ struct VolumeInfo
 {
   uint8_t volume = 0;
   bool muted = false;
+  // RenderingControl's own logarithmic dB scale (RCSProperty::VolumeDecibelMaster),
+  // alongside the simple 0-100 volume already above — genuinely
+  // per-device, not a group concept the way the 0-100 scale's group
+  // average is, so this reads just one representative member of the
+  // current group (whichever RefreshVolumeLocked() happened to iterate
+  // first) rather than trying to average several devices' own dB scales,
+  // which can differ by model. Comes back "for free" as part of the same
+  // GetRenderingProperty() call volume/muted above are already read
+  // from — no extra network round trip. Purely informational (a
+  // PlayerBar tooltip); never used for any actual volume logic.
+  int16_t volume_db = 0;
 };
 
 struct SoundSettings

@@ -461,7 +461,10 @@ void PlayerBar::UpdateVolume(const VolumeInfo& volume)
   suppress_volume_signal_ = true;
   volume_scale_.set_value(volume.volume);
   suppress_volume_signal_ = false;
-  volume_scale_.set_tooltip_text(std::to_string(volume.volume) + "%");
+  // See VolumeInfo::volume_db's own comment — informational only, one
+  // representative room's dB value, not a group concept the way the
+  // percentage's own group average is.
+  volume_scale_.set_tooltip_text(std::to_string(volume.volume) + "% (" + std::to_string(volume.volume_db) + " dB)");
 
   muted_ = volume.muted;
   mute_button_.set_icon_name(IconForVolume(volume.volume, volume.muted));

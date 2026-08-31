@@ -165,6 +165,15 @@ public:
   void RefreshQueueAsync();
   void PlayQueueItem(unsigned index);
   void RemoveQueueItem(unsigned index);
+  // Same 0-based queue indices as RemoveQueueItem(), any number of them,
+  // in any order — collapsed into the fewest possible contiguous ranges
+  // and removed via AVTransport::RemoveTrackRangeFromQueue() (one SOAP
+  // call per range, not per track), highest-index range first so an
+  // earlier removal in the same batch never shifts the position of a
+  // range still waiting to be removed. See its own .cpp comment for why
+  // this needs a fresh containerUpdateID between ranges rather than
+  // reusing queue_update_id_ for all of them.
+  void RemoveQueueItems(std::vector<unsigned> indices);
   void ClearQueue();
   void SaveQueueAsPlaylist(const std::string& title);
   // Both indices are 0-based positions in the last-refreshed queue (same

@@ -18,6 +18,7 @@
 #include <glibmm/miscutils.h>
 
 #include <alarm.h>
+#include <avtransport.h>
 #include <contentdirectory.h>
 #include <deviceproperties.h>
 #include <didlparser.h>
@@ -1453,6 +1454,77 @@ void NosonBackend::RemoveQueueItem(unsigned index)
   });
 }
 
+void NosonBackend::RemoveQueueItems(std::vector<unsigned> indices)
+{
+  tasks_.Push([this, indices = std::move(indices)] {
+    auto player = SnapshotPlayer();
+    if (!player || indices.empty())
+      return;
+
+    std::vector<unsigned> sorted = indices;
+    std::sort(sorted.begin(), sorted.end());
+    sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+
+    // Collapse into maximal contiguous runs — RemoveTrackRangeFromQueue()
+    // removes a whole run in one SOAP call instead of one per track.
+    std::vector<std::pair<unsigned, unsigned>> ranges;  // (start, count)
+    for (size_t i = 0; i < sorted.size();)
+    {
+      size_t j = i + 1;
+      while (j < sorted.size() && sorted[j] == sorted[j - 1] + 1)
+        ++j;
+      ranges.push_back({sorted[i], static_cast<unsigned>(j - i)});
+      i = j;
+    }
+    // Highest-index range first, so an earlier removal in this loop never
+    // shifts the position of a range still waiting to be removed.
+    std::sort(ranges.begin(), ranges.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+
+    // Player has no RemoveTrackRangeFromQueue() of its own (unlike
+    // RemoveTrackFromQueue()) — a short-lived AVTransport targeting the
+    // same host/port, same reasoning RefreshQueueAsync() already gives
+    // for constructing its own ContentDirectory instead of going through
+    // Player.
+    NSROOT::AVTransport avtransport(player->GetHost(), player->GetPort());
+    bool any_failed = false;
+    for (const auto& [start, count] : ranges)
+    {
+      unsigned update_id;
+      {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        update_id = queue_update_id_;
+      }
+      if (!avtransport.RemoveTrackRangeFromQueue(start, count, update_id))
+      {
+        any_failed = true;
+        break;
+      }
+      if (ranges.size() > 1)
+      {
+        // RemoveTrackRangeFromQueue() hands back a fresh "NewUpdateID" in
+        // its own SOAP response, but has no way to return it to this
+        // caller (see its own header) — re-browse to pick up the
+        // container's now-current update ID before the next range, same
+        // as RefreshQueueAsync() itself already does after any queue
+        // mutation. Skipped entirely for the single-range (by far the
+        // common) case — nothing left to reuse it for.
+        NSROOT::ContentDirectory queueDirectory(player->GetHost(), player->GetPort());
+        NSROOT::ContentBrowser browser(queueDirectory, NSROOT::ContentSearch(NSROOT::SearchQueue, ""), 1);
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        queue_update_id_ = browser.GetUpdateID();
+      }
+    }
+
+    if (any_failed)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Titel konnten nicht aus der Warteschlange entfernt werden.";
+      error_dispatcher_.emit();
+    }
+    RefreshQueueAsync();
+  });
+}
+
 void NosonBackend::ClearQueue()
 {
   tasks_.Push([this] {
@@ -1738,16 +1810,20 @@ void NosonBackend::AddAllFavoritesToQueue()
     // commonly) is silently skipped, same as AddAllLibraryItemsToQueue()
     // already does for its own non-queueable entries — there's nothing
     // sensible a bulk queue action could do with a stream anyway.
-    unsigned added = 0;
+    std::vector<NSROOT::DigitalItemPtr> queueable;
+    queueable.reserve(favorites.size());
     for (const NSROOT::DigitalItemPtr& favorite : favorites)
     {
       NSROOT::DigitalItemPtr item;
-      if (NSROOT::System::ExtractObjectFromFavorite(favorite, item) && NSROOT::System::CanQueueItem(item) &&
-          player->AddURIToQueue(item, 0) > 0)
-        ++added;
+      if (NSROOT::System::ExtractObjectFromFavorite(favorite, item) && NSROOT::System::CanQueueItem(item))
+        queueable.push_back(std::move(item));
     }
 
-    if (added == 0)
+    // Player::AddMultipleURIsToQueue() batches internally (max 16 URIs
+    // per SOAP call, its own fixed chunk size — see sonosplayer.cpp) —
+    // one call here instead of one AddURIToQueue() round trip per
+    // favorite cuts a large "add all" from N round trips to N/16.
+    if (queueable.empty() || player->AddMultipleURIsToQueue(queueable) == 0)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       pending_error_ = "Favoriten konnten nicht zur Warteschlange hinzugefügt werden.";
@@ -2710,14 +2786,15 @@ void NosonBackend::AddAllLibraryItemsToQueue()
     if (!player || items.empty())
       return;
 
-    unsigned added = 0;
+    // See AddAllFavoritesToQueue()'s identical comment — batches
+    // internally, one call instead of N round trips.
+    std::vector<NSROOT::DigitalItemPtr> queueable;
+    queueable.reserve(items.size());
     for (const NSROOT::DigitalItemPtr& item : items)
-    {
-      if (NSROOT::System::CanQueueItem(item) && player->AddURIToQueue(item, 0) > 0)
-        ++added;
-    }
+      if (NSROOT::System::CanQueueItem(item))
+        queueable.push_back(item);
 
-    if (added == 0)
+    if (queueable.empty() || player->AddMultipleURIsToQueue(queueable) == 0)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       pending_error_ = "Titel konnten nicht zur Warteschlange hinzugefügt werden.";
@@ -3766,6 +3843,7 @@ void NosonBackend::RefreshVolumeLocked()
   // group" check.
   unsigned sum = 0, count = 0;
   bool any_unmuted = false;
+  bool have_db = false;
   room_volumes_.clear();
   for (const NSROOT::SRProperty& srp : player_->GetRenderingProperty())
   {
@@ -3776,6 +3854,13 @@ void NosonBackend::RefreshVolumeLocked()
     if (!srp.property.MuteMaster)
       any_unmuted = true;
     room_volumes_[srp.uuid] = static_cast<uint8_t>(srp.property.VolumeMaster);
+    // See VolumeInfo::volume_db's own comment — just one representative
+    // member (whichever this loop reaches first), not an average.
+    if (!have_db)
+    {
+      volume_.volume_db = static_cast<int16_t>(srp.property.VolumeDecibelMaster);
+      have_db = true;
+    }
   }
   if (count > 0)
   {

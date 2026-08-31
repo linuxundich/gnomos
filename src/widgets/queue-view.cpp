@@ -2,6 +2,7 @@
 
 #include "queue-view.h"
 
+#include <algorithm>
 #include <string>
 
 #include <gdkmm/contentprovider.h>
@@ -48,6 +49,28 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   clear_button_.add_css_class("flat");
   clear_button_.signal_clicked().connect([this] { signal_clear_requested_.emit(); });
   toolbar->append(clear_button_);
+
+  select_mode_button_.set_icon_name("selection-mode-symbolic");
+  select_mode_button_.set_tooltip_text("Mehrere auswählen");
+  select_mode_button_.add_css_class("flat");
+  select_mode_button_.signal_toggled().connect([this] { UpdateSelectModeVisibility(); });
+  toolbar->append(select_mode_button_);
+
+  remove_selected_button_.set_icon_name("user-trash-symbolic");
+  remove_selected_button_.set_tooltip_text("Ausgewählte entfernen");
+  remove_selected_button_.add_css_class("flat");
+  remove_selected_button_.add_css_class("destructive-action");
+  remove_selected_button_.set_visible(false);
+  remove_selected_button_.set_sensitive(false);
+  remove_selected_button_.signal_clicked().connect([this] {
+    std::vector<unsigned> indices;
+    for (size_t i = 0; i < select_checks_.size(); ++i)
+      if (select_checks_[i]->get_active())
+        indices.push_back(static_cast<unsigned>(i));
+    if (!indices.empty())
+      signal_remove_selected_requested_.emit(indices);
+  });
+  toolbar->append(remove_selected_button_);
   append(*toolbar);
 
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
@@ -81,6 +104,13 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
     row_box->set_margin_bottom(6);
     row_box->set_margin_start(6);
     row_box->set_margin_end(6);
+
+    auto* select_check = Gtk::make_managed<Gtk::CheckButton>();
+    select_check->set_valign(Gtk::Align::CENTER);
+    select_check->set_visible(select_mode_button_.get_active());
+    select_check->signal_toggled().connect([this] { UpdateRemoveSelectedSensitivity(); });
+    row_box->append(*select_check);
+    select_checks_.push_back(select_check);
 
     auto* drag_handle = Gtk::make_managed<Gtk::Image>();
     drag_handle->set_from_icon_name("list-drag-handle-symbolic");
@@ -162,6 +192,9 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
 
     list_box_.append(*row_box);
   }
+  // A full rebuild starts every row unchecked — reflect that rather than
+  // leaving remove_selected_button_ sensitive from before the rebuild.
+  UpdateRemoveSelectedSensitivity();
 }
 
 void QueueView::SetCurrentIndex(int index)
@@ -175,8 +208,33 @@ void QueueView::SetCurrentIndex(int index)
 void QueueView::Clear()
 {
   now_playing_icons_.clear();
+  select_checks_.clear();
   while (Gtk::Widget* child = list_box_.get_first_child())
     list_box_.remove(*child);
+}
+
+void QueueView::UpdateSelectModeVisibility()
+{
+  bool active = select_mode_button_.get_active();
+  remove_selected_button_.set_visible(active);
+  for (Gtk::CheckButton* check : select_checks_)
+    check->set_visible(active);
+  if (!active)
+  {
+    // Leaving selection mode drops whatever was checked — matches
+    // clicking it again meaning "start over", not "remember for next
+    // time", and keeps remove_selected_button_'s own sensitivity honest
+    // for whenever selection mode is re-entered.
+    for (Gtk::CheckButton* check : select_checks_)
+      check->set_active(false);
+  }
+}
+
+void QueueView::UpdateRemoveSelectedSensitivity()
+{
+  bool any_checked = std::any_of(select_checks_.begin(), select_checks_.end(),
+                                  [](Gtk::CheckButton* check) { return check->get_active(); });
+  remove_selected_button_.set_sensitive(any_checked);
 }
 
 }  // namespace gnomos
