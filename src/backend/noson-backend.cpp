@@ -274,6 +274,7 @@ NosonBackend::NosonBackend()
   library_dispatcher_.connect([this] { signal_library_changed_.emit(); });
   saved_playlists_dispatcher_.connect([this] { signal_saved_playlists_changed_.emit(); });
   library_index_status_dispatcher_.connect([this] { signal_library_index_status_changed_.emit(); });
+  room_now_playing_dispatcher_.connect([this] { signal_room_now_playing_changed_.emit(); });
   sleep_timer_dispatcher_.connect([this] { signal_sleep_timer_changed_.emit(); });
   sound_settings_dispatcher_.connect([this] { signal_sound_settings_changed_.emit(); });
   service_link_ready_dispatcher_.connect([this] {
@@ -687,6 +688,94 @@ void NosonBackend::RemoveRoomFromGroup(const std::string& room_player_uuid)
       pending_error_ = "Raum konnte nicht aus der Gruppe entfernt werden.";
       error_dispatcher_.emit();
     }
+  });
+}
+
+void NosonBackend::RefreshAllRoomNowPlayingAsync()
+{
+  tasks_.Push([this] {
+    std::vector<NSROOT::ZonePlayerPtr> coordinators;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      for (const auto& kv : zones_by_uuid_)
+        if (NSROOT::ZonePlayerPtr coordinator = kv.second->GetCoordinator())
+          coordinators.push_back(coordinator);
+    }
+
+    std::map<std::string, RoomNowPlaying> results;
+    for (const NSROOT::ZonePlayerPtr& zp : coordinators)
+    {
+      if (!zp->IsValid())
+        continue;
+      NSROOT::Player roomPlayer(zp);
+      NSROOT::AVTProperty prop = roomPlayer.GetTransportProperty();
+
+      RoomNowPlaying np;
+      np.valid = true;
+      np.state = ParseTransportState(prop.TransportState);
+      np.can_pause = prop.CurrentTransportActions.find("Pause") != std::string::npos;
+      // Same title fallback RefreshNowPlayingLocked() uses for a settled
+      // (non-TRANSITIONING) track, simplified — this is a compact
+      // secondary display (the room switcher's own row subtitle), not the
+      // main Now Playing bar, so it doesn't need that function's full
+      // TRANSITIONING/radio-content handling.
+      if (prop.CurrentTrackMetaData)
+        np.title = prop.CurrentTrackMetaData->GetValue("dc:title");
+      if (np.title.empty() && prop.r_EnqueuedTransportURIMetaData)
+        np.title = prop.r_EnqueuedTransportURIMetaData->GetValue("dc:title");
+      results[zp->GetUUID()] = std::move(np);
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      room_now_playing_by_uuid_ = std::move(results);
+    }
+    room_now_playing_dispatcher_.emit();
+  });
+}
+
+RoomNowPlaying NosonBackend::GetRoomNowPlaying(const std::string& coordinator_uuid) const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  auto it = room_now_playing_by_uuid_.find(coordinator_uuid);
+  return it != room_now_playing_by_uuid_.end() ? it->second : RoomNowPlaying{};
+}
+
+void NosonBackend::ToggleRoomPlayback(const std::string& coordinator_uuid)
+{
+  tasks_.Push([this, coordinator_uuid] {
+    NSROOT::ZonePlayerPtr target;
+    bool can_pause;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      target = FindZonePlayer(zones_by_uuid_, coordinator_uuid);
+      auto it = room_now_playing_by_uuid_.find(coordinator_uuid);
+      can_pause = it != room_now_playing_by_uuid_.end() ? it->second.can_pause : true;
+    }
+    if (!target)
+      return;
+
+    NSROOT::Player roomPlayer(target);
+    // Same "is it actually already playing" check PauseOrStop() makes for
+    // the currently selected zone, just read from the cached
+    // RoomNowPlaying snapshot here instead of a fresh GetTransportProperty()
+    // call — one round trip instead of two for the common case.
+    NSROOT::AVTProperty prop = roomPlayer.GetTransportProperty();
+    if (ParseTransportState(prop.TransportState) == TransportState::Playing)
+    {
+      if (can_pause)
+        roomPlayer.Pause();
+      else
+        roomPlayer.Stop();
+    }
+    else
+    {
+      roomPlayer.Play();
+    }
+    // The button's own row will catch up on the next
+    // RefreshAllRoomNowPlayingAsync() tick (GnomosWindow's own repeating
+    // timer while the popover stays open) rather than forcing an
+    // immediate extra refresh here.
   });
 }
 

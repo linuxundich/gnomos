@@ -189,6 +189,9 @@ private:
   // own comment.
   void LoadArtistImagesSetting();
   void SetLoadArtistImages(bool enabled);
+  // [player] load_lyrics in state.ini — see load_lyrics_'s own comment.
+  void LoadLyricsSetting();
+  void SetLoadLyrics(bool enabled);
   void SetPreferGridView(bool prefer_grid);
   // [library] fallback_icon_scale in state.ini — see fallback_icon_scale_'s
   // own comment.
@@ -381,11 +384,15 @@ private:
   // state.ini's [library] group.
   bool prefer_grid_view_ = true;
   // Off by default (opt-in via Settings) — every enabled lookup sends an
-  // artist's name to Deezer's public API (see ArtistImageFetcher), the
-  // only place in this app that talks to anything beyond the local Sonos
-  // household. Persisted to state.ini's [library] group, alongside
-  // prefer_grid_view_.
+  // artist's name to Deezer's public API (see ArtistImageFetcher). One of
+  // two opt-in features (alongside load_lyrics_) that talk to anything
+  // beyond the local Sonos household. Persisted to state.ini's [library]
+  // group, alongside prefer_grid_view_.
   bool load_artist_images_ = false;
+  // Off by default (opt-in via Settings) — every enabled lookup sends the
+  // current track's artist/title/album to LRCLIB's public API (see
+  // LyricsFetcher). Persisted to state.ini's [player] group.
+  bool load_lyrics_ = false;
   // How large a CoverThumbnail fallback icon's own glyph renders relative
   // to its tile — see CoverThumbnail::SetFallbackIconScale()'s own
   // comment for why this is the user's own call rather than a fixed
@@ -448,6 +455,10 @@ private:
   // neu einlesen" click, so back-to-back clicks don't stack up timers.
   sigc::connection library_index_poll_connection_;
   sigc::connection library_index_status_connection_;
+
+  // Polls per-room now-playing snapshots while room_popover_ is open;
+  // started on signal_show(), stopped on signal_closed().
+  sigc::connection room_now_playing_poll_connection_;
 
   // Space = play/pause when no text-entry field has focus — see
   // OnKeyPressed()'s header comment for why an Editable check is needed.

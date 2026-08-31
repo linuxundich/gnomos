@@ -61,6 +61,27 @@ public:
   // the first successful discovery.
   std::string GetHouseholdID() const;
 
+  // Fetches a fresh RoomNowPlaying snapshot for every currently known
+  // zone's coordinator — one throwaway, unsubscribed NSROOT::Player per
+  // zone (same "no cached state or event subscription needed" pattern
+  // JoinRoomToCurrentZone()/RemoveRoomFromGroup() already use for an
+  // arbitrary room, see FindZonePlayer()'s own comment), since Gnomos
+  // otherwise only ever tracks live transport state for the *currently
+  // selected* zone. Meant to be called while the room switcher popover is
+  // open (once on open, then on a short repeating timer — see
+  // room_popover_'s own signal_show() handler, in the GnomosWindow
+  // constructor), not continuously in the
+  // background. Results land in signal_room_now_playing_changed(), read
+  // back per room via GetRoomNowPlaying().
+  void RefreshAllRoomNowPlayingAsync();
+  RoomNowPlaying GetRoomNowPlaying(const std::string& coordinator_uuid) const;
+  // Same Pause()-if-supported-else-Stop() decision PauseOrStop() already
+  // makes for the currently selected zone, applied to an arbitrary one —
+  // lets the room switcher's own per-row button toggle playback in a room
+  // without switching into it first.
+  void ToggleRoomPlayback(const std::string& coordinator_uuid);
+  sigc::signal<void()>& signal_room_now_playing_changed() { return signal_room_now_playing_changed_; }
+
   // Makes the room join the currently selected zone's group (as a
   // satellite of that zone's coordinator), or leave whatever group it's
   // currently in to become standalone again. Both are fire-and-forget:
@@ -600,6 +621,7 @@ private:
   Glib::Dispatcher position_dispatcher_;
   Glib::Dispatcher busy_dispatcher_;
   Glib::Dispatcher library_index_status_dispatcher_;
+  Glib::Dispatcher room_now_playing_dispatcher_;
   // Written on tasks_'s own worker thread (TaskQueue's on_busy_changed
   // callback, passed in the constructor), read on the main thread once
   // busy_dispatcher_ wakes it up — the same "atomic handoff variable
@@ -626,6 +648,7 @@ private:
   sigc::signal<void(std::string)> signal_error_;
   sigc::signal<void()> signal_position_changed_;
   sigc::signal<void()> signal_library_index_status_changed_;
+  sigc::signal<void()> signal_room_now_playing_changed_;
 
   // Independent of libnoson entirely, and explicitly unsubscribed at the
   // very top of ~NosonBackend()'s body (before any member starts being
@@ -662,6 +685,9 @@ private:
   // RefreshZoneInfoAsync(). GetDeviceInfo() reads from this the same way
   // it already reads model_number_by_uuid_.
   std::map<std::string, std::pair<std::string, std::string>> zone_info_by_uuid_;
+  // coordinator uuid -> its own RoomNowPlaying snapshot — see
+  // RefreshAllRoomNowPlayingAsync()/GetRoomNowPlaying().
+  std::map<std::string, RoomNowPlaying> room_now_playing_by_uuid_;
   NowPlaying now_playing_;
   unsigned position_ = 0;
   // "<CurrentTrack>|<CurrentTrackURI>" as of the last

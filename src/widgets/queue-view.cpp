@@ -39,10 +39,7 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   jump_to_current_button_.set_tooltip_text("Zur aktuellen Wiedergabe springen");
   jump_to_current_button_.add_css_class("flat");
   jump_to_current_button_.set_sensitive(false);
-  jump_to_current_button_.signal_clicked().connect([this] {
-    if (auto* row = list_box_.get_row_at_index(current_index_))
-      row->grab_focus();
-  });
+  jump_to_current_button_.signal_clicked().connect([this] { ScrollToCurrent(); });
   toolbar->append(jump_to_current_button_);
   clear_button_.set_icon_name("user-trash-symbolic");
   clear_button_.set_tooltip_text("Warteschlange leeren");
@@ -203,6 +200,12 @@ void QueueView::SetCurrentIndex(int index)
   for (size_t i = 0; i < now_playing_icons_.size(); ++i)
     now_playing_icons_[i]->set_visible(static_cast<int>(i) == index);
   jump_to_current_button_.set_sensitive(index >= 0);
+}
+
+void QueueView::ScrollToCurrent()
+{
+  if (auto* row = list_box_.get_row_at_index(current_index_))
+    row->grab_focus();
 }
 
 void QueueView::Clear()

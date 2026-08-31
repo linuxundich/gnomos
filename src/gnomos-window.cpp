@@ -46,6 +46,7 @@
 #include "config.h"
 #include "widgets/art-cache.h"
 #include "widgets/cover-thumbnail.h"
+#include "widgets/lyrics-fetcher.h"
 #include "widgets/radio-browser-service.h"
 
 namespace gnomos
@@ -529,6 +530,23 @@ GnomosWindow::GnomosWindow()
   zones_scroller_.set_max_content_height(400);
   zones_scroller_.set_propagate_natural_height(true);
   room_popover_.set_child(zones_scroller_);
+  // Live per-room now-playing status (see OnZonesChanged()'s own comment
+  // on room_np) is only ever refreshed while this popover is actually
+  // open — an immediate fetch on open, then a light repeating poll so it
+  // stays current for as long as the user leaves it open, stopped the
+  // moment it closes. No point tracking every room's live state
+  // continuously in the background when nothing's showing it.
+  room_popover_.signal_show().connect([this] {
+    backend_->RefreshAllRoomNowPlayingAsync();
+    room_now_playing_poll_connection_.disconnect();
+    room_now_playing_poll_connection_ = Glib::signal_timeout().connect(
+        [this] {
+          backend_->RefreshAllRoomNowPlayingAsync();
+          return true;
+        },
+        4000);
+  });
+  room_popover_.signal_closed().connect([this] { room_now_playing_poll_connection_.disconnect(); });
 
   // --- Section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/
   // Bibliothek) — replaces the AdwViewSwitcher this app used to have as a
@@ -803,6 +821,7 @@ GnomosWindow::GnomosWindow()
   backend_->signal_discovery_done().connect(sigc::mem_fun(*this, &GnomosWindow::OnDiscoveryDone));
   backend_->signal_busy_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnBusyChanged));
   backend_->signal_zones_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnZonesChanged));
+  backend_->signal_room_now_playing_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnZonesChanged));
   backend_->signal_player_ready().connect(sigc::mem_fun(*this, &GnomosWindow::OnPlayerReady));
   backend_->signal_now_playing_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnNowPlayingChanged));
   backend_->signal_position_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnPositionChanged));
@@ -828,6 +847,7 @@ GnomosWindow::GnomosWindow()
   LoadNotificationSetting();
   LoadLibraryViewPreference();
   LoadArtistImagesSetting();
+  LoadLyricsSetting();
   LoadFallbackIconScaleSetting();
   // CoverThumbnail's own scale is a static, process-wide default — needs
   // syncing explicitly here for a value loaded from a previous run;
@@ -1197,11 +1217,39 @@ void GnomosWindow::OnZonesChanged()
     room_icon->add_css_class("dim-label");
     row_box->append(*room_icon);
 
+    // Name + a live now-playing subtitle stacked vertically — lets the
+    // switcher show "what's playing where" at a glance, matching
+    // noson-app's own room list (Zones.qml), without needing to switch
+    // into a room first. room_now_playing comes from NosonBackend's own
+    // independent per-room polling (see room_popover_.signal_show()'s own
+    // handler, in the constructor) — Gnomos otherwise only ever tracks
+    // live transport state for the *selected* zone.
+    auto* text_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
+    text_box->set_hexpand(true);
+    text_box->set_valign(Gtk::Align::CENTER);
+
     auto* name_label = Gtk::make_managed<Gtk::Label>(zone.display_name);
     name_label->set_halign(Gtk::Align::START);
-    name_label->set_hexpand(true);
     name_label->set_ellipsize(Pango::EllipsizeMode::END);
-    row_box->append(*name_label);
+    text_box->append(*name_label);
+
+    RoomNowPlaying room_np = backend_->GetRoomNowPlaying(zone.coordinator_uuid);
+    if (room_np.valid)
+    {
+      std::string subtitle = room_np.state == TransportState::Playing   ? room_np.title
+                              : room_np.state == TransportState::Paused ? "Pausiert"
+                                                                         : "";
+      if (!subtitle.empty())
+      {
+        auto* subtitle_label = Gtk::make_managed<Gtk::Label>(subtitle);
+        subtitle_label->set_halign(Gtk::Align::START);
+        subtitle_label->set_ellipsize(Pango::EllipsizeMode::END);
+        subtitle_label->add_css_class("dim-label");
+        subtitle_label->add_css_class("caption");
+        text_box->append(*subtitle_label);
+      }
+    }
+    row_box->append(*text_box);
 
     if (zone.is_gen1)
     {
@@ -1209,6 +1257,23 @@ void GnomosWindow::OnZonesChanged()
       badge->add_css_class("dim-label");
       badge->add_css_class("caption");
       row_box->append(*badge);
+    }
+
+    // Only once a live snapshot has actually arrived — no misleading
+    // "nothing's playing" icon before the first RefreshAllRoomNowPlayingAsync()
+    // tick has had a chance to complete.
+    if (room_np.valid)
+    {
+      auto* play_pause_button = Gtk::make_managed<Gtk::Button>();
+      bool playing = room_np.state == TransportState::Playing;
+      play_pause_button->set_icon_name(playing ? "media-playback-pause-symbolic" : "media-playback-start-symbolic");
+      play_pause_button->add_css_class("flat");
+      play_pause_button->set_valign(Gtk::Align::CENTER);
+      play_pause_button->set_tooltip_text(playing ? "Pause" : "Abspielen");
+      std::string coordinator_uuid = zone.coordinator_uuid;
+      play_pause_button->signal_clicked().connect(
+          [this, coordinator_uuid] { backend_->ToggleRoomPlayback(coordinator_uuid); });
+      row_box->append(*play_pause_button);
     }
 
     auto* info_button = Gtk::make_managed<Gtk::Button>();
@@ -1592,6 +1657,47 @@ void GnomosWindow::SetLoadArtistImages(bool enabled)
   OnLibraryChanged();
 }
 
+void GnomosWindow::LoadLyricsSetting()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    load_lyrics_ = keyfile->get_boolean("player", "load_lyrics");
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no setting saved yet, stays off (the default)
+  }
+}
+
+void GnomosWindow::SetLoadLyrics(bool enabled)
+{
+  load_lyrics_ = enabled;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_boolean("player", "load_lyrics", enabled);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the setting won't be remembered next launch
+  }
+}
+
 void GnomosWindow::LoadFallbackIconScaleSetting()
 {
   auto keyfile = Glib::KeyFile::create();
@@ -1723,6 +1829,7 @@ void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
 bool GnomosWindow::OnKeyPressed(guint keyval, guint /*keycode*/, Gdk::ModifierType state)
 {
   bool ctrl = (state & Gdk::ModifierType::CONTROL_MASK) == Gdk::ModifierType::CONTROL_MASK;
+  bool alt = (state & Gdk::ModifierType::ALT_MASK) == Gdk::ModifierType::ALT_MASK;
 
   // Ctrl+, (Preferences) is a GNOME-wide convention that works everywhere,
   // including while a text field has focus — same as every native GNOME
@@ -1746,6 +1853,29 @@ bool GnomosWindow::OnKeyPressed(guint keyval, guint /*keycode*/, Gdk::ModifierTy
   if (ctrl && keyval == GDK_KEY_f)
   {
     ShowLibrarySearchDialog();
+    return true;
+  }
+
+  if (ctrl && keyval == GDK_KEY_j)
+  {
+    adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), "queue");
+    queue_view_.ScrollToCurrent();
+    return true;
+  }
+
+  // Alt+Left/Right seek — no-op for radio (duration 0, nothing to seek
+  // within) and for anything not currently playing.
+  if (alt && (keyval == GDK_KEY_Left || keyval == GDK_KEY_Right))
+  {
+    NowPlaying np = backend_->GetNowPlaying();
+    if (np.valid && np.duration > 0)
+    {
+      constexpr int kSeekStepSeconds = 10;
+      int offset = (keyval == GDK_KEY_Right) ? kSeekStepSeconds : -kSeekStepSeconds;
+      long long new_position = static_cast<long long>(backend_->GetPosition()) + offset;
+      new_position = std::clamp<long long>(new_position, 0, np.duration);
+      backend_->SeekAsync(static_cast<unsigned>(new_position));
+    }
     return true;
   }
 
@@ -2624,6 +2754,9 @@ void GnomosWindow::ShowShortcutsDialog()
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Stumm schalten", "m"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Zufallswiedergabe", "s"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Wiederholen", "r"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("10 Sekunden vor", "<Alt>Right"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("10 Sekunden zurück", "<Alt>Left"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Zur aktuellen Wiedergabe springen", "<Control>j"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), section);
 
   AdwShortcutsSection* general = adw_shortcuts_section_new("Allgemein");
@@ -2761,6 +2894,35 @@ void GnomosWindow::ShowSettingsDialog()
       static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(notifications_group), notify_row);
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(notifications_group));
+
+  // --- Songtexte ---
+  GtkWidget* lyrics_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lyrics_group), "Songtexte");
+
+  GtkWidget* lyrics_row = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lyrics_row), "Songtexte laden");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(lyrics_row),
+      "Fragt in den Titel-Details den Songtext des aktuellen Titels bei der öffentlichen LRCLIB-API "
+      "(lrclib.net) ab — das ist eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff. Dabei "
+      "werden Titel, Interpret und Album an LRCLIB übertragen. LRCLIBs Songtexte stammen aus "
+      "Community-Beiträgen ohne Rechte-Garantie (siehe Link unten).");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(lyrics_row), load_lyrics_);
+  g_signal_connect_data(
+      lyrics_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
+      new std::function<void(bool)>([this](bool active) { SetLoadLyrics(active); }), DeleteBoolCallback,
+      static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(lyrics_group), lyrics_row);
+
+  GtkWidget* lrclib_terms_row = adw_action_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lrclib_terms_row), "LRCLIB");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(lrclib_terms_row), "lrclib.net");
+  auto* lrclib_link_button = Gtk::make_managed<Gtk::LinkButton>("https://lrclib.net", "Öffnen");
+  lrclib_link_button->set_valign(Gtk::Align::CENTER);
+  adw_action_row_add_suffix(ADW_ACTION_ROW(lrclib_terms_row), GTK_WIDGET(lrclib_link_button->gobj()));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(lyrics_group), lrclib_terms_row);
+
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(lyrics_group));
 
   // --- Cover-Art-Cache ---
   GtkWidget* cache_group = adw_preferences_group_new();
@@ -3125,6 +3287,46 @@ void GnomosWindow::ShowTrackInfoDialog()
           }
         },
         cancellable);
+  }
+
+  // Songtexte — opt-in via Settings (see load_lyrics_'s own comment), off
+  // by default; nothing shown at all when disabled, not even a "wird
+  // geladen"-placeholder, since the feature should be entirely invisible
+  // unless the user turned it on.
+  if (load_lyrics_ && !np.title.empty())
+  {
+    content->append(*Gtk::make_managed<Gtk::Separator>(Gtk::Orientation::HORIZONTAL));
+
+    auto* lyrics_label = Gtk::make_managed<Gtk::Label>("Songtext wird geladen …");
+    lyrics_label->set_wrap(true);
+    lyrics_label->set_selectable(true);
+    lyrics_label->set_justify(Gtk::Justification::LEFT);
+    lyrics_label->set_halign(Gtk::Align::START);
+    lyrics_label->set_valign(Gtk::Align::START);
+    lyrics_label->add_css_class("caption");
+
+    auto* lyrics_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
+    lyrics_scroller->set_child(*lyrics_label);
+    lyrics_scroller->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
+    lyrics_scroller->set_propagate_natural_height(true);
+    lyrics_scroller->set_max_content_height(280);
+    content->append(*lyrics_scroller);
+
+    // Unlike the art load above, HttpFetch() (which LyricsFetcher sits on
+    // top of) resolves a cancelled request with an empty-body callback
+    // rather than throwing — so, unlike `art`, `lyrics_label` needs an
+    // explicit is_cancelled() check before this touches it, in case the
+    // response arrives after dialog (and so lyrics_label) is already gone.
+    auto lyrics_cancellable = Gio::Cancellable::create();
+    dialog->signal_hide().connect([lyrics_cancellable] { lyrics_cancellable->cancel(); });
+    LyricsFetcher::Instance().RequestLyrics(
+        np.artist, np.title, np.album,
+        [lyrics_label, lyrics_cancellable](std::string lyrics) {
+          if (lyrics_cancellable->is_cancelled())
+            return;
+          lyrics_label->set_text(lyrics.empty() ? "Kein Songtext gefunden." : lyrics);
+        },
+        lyrics_cancellable);
   }
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);

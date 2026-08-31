@@ -371,4 +371,22 @@ struct DeviceInfo
   std::string hardware_version;
 };
 
+// A lightweight, per-room snapshot for the room switcher's own list —
+// unlike NowPlaying (which only ever tracks the *currently selected*
+// zone), this is fetched independently for every zone's coordinator, so
+// the switcher can show "what's playing where" without switching into a
+// room first. Deliberately not the full NowPlaying: no shuffle/repeat/
+// art/etc., nothing the switcher's own compact row actually shows.
+struct RoomNowPlaying
+{
+  bool valid = false;
+  TransportState state = TransportState::Unknown;
+  std::string title;
+  // AVTProperty::CurrentTransportActions listing "Pause" — mirrors
+  // NosonBackend::PauseOrStop()'s own per-source check, needed here too
+  // since ToggleRoomPlayback() has no NowPlaying::can_pause of its own to
+  // read (this struct doesn't carry it — see above).
+  bool can_pause = true;
+};
+
 }  // namespace gnomos

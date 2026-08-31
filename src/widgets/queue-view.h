@@ -35,6 +35,11 @@ public:
   // now-playing) from independent, asynchronously-arriving events.
   void SetCurrentIndex(int index);
   void Clear();
+  // Same action as jump_to_current_button_'s own click handler — exposed so
+  // GnomosWindow's "jump to Now Playing" shortcut can trigger it after
+  // switching view_stack_ to this page. No-op while nothing here is playing
+  // (current_index_ < 0).
+  void ScrollToCurrent();
 
   sigc::signal<void(unsigned)>& signal_item_activated() { return signal_item_activated_; }
   sigc::signal<void(unsigned)>& signal_item_remove_requested() { return signal_item_remove_requested_; }
