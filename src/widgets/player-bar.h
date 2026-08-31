@@ -92,6 +92,11 @@ private:
   Gtk::Label title_label_;
   Gtk::Label subtitle_label_;
   Gtk::Label next_track_label_;
+  // Read-only — see NowPlaying::crossfade_enabled's own comment for why
+  // there's no toggle. Same visible-only-when-relevant treatment as
+  // next_track_label_, but independent of it (no next-track hint doesn't
+  // mean crossfade info shouldn't still show).
+  Gtk::Label crossfade_label_;
   Gtk::Button previous_button_;
   Gtk::Button play_pause_button_;
   Gtk::Button next_button_;

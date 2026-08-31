@@ -54,6 +54,12 @@ public:
   // default-constructed (all-empty) DeviceInfo if player_uuid isn't a
   // currently known room.
   DeviceInfo GetDeviceInfo(const std::string& player_uuid) const;
+  // System::GetHouseholdID() — set once, during Discover(), and
+  // essentially fixed for the household's lifetime; useful mainly for
+  // troubleshooting a multi-household setup (About → Debug-Informationen).
+  // Synchronous, same reasoning as GetDeviceInfo() above. Empty before
+  // the first successful discovery.
+  std::string GetHouseholdID() const;
 
   // Makes the room join the currently selected zone's group (as a
   // satellite of that zone's coordinator), or leave whatever group it's

@@ -2599,6 +2599,15 @@ void GnomosWindow::ShowAboutDialog()
   const char* developers[] = {"Christoph Langner", nullptr};
   adw_about_dialog_set_developers(about, developers);
 
+  // Mainly useful for troubleshooting a multi-household setup — shown in
+  // AdwAboutDialog's own built-in "Debug-Informationen" section (a
+  // copyable text block), no bespoke row needed for it.
+  std::string household_id = backend_->GetHouseholdID();
+  adw_about_dialog_set_debug_info(
+      about, ("Gnomos " + std::string(PACKAGE_VERSION) + "\nHousehold-ID: " +
+              (household_id.empty() ? "unbekannt" : household_id))
+                 .c_str());
+
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
 }
 

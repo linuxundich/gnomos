@@ -202,6 +202,13 @@ PlayerBar::PlayerBar()
   next_track_label_.set_visible(false);
   text_box->append(next_track_label_);
 
+  crossfade_label_.set_text("Crossfade aktiv");
+  crossfade_label_.set_halign(Gtk::Align::START);
+  crossfade_label_.add_css_class("dim-label");
+  crossfade_label_.add_css_class("caption");
+  crossfade_label_.set_visible(false);
+  text_box->append(crossfade_label_);
+
   info_box->append(*text_box);
   bar->set_start_widget(*info_box);
 
@@ -335,6 +342,7 @@ void PlayerBar::Update(const NowPlaying& now_playing)
   if (!now_playing.album.empty())
     subtitle += (subtitle.empty() ? "" : " — ") + now_playing.album;
   subtitle_label_.set_text(subtitle);
+  crossfade_label_.set_visible(now_playing.crossfade_enabled);
 
   play_pause_button_.set_icon_name(IconForState(now_playing.state));
   // set_active() only fires ToggleButton's own signal_toggled(), never the
@@ -486,6 +494,7 @@ void PlayerBar::SetEnabled(bool enabled)
     if (position_row_)
       position_row_->set_visible(false);
     next_track_label_.set_visible(false);
+    crossfade_label_.set_visible(false);
     title_label_.set_text("Kein Sonos-Gerät ausgewählt");
     subtitle_label_.set_text("");
     LoadArt("");

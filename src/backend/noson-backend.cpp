@@ -607,6 +607,16 @@ DeviceInfo NosonBackend::GetDeviceInfo(const std::string& player_uuid) const
   return info;
 }
 
+std::string NosonBackend::GetHouseholdID() const
+{
+  // Same "read a settled libnoson value directly, no explicit locking"
+  // convention GetDeviceInfo() above already uses for zp->GetHost() etc. —
+  // set once during Discover() and essentially fixed for the household's
+  // lifetime, so the actual race window this could theoretically hit is
+  // negligible in practice.
+  return system_ ? system_->GetHouseholdID() : "";
+}
+
 namespace
 {
 
@@ -3731,6 +3741,7 @@ void NosonBackend::RefreshNowPlayingLocked()
   np.repeat = prop.CurrentPlayMode == "REPEAT_ONE" ? RepeatMode::One
               : (prop.CurrentPlayMode == "REPEAT_ALL" || prop.CurrentPlayMode == "SHUFFLE") ? RepeatMode::All
                                                                                              : RepeatMode::Off;
+  np.crossfade_enabled = prop.CurrentCrossfadeMode == "1";
   // Comma-separated capability list (e.g. "SHUFFLE,REPEAT,CROSSFADE"), empty
   // for a source that supports neither (radio, line-in). Absence of the
   // field entirely (defaults true) would wrongly enable both, so this is an

@@ -82,6 +82,11 @@ struct NowPlaying
   std::string art_uri;      // resolved to an absolute http(s) URL, or empty
   bool shuffle = false;     // AVTProperty::CurrentPlayMode == SHUFFLE or SHUFFLE_NOREPEAT
   RepeatMode repeat = RepeatMode::Off;  // AVTProperty::CurrentPlayMode == REPEAT_ALL/REPEAT_ONE/SHUFFLE
+  // AVTProperty::CurrentCrossfadeMode ("0"/"1") — read-only here: this
+  // fork's AVTransport class has no SetCrossfadeMode SOAP call at all, so
+  // there's nothing for a toggle in Gnomos to actually call. Shown purely
+  // informationally (PlayerBar).
+  bool crossfade_enabled = false;
   // AVTProperty::r_CurrentValidPlayModes ("SHUFFLE,REPEAT,CROSSFADE" or a
   // subset) — not every source supports shuffle/repeat at all (radio,
   // line-in), so the shuffle/repeat buttons are only sensitive when the
