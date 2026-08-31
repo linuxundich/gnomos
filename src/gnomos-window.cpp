@@ -157,6 +157,7 @@ GnomosWindow::GnomosWindow()
   // overflowing off-screen for a household with even more rooms than that.
   grouping_scroller->set_max_content_height(640);
   grouping_scroller->set_propagate_natural_height(true);
+  grouping_scroller->set_margin_top(6);
   grouping_scroller->set_margin_start(6);
   grouping_scroller->set_margin_end(6);
   grouping_scroller->set_margin_bottom(6);
@@ -207,7 +208,11 @@ GnomosWindow::GnomosWindow()
   auto* grouping_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
   grouping_box->append(*group_all_button);
   grouping_box->append(*ungroup_all_button);
-  grouping_box->append(*Gtk::make_managed<Gtk::Separator>());
+  // No separator here — grouping_scroller's own "boxed-list" content
+  // (grouping_list_box_) already reads as its own distinct rounded card
+  // right below these two buttons; an explicit line on top of that just
+  // looked like clutter (reported live). grouping_scroller's own
+  // margin_top gives it breathing room instead.
   grouping_box->append(*grouping_scroller);
   grouping_popover_.set_child(*grouping_box);
   grouping_popover_.signal_show().connect([this] {
