@@ -8,6 +8,19 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.13.0] - 2026-08-31
+
+### Added
+- ListenBrainz scrobbling: paste a personal user token into Settings →
+  Allgemein → Scrobbling to start submitting listens (empty token = off).
+  A track counts once played for half its length or 4 minutes, matching
+  ListenBrainz's own guideline; radio and other live streams are never
+  scrobbled.
+- "Radiosender-Favoriten exportieren…"/"…importieren…" in the main menu
+  back up and restore your radio favorites as a local JSON file.
+- "Szenen…" in the main menu: save the current room grouping (and each
+  room's volume) as a named preset, restorable with one click.
+
 ## [0.12.0] - 2026-08-31
 
 ### Added
