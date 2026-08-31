@@ -62,17 +62,21 @@ public:
   std::string GetHouseholdID() const;
 
   // Fetches a fresh RoomNowPlaying snapshot for every currently known
-  // zone's coordinator — one throwaway, unsubscribed NSROOT::Player per
-  // zone (same "no cached state or event subscription needed" pattern
-  // JoinRoomToCurrentZone()/RemoveRoomFromGroup() already use for an
-  // arbitrary room, see FindZonePlayer()'s own comment), since Gnomos
-  // otherwise only ever tracks live transport state for the *currently
-  // selected* zone. Meant to be called while the room switcher popover is
-  // open (once on open, then on a short repeating timer — see
+  // zone's coordinator, since Gnomos otherwise only ever tracks live
+  // transport state for the *currently selected* zone. One throwaway
+  // NSROOT::AVTransport per zone, queried directly via its own
+  // GetTransportInfo()/GetPositionInfo() SOAP calls — deliberately NOT a
+  // throwaway NSROOT::Player's GetTransportProperty(), which only reflects
+  // whatever that Player's own AVTransport has accumulated from
+  // *subscribed* LastChange events; confirmed live, an unsubscribed
+  // Player's GetTransportProperty() came back permanently empty
+  // (TransportState::Unknown, no title) for every room, no matter what was
+  // actually playing. Meant to be called while the room switcher popover
+  // is open (once on open, then on a short repeating timer — see
   // room_popover_'s own signal_show() handler, in the GnomosWindow
-  // constructor), not continuously in the
-  // background. Results land in signal_room_now_playing_changed(), read
-  // back per room via GetRoomNowPlaying().
+  // constructor), not continuously in the background. Results land in
+  // signal_room_now_playing_changed(), read back per room via
+  // GetRoomNowPlaying().
   void RefreshAllRoomNowPlayingAsync();
   RoomNowPlaying GetRoomNowPlaying(const std::string& coordinator_uuid) const;
   // Same Pause()-if-supported-else-Stop() decision PauseOrStop() already

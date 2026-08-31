@@ -707,22 +707,52 @@ void NosonBackend::RefreshAllRoomNowPlayingAsync()
     {
       if (!zp->IsValid())
         continue;
-      NSROOT::Player roomPlayer(zp);
-      NSROOT::AVTProperty prop = roomPlayer.GetTransportProperty();
+      // A throwaway NSROOT::Player's own GetTransportProperty() (used
+      // elsewhere in this file) only ever returns whatever its AVTransport
+      // object has accumulated from *subscribed* LastChange events — for
+      // a one-off, unsubscribed player like this one, that's permanently
+      // empty. Confirmed live: querying it here always came back
+      // TransportState::Unknown with no title, for every room, regardless
+      // of what was actually playing. GetTransportInfo()/GetPositionInfo()
+      // are genuine SOAP calls instead — no subscription needed, same
+      // "direct query, no cached state" approach RefreshZoneInfoAsync()
+      // already uses for a room's serial/hardware version.
+      NSROOT::AVTransport avt(zp->GetHost(), zp->GetPort());
+      NSROOT::ElementList transport_vars;
+      NSROOT::ElementList position_vars;
+      if (!avt.GetTransportInfo(transport_vars) || !avt.GetPositionInfo(position_vars))
+        continue;  // left unset — retried on the next poll tick
 
       RoomNowPlaying np;
       np.valid = true;
-      np.state = ParseTransportState(prop.TransportState);
-      np.can_pause = prop.CurrentTransportActions.find("Pause") != std::string::npos;
-      // Same title fallback RefreshNowPlayingLocked() uses for a settled
-      // (non-TRANSITIONING) track, simplified — this is a compact
-      // secondary display (the room switcher's own row subtitle), not the
-      // main Now Playing bar, so it doesn't need that function's full
-      // TRANSITIONING/radio-content handling.
-      if (prop.CurrentTrackMetaData)
-        np.title = prop.CurrentTrackMetaData->GetValue("dc:title");
-      if (np.title.empty() && prop.r_EnqueuedTransportURIMetaData)
-        np.title = prop.r_EnqueuedTransportURIMetaData->GetValue("dc:title");
+      np.state = ParseTransportState(transport_vars.GetValue("CurrentTransportState"));
+
+      unsigned hh = 0, hm = 0, hs = 0;
+      bool has_duration = std::sscanf(position_vars.GetValue("TrackDuration").c_str(), "%u:%u:%u", &hh, &hm, &hs) ==
+                               3 &&
+                           (hh || hm || hs);
+      // No live SOAP call surfaces CurrentTransportActions (unlike the
+      // subscribed path's AVTProperty) — radio (the only source type that
+      // doesn't take Pause, confirmed live) is exactly the has_duration ==
+      // false case already computed above, so it doubles as this heuristic
+      // too rather than needing a separate query.
+      np.can_pause = has_duration;
+
+      NSROOT::DIDLParser didl(position_vars.GetValue("TrackMetaData").c_str());
+      if (didl.IsValid() && !didl.GetItems().empty())
+      {
+        const NSROOT::DigitalItemPtr& item = didl.GetItems()[0];
+        // Radio: dc:title is the stream URL's own filename, not a song —
+        // same reasoning RefreshNowPlayingLocked() already documents for
+        // the main Now Playing bar. r:streamContent is the station's raw
+        // rotating content (song info interleaved with ad/ident text);
+        // shown as-is here, same as np.artist elsewhere — this compact row
+        // doesn't run it through RadioContentFilter the way MPRIS/History/
+        // the lyrics lookup do, so an ad slogan can flash through briefly,
+        // acceptable for a glanceable subtitle that re-polls every few
+        // seconds anyway.
+        np.title = has_duration ? item->GetValue("dc:title") : item->GetValue("r:streamContent");
+      }
       results[zp->GetUUID()] = std::move(np);
     }
 
