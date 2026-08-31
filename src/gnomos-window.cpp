@@ -2313,8 +2313,12 @@ void GnomosWindow::RebuildGroupingPopover()
     master_scale->set_value(average);
     master_scale->set_draw_value(false);
     master_row->append(*master_scale);
+    // No separator needed after this — grouping_list_box_ already has the
+    // "boxed-list" CSS class (see its own setup), which draws a divider
+    // between every row automatically; an explicit Gtk::Separator here
+    // was redundant and, wrapped in its own implicit row, showed up as a
+    // stray extra line rather than a clean boundary.
     grouping_list_box_.append(*master_row);
-    grouping_list_box_.append(*Gtk::make_managed<Gtk::Separator>());
 
     master_scale->signal_value_changed().connect([this, master_scale, member_volumes, average, room_scales] {
       int new_value = static_cast<int>(master_scale->get_value());
