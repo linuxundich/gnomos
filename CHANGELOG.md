@@ -8,6 +8,40 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.11.0] - 2026-08-31
+
+### Added
+- The System-Informationen for a household's own Sonos ID (System::
+  GetHouseholdID()) now show up in About's own "Debug-Informationen"
+  section — useful for troubleshooting a multi-household setup.
+- The player bar shows a small "Crossfade aktiv" label whenever the
+  current zone has crossfade turned on (read-only — this fork's
+  AVTransport class has no SOAP call to toggle it, same limitation
+  noson-app itself has).
+- The room switcher popover now shows each room's own live now-playing
+  status (title, or "Pausiert") with an inline play/pause button, so you
+  can see and control what's playing in another room without switching
+  into it first.
+- New keyboard shortcuts: Alt+Left/Right seeks 10 seconds back/forward,
+  Ctrl+J jumps the Queue view to the currently playing track.
+- "Titel-Details" can show the current track's lyrics, fetched from the
+  public LRCLIB API — off by default, opt-in via Einstellungen →
+  Allgemein → Songtexte, with LRCLIB's own attribution link. Works for
+  radio stations too: the station's rotating "now playing" text is run
+  through the same spam filter already used for MPRIS/History, so ad
+  breaks don't feed garbage into the lyrics search.
+
+### Fixed
+- "Titel-Details" wasn't showing cover art at all in some cases — it
+  loaded art directly via GVfs, which silently fails whenever GVfs's
+  http backend isn't available, the same class of problem already fixed
+  for library art. Now uses the same cache-first HTTP fetch as
+  everywhere else in the app.
+- The room switcher popover was too narrow to show a grouped zone's own
+  name in full (e.g. "Arbeitszimmer + 1", the only visual indication of
+  which rooms are currently grouped) once the new live-status line and
+  play/pause button also had to fit in each row.
+
 ## [0.10.0] - 2026-08-31
 
 ### Added

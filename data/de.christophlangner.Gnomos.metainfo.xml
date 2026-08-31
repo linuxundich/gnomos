@@ -15,6 +15,15 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.11.0" date="2026-08-31">
+      <description>
+        <p>The room switcher popover now shows each room's own live
+        now-playing status with an inline play/pause button. New keyboard
+        shortcuts: Alt+Left/Right to seek, Ctrl+J to jump to the playing
+        track. "Titel-Details" can show lyrics (opt-in via Settings, works
+        for radio too) and now reliably shows cover art.</p>
+      </description>
+    </release>
     <release version="0.10.0" date="2026-08-31">
       <description>
         <p>Adding every favorite or library item to the queue is now
