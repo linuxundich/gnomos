@@ -38,15 +38,15 @@ public:
   explicit RadioContentFilter(NosonBackend& backend) : backend_(backend) {}
 
   // stream_uri/content: NowPlaying::stream_uri/artist as observed right
-  // now. Returns the song text to treat as current — empty if content
-  // should be treated as filler/spam (didn't pass the station's own
-  // regex or the global whitespace heuristic, or the station has opted
-  // out entirely) or is a repeat of the last accepted song. An empty
-  // return for previously-non-empty content is itself the "this changed
-  // to filler, or this station is off" signal — distinct from a station
-  // that simply never reports any content at all, which any caller can
-  // already tell apart by checking whether the raw content was empty
-  // to begin with.
+  // now. Returns the song text to treat as current — sticky: on filler
+  // (didn't pass the station's own regex or the global whitespace
+  // heuristic) or a repeat of the last accepted song, the *previously*
+  // accepted song is returned unchanged, not emptied out, so a caller can
+  // always ask "what's the last real song on this station" and get an
+  // answer even mid-ad-break. Only actually empty when nothing has ever
+  // been accepted yet for this stream_uri (including right after a
+  // station change, which resets this), or the station has opted out of
+  // this filtering entirely (RadioMprisSettings::mpris_enabled == false).
   std::string Filter(const std::string& stream_uri, const std::string& content);
 
 private:

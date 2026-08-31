@@ -846,6 +846,7 @@ GnomosWindow::GnomosWindow()
 
   mpris_ = std::make_unique<MprisService>(*backend_, *this);
   radio_history_filter_ = std::make_unique<RadioContentFilter>(*backend_);
+  radio_lyrics_filter_ = std::make_unique<RadioContentFilter>(*backend_);
 
   pending_restore_room_uuid_ = LoadLastRoomUuid();
 
@@ -1366,6 +1367,11 @@ void GnomosWindow::OnNowPlayingChanged()
   UpdateNextTrackHint();
   RecordHistoryIfTrackChanged(np);
   CheckAlarmAndTransportStatus(np);
+  // Keeps radio_lyrics_filter_'s sticky effective_content_ current even
+  // while ShowTrackInfoDialog() isn't open — see that member's own
+  // comment. Side effect only; nothing here reads the return value.
+  if (np.duration == 0 && !np.stream_uri.empty())
+    radio_lyrics_filter_->Filter(np.stream_uri, np.artist);
 }
 
 void GnomosWindow::OnPositionChanged()
@@ -3338,17 +3344,28 @@ void GnomosWindow::ShowTrackInfoDialog()
   // unless the user turned it on.
   //
   // For a radio-like source (duration == 0, stream_uri populated — see
-  // NowPlaying::stream_uri's own comment), np.title is the *station*
-  // name and np.artist is its raw rotating content — neither is a usable
-  // lyrics query as-is, so the real "<title> / <artist>" is reparsed out
-  // of np.artist instead (see ParseRadioSongContent()). lyrics_title stays
-  // empty (skipping the section below entirely) for ad/ident filler or a
-  // station whose content doesn't follow that convention at all.
+  // NowPlaying::stream_uri's own comment), np.title is the *station* name
+  // and np.artist is its raw rotating content, which flips between the
+  // actual song and interstitial ad/ident text — using np.artist directly
+  // would as often as not send an ad slogan to LRCLIB instead of a song.
+  // radio_lyrics_filter_ (continuously fed from OnNowPlayingChanged(), same
+  // spam filtering MPRIS/History already apply) gives back the last
+  // genuinely accepted song content instead, sticky through ad breaks and
+  // repeats — see its own comment. That content, once obtained, still
+  // follows the "<title> / <artist>" convention, so it's reparsed the same
+  // way (see ParseRadioSongContent()). lyrics_title stays empty (skipping
+  // the section below entirely) if nothing has been accepted for this
+  // station yet, the station opted out of this filtering entirely, or the
+  // content doesn't follow that convention.
   std::string lyrics_title = np.title;
   std::string lyrics_artist = np.artist;
   bool is_radio = np.duration == 0 && !np.stream_uri.empty();
-  if (is_radio && !ParseRadioSongContent(np.artist, lyrics_title, lyrics_artist))
-    lyrics_title.clear();
+  if (is_radio)
+  {
+    std::string accepted_content = radio_lyrics_filter_->Filter(np.stream_uri, np.artist);
+    if (accepted_content.empty() || !ParseRadioSongContent(accepted_content, lyrics_title, lyrics_artist))
+      lyrics_title.clear();
+  }
 
   if (load_lyrics_ && !lyrics_title.empty())
   {

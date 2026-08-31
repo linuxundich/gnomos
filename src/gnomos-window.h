@@ -364,6 +364,14 @@ private:
   // *backend_ — only assigned in the constructor body, same reasoning as
   // mpris_ below.
   std::unique_ptr<RadioContentFilter> radio_history_filter_;
+  // Same reasoning as radio_history_filter_ (its own instance, not shared
+  // — see RadioContentFilter's own comment), but for ShowTrackInfoDialog()'s
+  // lyrics lookup: fed on every OnNowPlayingChanged() tick (not just while
+  // the dialog happens to be open) so its sticky effective_content_ already
+  // holds the last real song by the time a dialog opens, even if that
+  // exact moment lands on an ad break — see OnNowPlayingChanged()'s own
+  // comment.
+  std::unique_ptr<RadioContentFilter> radio_lyrics_filter_;
   // Whether to send a desktop notification on a genuine track change —
   // reuses RecordHistoryIfTrackChanged()'s own dedup key, so this never
   // fires twice for the same track. Off by default (opt-in via Settings);
