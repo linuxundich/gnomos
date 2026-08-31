@@ -86,6 +86,12 @@ private:
   void OnAlarmDuplicateRequested(std::string alarm_id);
   void ShowAboutDialog();
   void ShowSettingsDialog();
+  // Closes and immediately reopens open_settings_dialog_, if one is
+  // currently open, so an async change that happened while it was open
+  // (e.g. Last.fm's auth flow completing) shows up without the user
+  // having to close and reopen it manually themselves — reported live
+  // as confusing before this existed. A no-op otherwise.
+  void RefreshOpenSettingsDialog();
   void ShowShortcutsDialog();
   void ShowLinkServiceDialog();
   void ShowSavePlaylistDialog();
@@ -481,6 +487,14 @@ private:
   std::string lastfm_shared_secret_;
   std::string lastfm_session_key_;
   std::string lastfm_username_;
+  // The currently open AdwPreferencesDialog from ShowSettingsDialog(), if
+  // any — nullptr otherwise. Tracked (set on open, cleared via its own
+  // "closed" signal) purely so RefreshOpenSettingsDialog() can close and
+  // reopen it after an async change lands while it's open; this dialog is
+  // otherwise unmanaged by GnomosWindow (AdwDialog owns its own lifetime,
+  // unlike the plain Gtk::Window dialogs elsewhere in this file that need
+  // an explicit `delete`).
+  AdwDialog* open_settings_dialog_ = nullptr;
   // MaybeScheduleScrobble()'s own dedup key ("title\x1fartist" of the
   // track a scrobble is currently scheduled or already sent for) and
   // one-shot timer — see that method's own comment.

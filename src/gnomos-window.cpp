@@ -2175,6 +2175,12 @@ void GnomosWindow::SetLastFmSession(const std::string& session_key, const std::s
   {
     // non-fatal — just means this won't be remembered next launch
   }
+  // Covers both directions through this one method — connecting (the auth
+  // flow's own "Fertig" callback lands here) and disconnecting
+  // (DisconnectLastFm() below calls straight through) — reported live as
+  // confusing when the Settings row stayed stuck on the old state until
+  // manually closed and reopened.
+  RefreshOpenSettingsDialog();
 }
 
 void GnomosWindow::DisconnectLastFm()
@@ -3463,6 +3469,13 @@ void GnomosWindow::ShowSettingsDialog()
 {
   AdwDialog* dialog = adw_preferences_dialog_new();
   adw_preferences_dialog_set_search_enabled(ADW_PREFERENCES_DIALOG(dialog), false);
+  open_settings_dialog_ = dialog;
+  g_signal_connect(dialog, "closed", G_CALLBACK(+[](AdwDialog* closed_dialog, gpointer user_data) {
+                     auto* self = static_cast<GnomosWindow*>(user_data);
+                     if (self->open_settings_dialog_ == closed_dialog)
+                       self->open_settings_dialog_ = nullptr;
+                   }),
+                   this);
 
   // Three pages rather than one long one — AdwPreferencesDialog already
   // renders more than one page as a proper tab/page switcher on its own
@@ -3810,6 +3823,30 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(library_page));
   adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(radio_page));
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
+}
+
+void GnomosWindow::RefreshOpenSettingsDialog()
+{
+  if (!open_settings_dialog_)
+    return;
+  // Deferred to the next main-loop iteration rather than closed here
+  // directly — this can be called from inside a button click handler
+  // belonging to a widget *inside* the very dialog being closed (e.g. the
+  // "Trennen" button), and destroying that dialog synchronously from
+  // within its own signal handler risks touching already-freed widget
+  // state once that handler's own caller resumes. One tick's delay is
+  // imperceptible either way.
+  Glib::signal_idle().connect_once([this] {
+    if (!open_settings_dialog_)
+      return;  // closed some other way in the meantime — nothing to do
+    // force_close(), not close(): this should always actually close
+    // (there's no unsaved-changes-style reason AdwPreferencesDialog would
+    // ever refuse here), and its own "closed" handler already clears
+    // open_settings_dialog_ before ShowSettingsDialog() below reassigns
+    // it to the fresh instance.
+    adw_dialog_force_close(open_settings_dialog_);
+    ShowSettingsDialog();
+  });
 }
 
 void GnomosWindow::ShowLinkServiceDialog()
