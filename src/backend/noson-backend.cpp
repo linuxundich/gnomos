@@ -24,6 +24,7 @@
 #include <didlparser.h>
 #include <digitalitem.h>
 #include <musicservices.h>
+#include <renderingcontrol.h>
 #include <smaccount.h>
 #include <sonostypes.h>
 
@@ -876,6 +877,14 @@ void NosonBackend::Play()
   });
 }
 
+void NosonBackend::PlayStreamAsync(const std::string& url, const std::string& title)
+{
+  tasks_.Push([this, url, title] {
+    if (auto player = SnapshotPlayer())
+      player->PlayStream(url, title);
+  });
+}
+
 void NosonBackend::PauseOrStop()
 {
   tasks_.Push([this] {
@@ -1004,6 +1013,36 @@ void NosonBackend::SetMuted(bool muted)
     for (const NSROOT::SRProperty& srp : player->GetRenderingProperty())
       if (!srp.property.OutputFixed)
         player->SetMute(srp.uuid, muted ? 1 : 0);
+  });
+}
+
+void NosonBackend::MuteAllRoomsAsync(bool muted)
+{
+  tasks_.Push([this, muted] {
+    // Unlike SetMuted() above (scoped to the currently selected zone's own
+    // group, via SnapshotPlayer()'s subordinate RC table), this needs
+    // every physical player in the household, regardless of which group
+    // it's currently in — so one throwaway NSROOT::RenderingControl per
+    // player, direct SOAP call, same "no Player wrapper needed" pattern
+    // RefreshZoneInfoAsync()/RefreshAllRoomNowPlayingAsync() already use.
+    // Unlike SetMuted(), this doesn't check OutputFixed first — a fixed-
+    // output room has no software-controllable mute to begin with, so the
+    // call is simply a harmless no-op there rather than worth an extra
+    // round trip to filter out up front.
+    std::vector<NSROOT::ZonePlayerPtr> players;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      for (const auto& kv : zones_by_uuid_)
+        for (const NSROOT::ZonePlayerPtr& zp : *kv.second)
+          players.push_back(zp);
+    }
+    for (const NSROOT::ZonePlayerPtr& zp : players)
+    {
+      if (!zp->IsValid())
+        continue;
+      NSROOT::RenderingControl rc(zp->GetHost(), zp->GetPort());
+      rc.SetMute(muted ? 1 : 0);
+    }
   });
 }
 
@@ -2152,6 +2191,12 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
           {"A:ALBUMARTIST", "Interpreten", "", true, "", false, "avatar-default-symbolic"},
           {"A:ALBUM", "Alben", "", true, "", false, "media-optical-cd-symbolic"},
           {"A:GENRE", "Genres", "", true, "", false, "folder-music-symbolic"},
+          // Same generic Browse() mechanism as every other "A:" root above
+          // — no special-casing needed anywhere else (grid-eligibility,
+          // icon lookup, etc. are all keyed off the object_id prefix or
+          // the item's own subType(), neither of which singles out
+          // ALBUMARTIST specifically over this).
+          {"A:COMPOSER", "Komponisten", "", true, "", false, "avatar-default-symbolic"},
           {"A:TRACKS", "Titel", "", true, "", false, "audio-x-generic-symbolic"},
           {"SQ:", "Playlisten", "", true, "", false, "media-playlist-consecutive-symbolic"},
           {"A:PLAYLISTS", "Playlisten (lokale Freigabe)", "", true, "", false, "media-playlist-consecutive-symbolic"},

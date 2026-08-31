@@ -89,6 +89,10 @@ private:
   void ShowShortcutsDialog();
   void ShowLinkServiceDialog();
   void ShowSavePlaylistDialog();
+  // URL + optional title entry for NosonBackend::PlayStreamAsync() — a
+  // one-off, unsaved stream play, reached from the primary menu. Distinct
+  // from ShowAddRadioStationDialog(), which always persists a favorite.
+  void ShowPlayStreamDialog();
   void ShowClearQueueConfirmDialog();
   // Same confirm-dialog treatment as ShowClearQueueConfirmDialog() — a
   // multi-item removal is just as unrecoverable as clearing the whole

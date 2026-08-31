@@ -111,7 +111,14 @@ GnomosWindow::GnomosWindow()
   // the alarm regardless of which one it was, same call the play/pause
   // button already uses.
   add_action("stop-alarm", [this] { backend_->PauseOrStop(); });
+  add_action("play-stream", sigc::mem_fun(*this, &GnomosWindow::ShowPlayStreamDialog));
+  add_action("mute-everywhere", [this] {
+    backend_->MuteAllRoomsAsync(true);
+    ShowToast("Alle Räume stummgeschaltet");
+  });
   auto primary_menu = Gio::Menu::create();
+  primary_menu->append("Stream abspielen…", "win.play-stream");
+  primary_menu->append("Überall stummschalten", "win.mute-everywhere");
   primary_menu->append("Einstellungen", "win.settings");
   primary_menu->append("Tastenkürzel", "win.shortcuts");
   primary_menu->append("Über Gnomos", "win.about");
@@ -3271,6 +3278,74 @@ void GnomosWindow::ShowSavePlaylistDialog()
   dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
   entry->grab_focus();
+}
+
+void GnomosWindow::ShowPlayStreamDialog()
+{
+  auto* dialog = new Gtk::Window();
+  dialog->set_title("Stream abspielen");
+  dialog->set_transient_for(*this);
+  dialog->set_modal(true);
+  dialog->set_default_size(380, -1);
+
+  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+  content->set_margin_top(18);
+  content->set_margin_bottom(18);
+  content->set_margin_start(18);
+  content->set_margin_end(18);
+
+  auto* disclosure_label = Gtk::make_managed<Gtk::Label>(
+      "Spielt eine Stream-Adresse einmalig ab, ohne sie zu speichern — für "
+      "einen dauerhaften Sender siehe „Radiosender hinzufügen“.");
+  disclosure_label->set_halign(Gtk::Align::START);
+  disclosure_label->set_wrap(true);
+  disclosure_label->add_css_class("caption");
+  disclosure_label->add_css_class("dim-label");
+  content->append(*disclosure_label);
+
+  auto* url_label = Gtk::make_managed<Gtk::Label>("Stream-Adresse");
+  url_label->set_halign(Gtk::Align::START);
+  content->append(*url_label);
+  auto* url_entry = Gtk::make_managed<Gtk::Entry>();
+  url_entry->set_placeholder_text("https://…");
+  url_entry->set_activates_default(true);
+  content->append(*url_entry);
+
+  auto* title_label = Gtk::make_managed<Gtk::Label>("Titel (optional)");
+  title_label->set_halign(Gtk::Align::START);
+  content->append(*title_label);
+  auto* title_entry = Gtk::make_managed<Gtk::Entry>();
+  title_entry->set_placeholder_text("Wird in der Wiedergabe angezeigt");
+  title_entry->set_activates_default(true);
+  content->append(*title_entry);
+
+  auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
+  button_box->set_halign(Gtk::Align::END);
+  button_box->set_margin_top(6);
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
+  auto* play_button = Gtk::make_managed<Gtk::Button>("Abspielen");
+  play_button->add_css_class("suggested-action");
+  auto do_play = [this, dialog, url_entry, title_entry] {
+    Glib::ustring url = url_entry->get_text();
+    if (url.empty())
+      return;
+    Glib::ustring title = title_entry->get_text();
+    backend_->PlayStreamAsync(url.raw(), title.empty() ? url.raw() : title.raw());
+    dialog->close();
+  };
+  play_button->signal_clicked().connect(do_play);
+  url_entry->signal_activate().connect(do_play);
+  title_entry->signal_activate().connect(do_play);
+  button_box->append(*cancel_button);
+  button_box->append(*play_button);
+  content->append(*button_box);
+
+  dialog->set_child(*content);
+  dialog->set_default_widget(*play_button);
+  dialog->signal_hide().connect([dialog] { delete dialog; });
+  dialog->present();
+  url_entry->grab_focus();
 }
 
 namespace

@@ -107,6 +107,12 @@ public:
   std::vector<QueueItem> GetQueue() const;
 
   void Play();
+  // One-off, unsaved playback of an arbitrary stream URL — distinct from
+  // AddRadioStation(), which always persists a favorite. title shows up
+  // wherever the currently playing track's own title normally would
+  // (player bar, MPRIS, ...); pass the URL itself if the caller has
+  // nothing better.
+  void PlayStreamAsync(const std::string& url, const std::string& title);
   void PauseOrStop();
   void Next();
   void Previous();
@@ -117,6 +123,15 @@ public:
   // after the user had already stopped dragging.
   void SetVolume(uint8_t value);
   void SetMuted(bool muted);
+  // Mutes (or un-mutes) every physical player in the household in one go,
+  // regardless of which group it's currently in — unlike SetMuted() above,
+  // which only ever reaches the *currently selected* zone's own group.
+  // GnomosWindow's own "Überall stummschalten" menu action only ever calls
+  // this with true — a quick "silence everything now" convenience, not a
+  // toggle exposed to the user (un-muting a given room again is a
+  // deliberate per-room call, same as everywhere else in this app) — but
+  // the underlying call is symmetric regardless.
+  void MuteAllRoomsAsync(bool muted);
   // Per-member volume within the current group, for the grouping popover's
   // own sliders — unlike SetVolume() above, this targets exactly one room,
   // no proportional scaling of the rest. Only meaningful for a room that's
