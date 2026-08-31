@@ -15,6 +15,15 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.10.0" date="2026-08-31">
+      <description>
+        <p>Adding every favorite or library item to the queue is now
+        noticeably faster (batched instead of one request per track), the
+        Queue view can select and remove several tracks at once, and the
+        volume slider's tooltip shows the decibel value alongside the
+        percentage.</p>
+      </description>
+    </release>
     <release version="0.9.0" date="2026-08-31">
       <description>
         <p>Settings is now split across three tabs instead of one long

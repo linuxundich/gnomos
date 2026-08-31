@@ -8,6 +8,18 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.10.0] - 2026-08-31
+
+### Added
+- Adding every favorite or every library item to the queue now batches
+  up to 16 tracks per request instead of one request per track — a
+  large "add all" is noticeably faster.
+- The Queue view has a new "Mehrere auswählen" toggle: check any number
+  of tracks and remove them all at once (with the same confirmation
+  dialog "Warteschlange leeren" already has).
+- The volume slider's tooltip now also shows the decibel value
+  alongside the percentage.
+
 ## [0.9.0] - 2026-08-31
 
 ### Added
