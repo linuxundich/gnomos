@@ -210,7 +210,14 @@ GnomosWindow::GnomosWindow()
   grouping_box->append(*Gtk::make_managed<Gtk::Separator>());
   grouping_box->append(*grouping_scroller);
   grouping_popover_.set_child(*grouping_box);
-  grouping_popover_.signal_show().connect(sigc::mem_fun(*this, &GnomosWindow::RebuildGroupingPopover));
+  grouping_popover_.signal_show().connect([this] {
+    // Immediate rebuild with whatever's already cached, then a live
+    // refresh — see RefreshGroupVolumesAsync()'s own comment for why the
+    // sliders/master fader need this rather than player_'s own (fixed at
+    // zone-selection-time) subscribed volume state.
+    RebuildGroupingPopover();
+    backend_->RefreshGroupVolumesAsync();
+  });
 
   grouping_button_.set_icon_name("audio-speakers-symbolic");
   grouping_button_.set_tooltip_text("Räume gruppieren");
@@ -842,6 +849,10 @@ GnomosWindow::GnomosWindow()
   backend_->signal_busy_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnBusyChanged));
   backend_->signal_zones_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnZonesChanged));
   backend_->signal_room_now_playing_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnZonesChanged));
+  backend_->signal_group_volumes_changed().connect([this] {
+    if (grouping_popover_.get_visible())
+      RebuildGroupingPopover();
+  });
   backend_->signal_player_ready().connect(sigc::mem_fun(*this, &GnomosWindow::OnPlayerReady));
   backend_->signal_now_playing_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnNowPlayingChanged));
   backend_->signal_position_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnPositionChanged));

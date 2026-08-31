@@ -137,15 +137,31 @@ public:
   // deliberate per-room call, same as everywhere else in this app) — but
   // the underlying call is symmetric regardless.
   void MuteAllRoomsAsync(bool muted);
-  // Per-member volume within the current group, for the grouping popover's
-  // own sliders — unlike SetVolume() above, this targets exactly one room,
-  // no proportional scaling of the rest. Only meaningful for a room that's
-  // actually a member of the *currently selected* zone (its RenderingControl
-  // state is only known from player_'s own subscription — see
-  // RefreshVolumeLocked()); returns false for any other uuid. Fixed-output
-  // members (line-out to a fixed-volume amp) are never present here, same
-  // as they're skipped in SetVolume()'s own scaling.
+  // Fetches a fresh volume snapshot for every currently known room via a
+  // direct, throwaway RenderingControl SOAP call per room — same "no
+  // cached/subscribed state needed" pattern RefreshAllRoomNowPlayingAsync()
+  // already uses, and for the same reason: player_'s own subscribed
+  // subordinate list (what GetRoomVolume() used to read) is fixed to
+  // whatever the group looked like at zone-*selection* time and never
+  // grows to include a room that joins the group afterward — confirmed
+  // live, that left a newly regrouped room's volume slider missing
+  // entirely, and by extension starved the grouping popover's "Alle
+  // Räume" master fader of enough known volumes to ever show at all (it
+  // needs 2+). Meant to be called whenever the grouping popover needs
+  // rebuilding (see RebuildGroupingPopover()'s own caller), not
+  // continuously in the background. Results land in
+  // signal_group_volumes_changed(), read back per room via
+  // GetRoomVolume().
+  void RefreshGroupVolumesAsync();
+  // Per-member volume, for the grouping popover's own sliders and master
+  // fader — unlike SetVolume() above, this targets exactly one room, no
+  // proportional scaling of the rest. Only meaningful for a room
+  // RefreshGroupVolumesAsync() has actually reached; returns false
+  // otherwise (never yet refreshed, or a genuinely fixed-output room,
+  // which responds to GetVolume() but is skipped here the same way
+  // SetVolume()'s own scaling skips it elsewhere).
   bool GetRoomVolume(const std::string& player_uuid, uint8_t& out_volume) const;
+  sigc::signal<void()>& signal_group_volumes_changed() { return signal_group_volumes_changed_; }
   // Also debounced per-room, same reasoning as SetVolume() above — the
   // grouping popover has one of these sliders per room.
   void SetRoomVolume(const std::string& player_uuid, uint8_t value);
@@ -646,6 +662,7 @@ private:
   Glib::Dispatcher busy_dispatcher_;
   Glib::Dispatcher library_index_status_dispatcher_;
   Glib::Dispatcher room_now_playing_dispatcher_;
+  Glib::Dispatcher group_volumes_dispatcher_;
   // Written on tasks_'s own worker thread (TaskQueue's on_busy_changed
   // callback, passed in the constructor), read on the main thread once
   // busy_dispatcher_ wakes it up — the same "atomic handoff variable
@@ -673,6 +690,7 @@ private:
   sigc::signal<void()> signal_position_changed_;
   sigc::signal<void()> signal_library_index_status_changed_;
   sigc::signal<void()> signal_room_now_playing_changed_;
+  sigc::signal<void()> signal_group_volumes_changed_;
 
   // Independent of libnoson entirely, and explicitly unsubscribed at the
   // very top of ~NosonBackend()'s body (before any member starts being
@@ -722,9 +740,17 @@ private:
   VolumeInfo volume_;
   // uuid -> volume for every non-fixed-output member of the *currently
   // selected* zone — populated alongside volume_ in RefreshVolumeLocked(),
-  // from the same player_->GetRenderingProperty() call. Backs
-  // GetRoomVolume() for the grouping popover's per-room sliders.
+  // from the same player_->GetRenderingProperty() call. Only ever used to
+  // compute volume_'s own group-average/muted state now — see
+  // group_room_volumes_by_uuid_ below for what actually backs
+  // GetRoomVolume()/the grouping popover.
   std::map<std::string, uint8_t> room_volumes_;
+  // uuid -> volume for every room RefreshGroupVolumesAsync() has reached —
+  // unlike room_volumes_ above, this isn't tied to player_'s own fixed
+  // subordinate list, so it correctly includes a room that joined its
+  // group after the zone was first selected. Backs GetRoomVolume() for the
+  // grouping popover's per-room sliders and master fader.
+  std::map<std::string, uint8_t> group_room_volumes_by_uuid_;
   std::vector<QueueItem> queue_;
   unsigned queue_update_id_ = 0;  // needed by Player::RemoveTrackFromQueue()
   // Set at the end of SelectZone()'s own task, right when player_ is

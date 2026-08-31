@@ -276,6 +276,7 @@ NosonBackend::NosonBackend()
   saved_playlists_dispatcher_.connect([this] { signal_saved_playlists_changed_.emit(); });
   library_index_status_dispatcher_.connect([this] { signal_library_index_status_changed_.emit(); });
   room_now_playing_dispatcher_.connect([this] { signal_room_now_playing_changed_.emit(); });
+  group_volumes_dispatcher_.connect([this] { signal_group_volumes_changed_.emit(); });
   sleep_timer_dispatcher_.connect([this] { signal_sleep_timer_changed_.emit(); });
   sound_settings_dispatcher_.connect([this] { signal_sound_settings_changed_.emit(); });
   service_link_ready_dispatcher_.connect([this] {
@@ -4073,11 +4074,48 @@ void NosonBackend::RefreshVolumeLocked()
   }
 }
 
+void NosonBackend::RefreshGroupVolumesAsync()
+{
+  tasks_.Push([this] {
+    std::vector<NSROOT::ZonePlayerPtr> players;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      for (const auto& kv : zones_by_uuid_)
+        for (const NSROOT::ZonePlayerPtr& zp : *kv.second)
+          players.push_back(zp);
+    }
+
+    std::map<std::string, uint8_t> results;
+    for (const NSROOT::ZonePlayerPtr& zp : players)
+    {
+      if (!zp->IsValid())
+        continue;
+      NSROOT::RenderingControl rc(zp->GetHost(), zp->GetPort());
+      // Same fixed-output exclusion SetVolume()'s own scaling already
+      // applies (a line-out to a fixed-volume amp has no software volume
+      // to show/adjust here) — GetOutputFixed() is its own live SOAP call
+      // rather than a field GetVolume() itself carries.
+      uint8_t fixed = 0;
+      if (rc.GetOutputFixed(&fixed) && fixed)
+        continue;
+      uint8_t volume = 0;
+      if (rc.GetVolume(&volume))
+        results[zp->GetUUID()] = volume;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      group_room_volumes_by_uuid_ = std::move(results);
+    }
+    group_volumes_dispatcher_.emit();
+  });
+}
+
 bool NosonBackend::GetRoomVolume(const std::string& player_uuid, uint8_t& out_volume) const
 {
   std::lock_guard<std::mutex> lock(state_mutex_);
-  auto it = room_volumes_.find(player_uuid);
-  if (it == room_volumes_.end())
+  auto it = group_room_volumes_by_uuid_.find(player_uuid);
+  if (it == group_room_volumes_by_uuid_.end())
     return false;
   out_volume = it->second;
   return true;
