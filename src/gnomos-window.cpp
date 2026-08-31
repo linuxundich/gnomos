@@ -858,6 +858,7 @@ GnomosWindow::GnomosWindow()
   LoadLibraryViewPreference();
   LoadArtistImagesSetting();
   LoadLyricsSetting();
+  LoadTrackInfoDialogSize();
   LoadFallbackIconScaleSetting();
   // CoverThumbnail's own scale is a static, process-wide default — needs
   // syncing explicitly here for a value loaded from a previous run;
@@ -1710,6 +1711,51 @@ void GnomosWindow::SetLoadLyrics(bool enabled)
   catch (const Glib::Error&)
   {
     // non-fatal — just means the setting won't be remembered next launch
+  }
+}
+
+void GnomosWindow::LoadTrackInfoDialogSize()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    track_info_dialog_width_ = keyfile->get_integer("track_info_dialog", "width");
+    track_info_dialog_height_ = keyfile->get_integer("track_info_dialog", "height");
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — never saved yet; ShowTrackInfoDialog() falls back to its own
+    // one-time default (0 stays 0)
+  }
+}
+
+void GnomosWindow::SaveTrackInfoDialogSize(int width, int height)
+{
+  track_info_dialog_width_ = width;
+  track_info_dialog_height_ = height;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_integer("track_info_dialog", "width", width);
+  keyfile->set_integer("track_info_dialog", "height", height);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the size won't be remembered next launch
   }
 }
 
@@ -3259,11 +3305,22 @@ void GnomosWindow::ShowTrackInfoDialog()
   dialog->set_title("Titel-Details");
   dialog->set_transient_for(*this);
   dialog->set_modal(true);
-  // Widened from the original 320 — with Songtexte enabled, that width
-  // wrapped even a modest lyrics line every few words. 420 still reads as
-  // a compact dialog (not a full lyrics-viewer window) while giving the
-  // scroller below real room to be useful.
-  dialog->set_default_size(420, -1);
+  // Uses the size the user last left this dialog at (see
+  // track_info_dialog_width_/_height_'s own comment for why this replaced
+  // a natural/content-driven size) — falls back to a one-time default
+  // (420 wide — with Songtexte enabled, anything narrower wrapped even a
+  // modest lyrics line every few words — at this window's own current
+  // height) the very first time, before anything's ever been saved.
+  if (track_info_dialog_width_ > 0 && track_info_dialog_height_ > 0)
+  {
+    dialog->set_default_size(track_info_dialog_width_, track_info_dialog_height_);
+  }
+  else
+  {
+    int app_width = 0, app_height = 0;
+    get_default_size(app_width, app_height);
+    dialog->set_default_size(420, app_height > 0 ? app_height : -1);
+  }
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
@@ -3457,7 +3514,13 @@ void GnomosWindow::ShowTrackInfoDialog()
   content->append(*button_box);
 
   dialog->set_child(*content);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
+  dialog->signal_hide().connect([this, dialog] {
+    int width = 0, height = 0;
+    dialog->get_default_size(width, height);
+    if (width > 0 && height > 0)
+      SaveTrackInfoDialogSize(width, height);
+    delete dialog;
+  });
   dialog->present();
 }
 

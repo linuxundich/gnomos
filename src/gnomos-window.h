@@ -192,6 +192,10 @@ private:
   // [player] load_lyrics in state.ini — see load_lyrics_'s own comment.
   void LoadLyricsSetting();
   void SetLoadLyrics(bool enabled);
+  // [track_info_dialog] width/height in state.ini — see
+  // track_info_dialog_width_'s own comment.
+  void LoadTrackInfoDialogSize();
+  void SaveTrackInfoDialogSize(int width, int height);
   void SetPreferGridView(bool prefer_grid);
   // [library] fallback_icon_scale in state.ini — see fallback_icon_scale_'s
   // own comment.
@@ -401,6 +405,17 @@ private:
   // current track's artist/title/album to LRCLIB's public API (see
   // LyricsFetcher). Persisted to state.ini's [player] group.
   bool load_lyrics_ = false;
+  // ShowTrackInfoDialog()'s own remembered size — 0 means "never saved
+  // yet," in which case that method falls back to a one-time default (420
+  // wide, this window's own current height) instead of letting the
+  // dialog's natural/content-driven size decide, which made it wildly
+  // inconsistent between separate opens: short before Songtexte finished
+  // loading, then very tall on a later open once LyricsFetcher's cache
+  // made the full lyrics available immediately during layout. Updated on
+  // every close, in state.ini's own [track_info_dialog] group, so it
+  // tracks whatever the user last resized it to.
+  int track_info_dialog_width_ = 0;
+  int track_info_dialog_height_ = 0;
   // How large a CoverThumbnail fallback icon's own glyph renders relative
   // to its tile — see CoverThumbnail::SetFallbackIconScale()'s own
   // comment for why this is the user's own call rather than a fixed
