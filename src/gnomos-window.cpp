@@ -3221,6 +3221,28 @@ void GnomosWindow::ShowSavePlaylistDialog()
   entry->grab_focus();
 }
 
+namespace
+{
+// A radio-like NowPlaying::artist holds the station's own raw rotating
+// "now playing" content, not a real artist name — see
+// RadioContentFilter's own header comment: when it's an actual song
+// (rather than ad/ident filler), it follows a "<title> / <artist>"
+// convention, confirmed live (e.g. "Ho hey / The Lumineers" for SWR3).
+// Splits on the first " / " and fills title/artist from it; returns false
+// — nothing usable — for ad text or any station that doesn't follow this
+// convention at all, so a lyrics lookup simply isn't attempted rather than
+// searching on raw filler text.
+bool ParseRadioSongContent(const std::string& content, std::string& title, std::string& artist)
+{
+  size_t sep = content.find(" / ");
+  if (sep == std::string::npos)
+    return false;
+  title = content.substr(0, sep);
+  artist = content.substr(sep + 3);
+  return !title.empty() && !artist.empty();
+}
+}  // namespace
+
 void GnomosWindow::ShowTrackInfoDialog()
 {
   NowPlaying np = backend_->GetNowPlaying();
@@ -3314,7 +3336,21 @@ void GnomosWindow::ShowTrackInfoDialog()
   // by default; nothing shown at all when disabled, not even a "wird
   // geladen"-placeholder, since the feature should be entirely invisible
   // unless the user turned it on.
-  if (load_lyrics_ && !np.title.empty())
+  //
+  // For a radio-like source (duration == 0, stream_uri populated — see
+  // NowPlaying::stream_uri's own comment), np.title is the *station*
+  // name and np.artist is its raw rotating content — neither is a usable
+  // lyrics query as-is, so the real "<title> / <artist>" is reparsed out
+  // of np.artist instead (see ParseRadioSongContent()). lyrics_title stays
+  // empty (skipping the section below entirely) for ad/ident filler or a
+  // station whose content doesn't follow that convention at all.
+  std::string lyrics_title = np.title;
+  std::string lyrics_artist = np.artist;
+  bool is_radio = np.duration == 0 && !np.stream_uri.empty();
+  if (is_radio && !ParseRadioSongContent(np.artist, lyrics_title, lyrics_artist))
+    lyrics_title.clear();
+
+  if (load_lyrics_ && !lyrics_title.empty())
   {
     content->append(*Gtk::make_managed<Gtk::Separator>(Gtk::Orientation::HORIZONTAL));
 
@@ -3344,8 +3380,11 @@ void GnomosWindow::ShowTrackInfoDialog()
     // response arrives after dialog (and so lyrics_label) is already gone.
     auto lyrics_cancellable = Gio::Cancellable::create();
     dialog->signal_hide().connect([lyrics_cancellable] { lyrics_cancellable->cancel(); });
+    // np.album is the station's own metadata for radio, not a real album
+    // (and often empty) — never a useful hint for the query, unlike a
+    // genuine album name from the queue/library.
     LyricsFetcher::Instance().RequestLyrics(
-        np.artist, np.title, np.album,
+        lyrics_artist, lyrics_title, is_radio ? "" : np.album,
         [lyrics_label, lyrics_cancellable](std::string lyrics) {
           if (lyrics_cancellable->is_cancelled())
             return;
