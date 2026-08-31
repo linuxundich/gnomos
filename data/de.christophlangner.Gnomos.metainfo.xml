@@ -15,6 +15,12 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.11.1" date="2026-08-31">
+      <description>
+        <p>Fixes the room switcher's per-room live status and play/pause
+        button, added in 0.11.0 — it never actually worked before now.</p>
+      </description>
+    </release>
     <release version="0.11.0" date="2026-08-31">
       <description>
         <p>The room switcher popover now shows each room's own live

@@ -8,6 +8,17 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.11.1] - 2026-08-31
+
+### Fixed
+- The room switcher's per-room live status and play/pause button (new in
+  0.11.0) never actually worked: reading a throwaway, unsubscribed
+  player's cached transport state came back permanently empty, so every
+  room looked idle regardless of what was really playing, and the
+  play/pause button always just called Play() — pausing or stopping a
+  room that was already playing did nothing. Both now query live
+  transport state directly instead.
+
 ## [0.11.0] - 2026-08-31
 
 ### Added
