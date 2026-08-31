@@ -3307,20 +3307,27 @@ void GnomosWindow::ShowTrackInfoDialog()
   dialog->set_modal(true);
   // Uses the size the user last left this dialog at (see
   // track_info_dialog_width_/_height_'s own comment for why this replaced
-  // a natural/content-driven size) — falls back to a one-time default
-  // (420 wide — with Songtexte enabled, anything narrower wrapped even a
-  // modest lyrics line every few words — at this window's own current
-  // height) the very first time, before anything's ever been saved.
+  // a natural/content-driven size) — falls back to a one-time default (420
+  // wide — with Songtexte enabled, anything narrower wrapped even a modest
+  // lyrics line every few words) the very first time, before anything's
+  // ever been saved.
+  //
+  // Either way, height is capped below this window's own current height —
+  // confirmed live, matching it exactly (the original version of this
+  // fallback) left the dialog looking flush with the app window's own top
+  // and bottom edges, no visible framing at all. A saved height smaller
+  // than the cap (the user's own deliberate choice) is left alone; only a
+  // saved height that's grown to meet or exceed the app window's own
+  // height — including every very first open, before this cap existed —
+  // gets pulled back under it.
+  int app_width = 0, app_height = 0;
+  get_default_size(app_width, app_height);
+  constexpr int kHeightInset = 64;
+  int max_height = app_height > kHeightInset ? app_height - kHeightInset : app_height;
   if (track_info_dialog_width_ > 0 && track_info_dialog_height_ > 0)
-  {
-    dialog->set_default_size(track_info_dialog_width_, track_info_dialog_height_);
-  }
+    dialog->set_default_size(track_info_dialog_width_, std::min(track_info_dialog_height_, max_height));
   else
-  {
-    int app_width = 0, app_height = 0;
-    get_default_size(app_width, app_height);
-    dialog->set_default_size(420, app_height > 0 ? app_height : -1);
-  }
+    dialog->set_default_size(420, max_height > 0 ? max_height : -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
