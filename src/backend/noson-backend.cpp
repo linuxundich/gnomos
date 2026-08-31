@@ -775,11 +775,13 @@ void NosonBackend::ToggleRoomPlayback(const std::string& coordinator_uuid)
 {
   tasks_.Push([this, coordinator_uuid] {
     NSROOT::ZonePlayerPtr target;
+    bool was_playing;
     bool can_pause;
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       target = FindZonePlayer(zones_by_uuid_, coordinator_uuid);
       auto it = room_now_playing_by_uuid_.find(coordinator_uuid);
+      was_playing = it != room_now_playing_by_uuid_.end() && it->second.state == TransportState::Playing;
       can_pause = it != room_now_playing_by_uuid_.end() ? it->second.can_pause : true;
     }
     if (!target)
@@ -787,11 +789,17 @@ void NosonBackend::ToggleRoomPlayback(const std::string& coordinator_uuid)
 
     NSROOT::Player roomPlayer(target);
     // Same "is it actually already playing" check PauseOrStop() makes for
-    // the currently selected zone, just read from the cached
-    // RoomNowPlaying snapshot here instead of a fresh GetTransportProperty()
-    // call — one round trip instead of two for the common case.
-    NSROOT::AVTProperty prop = roomPlayer.GetTransportProperty();
-    if (ParseTransportState(prop.TransportState) == TransportState::Playing)
+    // the currently selected zone, read from the cached RoomNowPlaying
+    // snapshot (RefreshAllRoomNowPlayingAsync()'s own live SOAP query,
+    // re-polled every few seconds while the popover is open) rather than a
+    // fresh query here — a throwaway NSROOT::Player's own
+    // GetTransportProperty(), tried here previously, only reflects
+    // *subscribed* LastChange events, so it came back permanently empty
+    // for a one-off Player like this one: confirmed live, this always fell
+    // through to the Play() branch below regardless of the room's actual
+    // state, so a room that was already playing could never be paused or
+    // stopped from here.
+    if (was_playing)
     {
       if (can_pause)
         roomPlayer.Pause();
