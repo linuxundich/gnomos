@@ -46,6 +46,7 @@
 #include "config.h"
 #include "widgets/art-cache.h"
 #include "widgets/cover-thumbnail.h"
+#include "widgets/http-fetch.h"
 #include "widgets/lyrics-fetcher.h"
 #include "widgets/radio-browser-service.h"
 
@@ -526,8 +527,16 @@ GnomosWindow::GnomosWindow()
       [this](Gtk::ListBoxRow*) { room_popover_.popdown(); });
 
   zones_scroller_.set_child(zones_list_box_);
-  zones_scroller_.set_size_request(260, -1);
-  zones_scroller_.set_max_content_height(400);
+  // Widened from the original 260 (a single-line name + Gen1 badge + one
+  // info button) to fit the extra play/pause button and, more importantly,
+  // the now-playing subtitle line added below — at 260, a grouped zone's
+  // own display_name (e.g. "Arbeitszimmer + 1", the only visual indication
+  // this app has for which rooms are currently grouped) was getting
+  // ellipsized away entirely, confirmed live. Height raised to match —
+  // each row is now two lines tall, so the same 400px ceiling fit
+  // noticeably fewer rooms before scrolling.
+  zones_scroller_.set_size_request(320, -1);
+  zones_scroller_.set_max_content_height(480);
   zones_scroller_.set_propagate_natural_height(true);
   room_popover_.set_child(zones_scroller_);
   // Live per-room now-playing status (see OnZonesChanged()'s own comment
@@ -3222,7 +3231,11 @@ void GnomosWindow::ShowTrackInfoDialog()
   dialog->set_title("Titel-Details");
   dialog->set_transient_for(*this);
   dialog->set_modal(true);
-  dialog->set_default_size(320, -1);
+  // Widened from the original 320 — with Songtexte enabled, that width
+  // wrapped even a modest lyrics line every few words. 420 still reads as
+  // a compact dialog (not a full lyrics-viewer window) while giving the
+  // scroller below real room to be useful.
+  dialog->set_default_size(420, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
@@ -3259,34 +3272,42 @@ void GnomosWindow::ShowTrackInfoDialog()
     content->append(*album);
   }
 
-  // One-shot load, same mechanics as PlayerBar::LoadArt() but scoped to
-  // this dialog's own lifetime — cancelled on close so a slow response
-  // arriving after the dialog is already gone can't touch a freed widget.
+  // Same ArtCache-first lookup PlayerBar::LoadArt() does — a cache hit
+  // (the common case: CoverThumbnail has near-certainly already fetched
+  // this same uri for a library tile or the player bar itself) resolves
+  // synchronously, no network round trip at all. On a genuine miss, this
+  // goes through HttpFetch() rather than Gio::File — unlike Gio::File,
+  // that doesn't depend on a GVfs http backend being available (confirmed
+  // broken/absent in the Flatpak sandbox, see HttpFetch()'s own
+  // introduction; the previous Gio::File-based version of this code
+  // silently failed here for exactly that reason, even outside Flatpak,
+  // any time the cache didn't already happen to be warm).
   if (!np.art_uri.empty())
   {
-    auto cancellable = Gio::Cancellable::create();
-    dialog->signal_hide().connect([cancellable] { cancellable->cancel(); });
-    auto file = Gio::File::create_for_uri(np.art_uri);
-    file->load_contents_async(
-        [art, file](Glib::RefPtr<Gio::AsyncResult>& result) {
-          try
-          {
-            char* contents = nullptr;
-            gsize length = 0;
-            if (file->load_contents_finish(result, contents, length) && contents)
-            {
-              auto bytes = Glib::Bytes::create(contents, length);
-              g_free(contents);
-              art->set(Gdk::Texture::create_from_bytes(bytes));
-            }
-          }
-          catch (const Glib::Error&)
-          {
-            // dialog (and so `art`) may already be gone, or the load
-            // simply failed — either way, the placeholder icon stays.
-          }
-        },
-        cancellable);
+    if (auto cached = ArtCache::Instance().Get(np.art_uri))
+    {
+      art->set(cached);
+    }
+    else
+    {
+      // Cancelled on close so a slow response arriving after the dialog is
+      // already gone can't touch a freed widget — HttpFetch() resolves a
+      // cancelled fetch with an empty body rather than throwing, so this
+      // needs an explicit is_cancelled() check, same reasoning as the
+      // lyrics fetch below.
+      auto cancellable = Gio::Cancellable::create();
+      dialog->signal_hide().connect([cancellable] { cancellable->cancel(); });
+      std::string art_uri = np.art_uri;
+      HttpFetch(
+          art_uri,
+          [art, art_uri, cancellable](std::string body) {
+            if (cancellable->is_cancelled() || body.empty())
+              return;
+            if (auto texture = ArtCache::Instance().Put(art_uri, Glib::Bytes::create(body.data(), body.size())))
+              art->set(texture);
+          },
+          cancellable);
+    }
   }
 
   // Songtexte — opt-in via Settings (see load_lyrics_'s own comment), off
@@ -3309,7 +3330,11 @@ void GnomosWindow::ShowTrackInfoDialog()
     lyrics_scroller->set_child(*lyrics_label);
     lyrics_scroller->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
     lyrics_scroller->set_propagate_natural_height(true);
-    lyrics_scroller->set_max_content_height(280);
+    // Raised from the original 280 — most tracks' full lyrics need several
+    // screens' worth of scrolling either way, but 280 only showed a handful
+    // of lines at once even on a tall display; 480 shows meaningfully more
+    // without the dialog itself dominating the whole screen.
+    lyrics_scroller->set_max_content_height(480);
     content->append(*lyrics_scroller);
 
     // Unlike the art load above, HttpFetch() (which LyricsFetcher sits on
