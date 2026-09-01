@@ -129,9 +129,16 @@ LibraryView::LibraryView()
   list_box_.set_margin_start(12);
   list_box_.set_margin_end(12);
 
+  // row->get_index() would be the row's position among the currently
+  // *displayed* (possibly filter_entry_-narrowed) rows, not its real
+  // position in all_entries_ — wrong the moment a filter is active, since
+  // then they diverge (confirmed live: filtering down to one match and
+  // activating it opened all_entries_[0] instead). BuildList() stashes the
+  // real index as GObject data on each row instead, read back here.
   list_box_.signal_row_activated().connect([this](Gtk::ListBoxRow* row) {
     if (row)
-      signal_entry_activated_.emit(static_cast<unsigned>(row->get_index()));
+      signal_entry_activated_.emit(
+          static_cast<unsigned>(GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(row->gobj()), "entry-index"))));
   });
 
   // Grid mode (Albums/Artists — see the header comment on SetEntries()),
@@ -153,9 +160,12 @@ LibraryView::LibraryView()
   flow_box_.set_margin_end(8);
   flow_box_.set_valign(Gtk::Align::START);
   flow_box_.set_activate_on_single_click(true);
+  // Same real-index-vs-display-position mismatch as list_box_'s row above
+  // — BuildGrid() stashes the real index as GObject data on each child.
   flow_box_.signal_child_activated().connect([this](Gtk::FlowBoxChild* child) {
     if (child)
-      signal_entry_activated_.emit(static_cast<unsigned>(child->get_index()));
+      signal_entry_activated_.emit(
+          static_cast<unsigned>(GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(child->gobj()), "entry-index"))));
   });
 
   scroller_.set_child(list_box_);
@@ -427,7 +437,13 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       }
     }
 
-    list_box_.append(*row_box);
+    // Explicit Gtk::ListBoxRow (rather than letting list_box_.append() auto-
+    // wrap row_box in an anonymous one) so the real all_entries_ index can
+    // be stashed on it — see signal_row_activated()'s own comment.
+    auto* row = Gtk::make_managed<Gtk::ListBoxRow>();
+    g_object_set_data(G_OBJECT(row->gobj()), "entry-index", GUINT_TO_POINTER(index));
+    row->set_child(*row_box);
+    list_box_.append(*row);
   }
 }
 
@@ -472,7 +488,12 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
       tile->append(*subtitle);
     }
 
-    flow_box_.append(*tile);
+    // Explicit Gtk::FlowBoxChild — see BuildList()'s identical Gtk::ListBoxRow
+    // comment for why.
+    auto* child = Gtk::make_managed<Gtk::FlowBoxChild>();
+    g_object_set_data(G_OBJECT(child->gobj()), "entry-index", GUINT_TO_POINTER(index));
+    child->set_child(*tile);
+    flow_box_.append(*child);
   }
 }
 
