@@ -168,7 +168,10 @@ private:
   // suchen" button in the Track-Details dialog) but not auto-submitted —
   // the dialog is shown either way, so the user can confirm or adjust the
   // scope (local library vs. the currently linked service) before firing.
-  void ShowLibrarySearchDialog(const std::string& prefill = "");
+  // search_scope_object_id overrides which local-library level a local
+  // (non-SMAPI) search runs within — see this method's own comment on why
+  // that can't just default to "wherever the user happens to be browsing".
+  void ShowLibrarySearchDialog(const std::string& prefill = "", const std::string& search_scope_object_id = "");
   void OnServiceLinkReady(std::string url, std::string code);
 
   void OnDiscoveryDone(bool ok);
@@ -317,6 +320,9 @@ private:
   // both conditions share the one spinner rather than each getting its
   // own indicator.
   Gtk::Spinner activity_spinner_;
+  // Debounces actually starting activity_spinner_ — see
+  // UpdateActivitySpinner()'s own comment for why.
+  sigc::connection spinner_show_delay_connection_;
   bool discovering_ = false;
   bool backend_busy_ = false;
   Gtk::Button refresh_button_;

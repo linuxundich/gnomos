@@ -718,7 +718,11 @@ GnomosWindow::GnomosWindow()
     if (index >= history_.size())
       return;
     const HistoryEntry& entry = history_[index];
-    ShowLibrarySearchDialog(entry.artist.empty() ? entry.title : entry.artist);
+    // Only the artist branch has an unambiguous scope to search in — a
+    // fallback title could be anything (e.g. a radio station name), so
+    // that branch keeps the old "search the current level" behavior.
+    ShowLibrarySearchDialog(entry.artist.empty() ? entry.title : entry.artist,
+                             entry.artist.empty() ? "" : "A:ALBUMARTIST");
   });
 
   library_stack_.push_back({"", "Bibliothek"});
@@ -1270,9 +1274,28 @@ void GnomosWindow::OnBusyChanged(bool busy)
 void GnomosWindow::UpdateActivitySpinner()
 {
   if (discovering_ || backend_busy_)
-    activity_spinner_.start();
+  {
+    // Debounced — TaskQueue's busy signal fires around *every* task with
+    // nothing else queued at that moment, including routine background
+    // polling nobody is actually waiting on (e.g. OnPositionTimerTick()'s
+    // once-a-second RefreshPositionAsync() while a track plays), which
+    // finishes near-instantly on a local network. Starting the spinner
+    // immediately for every one of those made it flicker on and off
+    // constantly even with nothing genuinely pending (reported live).
+    // Only a task still running after this delay counts as worth showing.
+    if (!activity_spinner_.get_spinning() && !spinner_show_delay_connection_.connected())
+      spinner_show_delay_connection_ = Glib::signal_timeout().connect(
+          [this] {
+            activity_spinner_.start();
+            return false;  // one-shot
+          },
+          300);
+  }
   else
+  {
+    spinner_show_delay_connection_.disconnect();
     activity_spinner_.stop();
+  }
 }
 
 void GnomosWindow::OnZonesChanged()
@@ -4943,7 +4966,7 @@ void GnomosWindow::ShowTrackInfoDialog()
     std::string artist = np.artist;
     search_artist_button->signal_clicked().connect([this, dialog, artist] {
       dialog->close();
-      ShowLibrarySearchDialog(artist);
+      ShowLibrarySearchDialog(artist, "A:ALBUMARTIST");
     });
     button_box->append(*search_artist_button);
 
@@ -4965,7 +4988,7 @@ void GnomosWindow::ShowTrackInfoDialog()
     std::string album = np.album;
     search_album_button->signal_clicked().connect([this, dialog, album] {
       dialog->close();
-      ShowLibrarySearchDialog(album);
+      ShowLibrarySearchDialog(album, "A:ALBUM");
     });
     button_box->append(*search_album_button);
   }
@@ -5100,7 +5123,7 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
           std::string name = related_artist.name;
           search_button->signal_clicked().connect([this, dialog, name] {
             dialog->close();
-            ShowLibrarySearchDialog(name);
+            ShowLibrarySearchDialog(name, "A:ALBUMARTIST");
           });
           row_box->append(*search_button);
           related_list->append(*row_box);
@@ -5653,14 +5676,23 @@ void GnomosWindow::ShowDeleteAlarmConfirmDialog(std::string alarm_id)
                      [this, alarm_id] { backend_->DeleteAlarm(alarm_id); });
 }
 
-void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill)
+void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std::string& search_scope_object_id)
 {
   std::vector<std::string> categories = backend_->GetActiveServiceSearchCategories();
   // Empty categories means we're not inside a linked service (SMAPI) — fall
   // back to a client-side substring search within the current local-library
   // level instead of refusing outright.
   bool local_search = categories.empty();
-  std::string local_object_id = library_stack_.back().first;
+  // A caller prefilling a specific artist/album name (Titel-Details' own
+  // search buttons, a related artist, a history entry) means "find this in
+  // the library" — not "find this within whatever level I last happened to
+  // be browsing", which is what library_stack_.back().first would give,
+  // and is wrong more often than not (confirmed live: searching a related
+  // artist only ever found anything if the user had separately already
+  // browsed into Interpreten beforehand). Only the library view's own
+  // "search this level" button — no override, prefill empty — genuinely
+  // means the current level.
+  std::string local_object_id = search_scope_object_id.empty() ? library_stack_.back().first : search_scope_object_id;
 
   auto* dialog = new Gtk::Window();
   dialog->set_title("Suchen");
