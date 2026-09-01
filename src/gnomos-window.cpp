@@ -133,6 +133,10 @@ GnomosWindow::GnomosWindow()
   add_action("import-radio-favorites", sigc::mem_fun(*this, &GnomosWindow::ImportRadioFavorites));
   add_action("scenes", sigc::mem_fun(*this, &GnomosWindow::ShowScenesDialog));
   add_action("import-m3u-playlist", sigc::mem_fun(*this, &GnomosWindow::ImportM3uPlaylist));
+  // The window's own close button just hides it when run_in_background_ is
+  // on (see OnCloseRequest()) — this is the one reachable way to actually
+  // terminate Gnomos in that case.
+  add_action("quit", sigc::mem_fun(*this, &GnomosWindow::QuitApplication));
   auto primary_menu = Gio::Menu::create();
   primary_menu->append("Stream abspielen…", "win.play-stream");
   primary_menu->append("Überall stummschalten", "win.mute-everywhere");
@@ -143,6 +147,7 @@ GnomosWindow::GnomosWindow()
   primary_menu->append("Einstellungen", "win.settings");
   primary_menu->append("Tastenkürzel", "win.shortcuts");
   primary_menu->append("Über Gnomos", "win.about");
+  primary_menu->append("Gnomos beenden", "win.quit");
   primary_menu_button_.set_icon_name("open-menu-symbolic");
   primary_menu_button_.set_tooltip_text("Hauptmenü");
   primary_menu_button_.set_menu_model(primary_menu);
@@ -899,6 +904,7 @@ GnomosWindow::GnomosWindow()
 
   LoadColorScheme();
   LoadNotificationSetting();
+  LoadRunInBackgroundSetting();
   LoadLibraryViewPreference();
   LoadArtistImagesSetting();
   LoadLyricsSetting();
@@ -1224,6 +1230,26 @@ bool GnomosWindow::OnCloseRequest()
   {
     // non-fatal — just means the window size won't be remembered next launch
   }
+  if (!ShouldReallyClose())
+  {
+    // Hide rather than close, so the process (and with it MPRIS control /
+    // scrobbling) keeps running — GnomosApplication's signal_hide handler
+    // checks ShouldReallyClose() itself before deleting the window, so this
+    // intentional hide doesn't get mistaken for the window actually
+    // closing. Re-launching Gnomos (or "Gnomos beenden" from the menu)
+    // reaches it via GnomosApplication::on_activate()'s present().
+    set_visible(false);
+    return true;  // block the close, we handled it ourselves
+  }
+  // Really closing — GTK's own default close-request handling destroys the
+  // window from here without emitting a "hide" signal first (confirmed
+  // live: a signal_hide handler on GnomosApplication's side never fired for
+  // this path, only for the backgrounding set_visible(false) above), so
+  // this is the one reliable place to release the hold() GnomosApplication
+  // took at startup — otherwise, now that anything holds the application
+  // open at all, it would never quit on a real close.
+  if (auto app = get_application())
+    app->release();
   return false;  // don't block the close
 }
 
@@ -2398,6 +2424,53 @@ void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
     app->send_notification("now-playing", notification);
 }
 
+void GnomosWindow::LoadRunInBackgroundSetting()
+{
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    if (!keyfile->load_from_file(StateFilePath()))
+      return;
+    run_in_background_ = keyfile->get_boolean("general", "run_in_background");
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — no setting saved yet, stays on (the default)
+  }
+}
+
+void GnomosWindow::SetRunInBackground(bool enabled)
+{
+  run_in_background_ = enabled;
+
+  const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  auto keyfile = Glib::KeyFile::create();
+  try
+  {
+    keyfile->load_from_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // fine — first launch, nothing to preserve
+  }
+  keyfile->set_boolean("general", "run_in_background", enabled);
+  try
+  {
+    keyfile->save_to_file(StateFilePath());
+  }
+  catch (const Glib::Error&)
+  {
+    // non-fatal — just means the setting won't be remembered next launch
+  }
+}
+
+void GnomosWindow::QuitApplication()
+{
+  quitting_ = true;
+  close();
+}
+
 bool GnomosWindow::OnKeyPressed(guint keyval, guint /*keycode*/, Gdk::ModifierType state)
 {
   bool ctrl = (state & Gdk::ModifierType::CONTROL_MASK) == Gdk::ModifierType::CONTROL_MASK;
@@ -3498,6 +3571,25 @@ void GnomosWindow::ShowSettingsDialog()
   GtkWidget* radio_page = adw_preferences_page_new();
   adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(radio_page), "Radio");
   adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(radio_page), "network-wireless-symbolic");
+
+  // --- Fensterverhalten ---
+  GtkWidget* window_behavior_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(window_behavior_group), "Fensterverhalten");
+
+  GtkWidget* background_row = adw_switch_row_new();
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(background_row), "Im Hintergrund weiterlaufen");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(background_row),
+      "Das Fenster zu schließen beendet Gnomos dann nicht mehr — Medientasten/Sperrbildschirm-Steuerung "
+      "(MPRIS) und Last.fm-/ListenBrainz-Scrobbling laufen weiter, auch ohne offenes Fenster. Über "
+      "„Gnomos beenden“ im Menü lässt sich Gnomos jederzeit vollständig beenden.");
+  adw_switch_row_set_active(ADW_SWITCH_ROW(background_row), run_in_background_);
+  g_signal_connect_data(
+      background_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
+      new std::function<void(bool)>([this](bool active) { SetRunInBackground(active); }), DeleteBoolCallback,
+      static_cast<GConnectFlags>(0));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(window_behavior_group), background_row);
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(window_behavior_group));
 
   // --- Erscheinungsbild ---
   GtkWidget* appearance_group = adw_preferences_group_new();

@@ -222,6 +222,18 @@ private:
   void LoadNotificationSetting();
   void SetNotifyOnTrackChange(bool enabled);
   void SendTrackChangeNotification(const NowPlaying& now_playing);
+  // [general] run_in_background in state.ini — see run_in_background_'s own
+  // comment.
+  void LoadRunInBackgroundSetting();
+  void SetRunInBackground(bool enabled);
+  // False while backgrounding on window-close (OnCloseRequest() hides
+  // instead of closing) applies; true once either run_in_background_ is off
+  // or "Gnomos beenden" was explicitly chosen, letting the close proceed
+  // for real.
+  bool ShouldReallyClose() const { return quitting_ || !run_in_background_; }
+  // win.quit — the only reachable way to fully terminate once
+  // run_in_background_ is on (the window's own close button just hides it).
+  void QuitApplication();
   // [library] prefer_grid in state.ini — see prefer_grid_view_'s own
   // comment.
   void LoadLibraryViewPreference();
@@ -442,6 +454,16 @@ private:
   // fires twice for the same track. Off by default (opt-in via Settings);
   // persisted to state.ini's [notifications] group.
   bool notify_on_track_change_ = false;
+  // Whether closing the window hides it instead of quitting Gnomos —
+  // MPRIS control and Last.fm/ListenBrainz scrobbling otherwise die the
+  // moment the window closes, even though the Sonos speakers themselves
+  // keep playing unaffected. On by default, since it's the whole point of
+  // those two integrations continuing to work; persisted to state.ini's
+  // [general] group. See ShouldReallyClose()'s own comment for how this
+  // interacts with the explicit "Gnomos beenden" action.
+  bool run_in_background_ = true;
+  // Set only by QuitApplication() — see ShouldReallyClose()'s own comment.
+  bool quitting_ = false;
   // Edge-trigger state for CheckAlarmAndTransportStatus() — see its own
   // comment.
   bool last_alarm_running_ = false;
