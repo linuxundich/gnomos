@@ -3033,6 +3033,13 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
       auto* value = Gtk::make_managed<Gtk::Label>(value_text);
       value->set_halign(Gtk::Align::START);
       value->set_selectable(true);
+      // See ShowTrackInfoDialog()'s own lyrics_label for why this needs an
+      // explicit set_can_focus(false) — a selectable Label is otherwise the
+      // first focusable widget GTK auto-focuses when this window is
+      // presented, which looked like the first room's "Modell" value (the
+      // very first field of the very first room) was always highlighted
+      // blue regardless of which model it actually was.
+      value->set_can_focus(false);
       grid->attach(*value, 1, row);
       ++row;
     }
