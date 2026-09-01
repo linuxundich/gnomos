@@ -155,7 +155,10 @@ GnomosWindow::GnomosWindow()
 
   activity_spinner_.set_margin_start(6);
   activity_spinner_.set_margin_end(6);
-  activity_spinner_.set_tooltip_text("Sonos-System antwortet …");
+  // No tooltip set here — UpdateActivitySpinner() sets/clears it alongside
+  // start()/stop(), so hovering the (invisible but still hoverable while
+  // stopped) spinner area doesn't show "Sonos-System antwortet …" when
+  // nothing actually is.
   refresh_button_.set_icon_name("view-refresh-symbolic");
   refresh_button_.set_tooltip_text("Sonos-Geräte suchen");
   refresh_button_.signal_clicked().connect(sigc::mem_fun(*this, &GnomosWindow::OnRefreshClicked));
@@ -1286,6 +1289,7 @@ void GnomosWindow::UpdateActivitySpinner()
     if (!activity_spinner_.get_spinning() && !spinner_show_delay_connection_.connected())
       spinner_show_delay_connection_ = Glib::signal_timeout().connect(
           [this] {
+            activity_spinner_.set_tooltip_text("Sonos-System antwortet …");
             activity_spinner_.start();
             return false;  // one-shot
           },
@@ -1295,6 +1299,7 @@ void GnomosWindow::UpdateActivitySpinner()
   {
     spinner_show_delay_connection_.disconnect();
     activity_spinner_.stop();
+    activity_spinner_.set_has_tooltip(false);
   }
 }
 
