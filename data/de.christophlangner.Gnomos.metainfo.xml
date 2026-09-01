@@ -15,6 +15,15 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.14.0" date="2026-09-01">
+      <description>
+        <p>New: opt-in Last.fm scrobbling, an artist bio/related-artists
+        panel, M3U/PLS playlist import, and Gnomos now keeps running in
+        the background (media keys, lock-screen control, scrobbling) when
+        its window is closed. Also fixes filtered results in the artist/
+        album view opening the wrong entry.</p>
+      </description>
+    </release>
     <release version="0.13.0" date="2026-08-31">
       <description>
         <p>New: opt-in ListenBrainz scrobbling, a local backup for radio

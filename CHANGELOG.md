@@ -8,6 +8,34 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.14.0] - 2026-09-01
+
+### Added
+- Last.fm scrobbling alongside the existing ListenBrainz support: enter
+  your own API key/shared secret in Settings → Allgemein → Scrobbling
+  and sign in to start submitting listens. Either, both, or neither
+  service can be configured independently.
+- "Über den Interpreten" in Titel-Details shows the artist's Last.fm bio
+  (reuses the API key already configured for Last.fm scrobbling) and
+  related artists from Deezer, each searchable in the library with one
+  click.
+- "M3U/PLS-Playlist importieren…" in the main menu parses a picked
+  playlist file, matches its entries against your library by title/
+  artist, and adds whatever matched to the queue.
+- Gnomos now keeps running in the background when its window is closed
+  (new "Im Hintergrund weiterlaufen" toggle in Settings, on by
+  default), so Last.fm/ListenBrainz scrobbling and MPRIS media-key/
+  lock-screen control keep working without the window open. "Gnomos
+  beenden" in the main menu fully quits.
+
+### Fixed
+- Clicking a filtered result in the artist/album grid or list (typing
+  into "Filtern…") could open the wrong entry entirely — always
+  whatever sat at that same screen position in the *unfiltered* list,
+  rather than the filtered item actually clicked.
+- Settings now reflects a Last.fm connect/disconnect immediately
+  instead of only after closing and reopening the dialog.
+
 ## [0.13.0] - 2026-08-31
 
 ### Added
