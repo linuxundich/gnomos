@@ -277,6 +277,7 @@ NosonBackend::NosonBackend()
   library_index_status_dispatcher_.connect([this] { signal_library_index_status_changed_.emit(); });
   room_now_playing_dispatcher_.connect([this] { signal_room_now_playing_changed_.emit(); });
   group_volumes_dispatcher_.connect([this] { signal_group_volumes_changed_.emit(); });
+  tracks_for_matching_dispatcher_.connect([this] { signal_tracks_for_matching_ready_.emit(); });
   sleep_timer_dispatcher_.connect([this] { signal_sleep_timer_changed_.emit(); });
   sound_settings_dispatcher_.connect([this] { signal_sound_settings_changed_.emit(); });
   service_link_ready_dispatcher_.connect([this] {
@@ -2992,6 +2993,74 @@ void NosonBackend::PlayLibraryItemNext(unsigned index)
       std::lock_guard<std::mutex> lock(state_mutex_);
       pending_error_ = queueable ? "Titel konnte nicht als nächster Titel eingefügt werden."
                                   : "Dieser Titel kann nicht als nächster Titel eingefügt werden.";
+      error_dispatcher_.emit();
+      return;
+    }
+    RefreshQueueAsync();
+  });
+}
+
+void NosonBackend::FetchAllTracksForMatchingAsync()
+{
+  tasks_.Push([this] {
+    NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    NSROOT::ContentBrowser browser(libraryDirectory, "A:TRACKS", 500);
+    ExhaustBrowser(browser);
+
+    std::vector<LibraryEntry> entries;
+    std::vector<NSROOT::DigitalItemPtr> raw;
+    entries.reserve(browser.table().size());
+    raw.reserve(browser.table().size());
+    for (const auto& item : browser.table())
+    {
+      LibraryEntry entry;
+      entry.object_id = item->GetObjectID();
+      entry.title = item->GetValue("dc:title");
+      entry.subtitle = ArtistSubtitle(item);
+      entry.is_container = item->IsContainer();
+      entries.push_back(std::move(entry));
+      raw.push_back(item);
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      tracks_for_matching_ = std::move(entries);
+      tracks_for_matching_raw_ = std::move(raw);
+    }
+    tracks_for_matching_dispatcher_.emit();
+  });
+}
+
+std::vector<LibraryEntry> NosonBackend::GetTracksForMatching() const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  return tracks_for_matching_;
+}
+
+void NosonBackend::AddTrackMatchesToQueue(const std::vector<unsigned>& indices)
+{
+  tasks_.Push([this, indices] {
+    std::vector<NSROOT::DigitalItemPtr> items;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      for (unsigned index : indices)
+        if (index < tracks_for_matching_raw_.size())
+          items.push_back(tracks_for_matching_raw_[index]);
+    }
+    auto player = SnapshotPlayer();
+    if (!player || items.empty())
+      return;
+
+    std::vector<NSROOT::DigitalItemPtr> queueable;
+    queueable.reserve(items.size());
+    for (const NSROOT::DigitalItemPtr& item : items)
+      if (NSROOT::System::CanQueueItem(item))
+        queueable.push_back(item);
+
+    if (queueable.empty() || player->AddMultipleURIsToQueue(queueable) == 0)
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Titel konnten nicht zur Warteschlange hinzugefügt werden.";
       error_dispatcher_.emit();
       return;
     }

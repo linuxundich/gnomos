@@ -104,6 +104,13 @@ private:
   // every favorite type. Reached from the primary menu.
   void ExportRadioFavorites();
   void ImportRadioFavorites();
+  // M3U/M3U8/PLS playlist import: parses the picked file client-side,
+  // matches each entry's guessed title/artist against
+  // NosonBackend::GetTracksForMatching() (fetched fresh once per import —
+  // see that method's own comment), and batch-adds whatever matched to
+  // the queue. Honest about match quality: reports how many of the
+  // parsed entries actually matched, rather than silently dropping misses.
+  void ImportM3uPlaylist();
   // Scenes (grouping presets) — captures every room's current group
   // (which coordinator, if any, it's joined to) and, best-effort, its
   // current volume, as a named preset restorable in one click. Purely
@@ -116,6 +123,11 @@ private:
   void ApplyScene(const std::string& name);
   void DeleteScene(const std::string& name);
   void ShowScenesDialog();
+  // Bio (Last.fm, opt-in via the same api_key configured for Last.fm
+  // scrobbling) + related artists (Deezer, no key needed) for one artist —
+  // reached from ShowTrackInfoDialog()'s own "Über den Interpreten"
+  // button. See ArtistInfoFetcher's own header comment.
+  void ShowArtistInfoDialog(const std::string& artist_name);
   void ShowSaveSceneDialog();
   void ShowClearQueueConfirmDialog();
   // Same confirm-dialog treatment as ShowClearQueueConfirmDialog() — a

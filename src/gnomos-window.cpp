@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <ctime>
 #include <map>
+#include <sstream>
 #include <tuple>
 
 #include <gdk/gdkkeysyms.h>
@@ -54,6 +55,7 @@
 
 #include "config.h"
 #include "widgets/art-cache.h"
+#include "widgets/artist-info-fetcher.h"
 #include "widgets/cover-thumbnail.h"
 #include "widgets/http-fetch.h"
 #include "widgets/lastfm-scrobbler.h"
@@ -130,12 +132,14 @@ GnomosWindow::GnomosWindow()
   add_action("export-radio-favorites", sigc::mem_fun(*this, &GnomosWindow::ExportRadioFavorites));
   add_action("import-radio-favorites", sigc::mem_fun(*this, &GnomosWindow::ImportRadioFavorites));
   add_action("scenes", sigc::mem_fun(*this, &GnomosWindow::ShowScenesDialog));
+  add_action("import-m3u-playlist", sigc::mem_fun(*this, &GnomosWindow::ImportM3uPlaylist));
   auto primary_menu = Gio::Menu::create();
   primary_menu->append("Stream abspielen…", "win.play-stream");
   primary_menu->append("Überall stummschalten", "win.mute-everywhere");
   primary_menu->append("Szenen…", "win.scenes");
   primary_menu->append("Radiosender-Favoriten exportieren…", "win.export-radio-favorites");
   primary_menu->append("Radiosender-Favoriten importieren…", "win.import-radio-favorites");
+  primary_menu->append("M3U/PLS-Playlist importieren…", "win.import-m3u-playlist");
   primary_menu->append("Einstellungen", "win.settings");
   primary_menu->append("Tastenkürzel", "win.shortcuts");
   primary_menu->append("Über Gnomos", "win.about");
@@ -4182,6 +4186,254 @@ void GnomosWindow::ImportRadioFavorites()
   });
 }
 
+namespace
+{
+// One parsed M3U/PLS entry — best-effort, client-side-only guesses at
+// what a matching library track's own title/artist would be. artist may
+// be empty (no reliable way to split it out of that particular line).
+struct M3uEntry
+{
+  std::string title;
+  std::string artist;
+};
+
+// A plain file path/URL's own filename, minus directory and extension —
+// the fallback title guess for an M3U entry with no #EXTINF line, or a
+// PLS entry with no TitleN= (both real cases, confirmed by the format
+// specs themselves: EXTINF/Title are optional metadata, File/the bare
+// path is the only thing either format actually requires).
+std::string GuessTitleFromPath(const std::string& path)
+{
+  std::string name = path;
+  size_t slash = name.find_last_of("/\\");
+  if (slash != std::string::npos)
+    name = name.substr(slash + 1);
+  size_t dot = name.find_last_of('.');
+  if (dot != std::string::npos && dot > 0)
+    name = name.substr(0, dot);
+  return name;
+}
+
+// "Artist - Title", the convention every common M3U/PLS generator uses
+// for its own free-text title metadata — split on the first " - ", or
+// treat the whole string as title-only if that separator isn't there.
+void SplitArtistTitle(const std::string& info, std::string& artist, std::string& title)
+{
+  size_t dash = info.find(" - ");
+  if (dash != std::string::npos)
+  {
+    artist = info.substr(0, dash);
+    title = info.substr(dash + 3);
+  }
+  else
+  {
+    artist.clear();
+    title = info;
+  }
+}
+
+std::string StripLineEnding(std::string line)
+{
+  while (!line.empty() && (line.back() == '\r' || line.back() == '\n'))
+    line.pop_back();
+  return line;
+}
+
+std::vector<M3uEntry> ParseM3u(const std::string& contents)
+{
+  std::vector<M3uEntry> entries;
+  std::istringstream stream(contents);
+  std::string line;
+  std::string pending_artist, pending_title;
+  bool have_pending = false;
+  while (std::getline(stream, line))
+  {
+    line = StripLineEnding(line);
+    if (line.empty())
+      continue;
+    if (line.compare(0, 8, "#EXTINF:") == 0)
+    {
+      size_t comma = line.find(',');
+      SplitArtistTitle(comma != std::string::npos ? line.substr(comma + 1) : "", pending_artist, pending_title);
+      have_pending = !pending_title.empty();
+      continue;
+    }
+    if (line[0] == '#')
+      continue;  // #EXTM3U and any other directive/comment line
+    M3uEntry entry;
+    if (have_pending)
+    {
+      entry.title = pending_title;
+      entry.artist = pending_artist;
+    }
+    else
+    {
+      entry.title = GuessTitleFromPath(line);
+    }
+    if (!entry.title.empty())
+      entries.push_back(std::move(entry));
+    have_pending = false;
+  }
+  return entries;
+}
+
+std::vector<M3uEntry> ParsePls(const std::string& contents)
+{
+  // PLS's own File.../Title... keys are numbered independently and in no
+  // guaranteed order in the file, so both need collecting into per-index
+  // maps first, then paired up afterward — unlike M3U's own strictly
+  // sequential #EXTINF-then-path structure.
+  std::map<int, std::string> titles;
+  std::map<int, std::string> files;
+  std::istringstream stream(contents);
+  std::string line;
+  while (std::getline(stream, line))
+  {
+    line = StripLineEnding(line);
+    size_t eq = line.find('=');
+    if (eq == std::string::npos)
+      continue;
+    std::string key = line.substr(0, eq);
+    std::string value = line.substr(eq + 1);
+    if (key.compare(0, 5, "Title") == 0)
+      titles[std::atoi(key.c_str() + 5)] = value;
+    else if (key.compare(0, 4, "File") == 0)
+      files[std::atoi(key.c_str() + 4)] = value;
+  }
+
+  std::vector<M3uEntry> entries;
+  for (const auto& [index, file] : files)
+  {
+    M3uEntry entry;
+    auto title_it = titles.find(index);
+    if (title_it != titles.end() && !title_it->second.empty())
+      SplitArtistTitle(title_it->second, entry.artist, entry.title);
+    else
+      entry.title = GuessTitleFromPath(file);
+    if (!entry.title.empty())
+      entries.push_back(std::move(entry));
+  }
+  return entries;
+}
+
+std::string ToLowerCopy(const std::string& s)
+{
+  std::string lower = s;
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+  return lower;
+}
+
+// For each parsed entry, a substring match (either direction — a parsed
+// title that's a truncated/expanded variant of the real one still counts)
+// against every candidate's own title, refined by *also* requiring the
+// candidate's own artist (subtitle) to contain the parsed artist guess
+// when one was available — falling back to a title-only match if no
+// combined match exists, rather than dropping the entry outright, since a
+// title-only match is still usually right and formatting differences
+// between an M3U's own artist string and Sonos's own tag data are common.
+std::vector<unsigned> MatchM3uEntries(const std::vector<M3uEntry>& parsed, const std::vector<LibraryEntry>& tracks)
+{
+  std::vector<unsigned> matched;
+  for (const M3uEntry& entry : parsed)
+  {
+    std::string wanted_title = ToLowerCopy(entry.title);
+    std::string wanted_artist = ToLowerCopy(entry.artist);
+    if (wanted_title.empty())
+      continue;
+
+    int best_combined = -1;
+    int best_title_only = -1;
+    for (size_t i = 0; i < tracks.size(); ++i)
+    {
+      std::string track_title = ToLowerCopy(tracks[i].title);
+      bool title_matches = track_title.find(wanted_title) != std::string::npos ||
+                            wanted_title.find(track_title) != std::string::npos;
+      if (!title_matches)
+        continue;
+      if (best_title_only < 0)
+        best_title_only = static_cast<int>(i);
+      if (!wanted_artist.empty() && ToLowerCopy(tracks[i].subtitle).find(wanted_artist) != std::string::npos)
+      {
+        best_combined = static_cast<int>(i);
+        break;
+      }
+    }
+    int chosen = best_combined >= 0 ? best_combined : best_title_only;
+    if (chosen >= 0)
+      matched.push_back(static_cast<unsigned>(chosen));
+  }
+  return matched;
+}
+}  // namespace
+
+void GnomosWindow::ImportM3uPlaylist()
+{
+  auto file_dialog = Gtk::FileDialog::create();
+  file_dialog->set_title("M3U/PLS-Playlist importieren");
+  auto playlist_filter = Gtk::FileFilter::create();
+  playlist_filter->set_name("Playlist-Dateien");
+  playlist_filter->add_pattern("*.m3u");
+  playlist_filter->add_pattern("*.m3u8");
+  playlist_filter->add_pattern("*.pls");
+  auto filters = Gio::ListStore<Gtk::FileFilter>::create();
+  filters->append(playlist_filter);
+  file_dialog->set_filters(filters);
+  file_dialog->open(*this, [this, file_dialog](Glib::RefPtr<Gio::AsyncResult>& result) {
+    Glib::RefPtr<Gio::File> file;
+    try
+    {
+      file = file_dialog->open_finish(result);
+    }
+    catch (const Glib::Error&)
+    {
+      return;  // user cancelled — nothing to report
+    }
+    if (!file)
+      return;
+
+    char* contents = nullptr;
+    gsize length = 0;
+    if (!file->load_contents(contents, length))
+    {
+      ShowToast("Datei konnte nicht gelesen werden");
+      return;
+    }
+    std::string body(contents, length);
+    g_free(contents);
+
+    std::string lower_path = ToLowerCopy(file->get_basename());
+    bool is_pls = lower_path.size() >= 4 && lower_path.compare(lower_path.size() - 4, 4, ".pls") == 0;
+    std::vector<M3uEntry> parsed = is_pls ? ParsePls(body) : ParseM3u(body);
+    if (parsed.empty())
+    {
+      ShowToast("Keine Einträge in dieser Playlist-Datei gefunden");
+      return;
+    }
+
+    ShowToast("Playlist wird abgeglichen …");
+    // signal_tracks_for_matching_ready() is self-disconnecting — this
+    // import is the only thing that ever triggers
+    // FetchAllTracksForMatchingAsync(), so nothing else should react to a
+    // *later* fetch this same connection might otherwise still be alive
+    // for.
+    auto connection = std::make_shared<sigc::connection>();
+    *connection = backend_->signal_tracks_for_matching_ready().connect([this, parsed, connection] {
+      connection->disconnect();
+      std::vector<LibraryEntry> tracks = backend_->GetTracksForMatching();
+      std::vector<unsigned> matched_indices = MatchM3uEntries(parsed, tracks);
+      if (matched_indices.empty())
+      {
+        ShowToast("Keine der " + std::to_string(parsed.size()) + " Titel in der Bibliothek gefunden");
+        return;
+      }
+      backend_->AddTrackMatchesToQueue(matched_indices);
+      ShowToast(std::to_string(matched_indices.size()) + " von " + std::to_string(parsed.size()) +
+                " Titeln zur Warteschlange hinzugefügt — als Playlist speichern über die Warteschlange möglich");
+    });
+    backend_->FetchAllTracksForMatchingAsync();
+  });
+}
+
 void GnomosWindow::ShowScenesDialog()
 {
   auto* dialog = new Gtk::Window();
@@ -4595,6 +4847,15 @@ void GnomosWindow::ShowTrackInfoDialog()
       ShowLibrarySearchDialog(artist);
     });
     button_box->append(*search_artist_button);
+
+    auto* artist_info_button = Gtk::make_managed<Gtk::Button>();
+    artist_info_button->set_icon_name("avatar-default-symbolic");
+    artist_info_button->set_tooltip_text("Über den Interpreten");
+    artist_info_button->signal_clicked().connect([this, dialog, artist] {
+      dialog->close();
+      ShowArtistInfoDialog(artist);
+    });
+    button_box->append(*artist_info_button);
   }
 
   if (!np.album.empty())
@@ -4623,6 +4884,138 @@ void GnomosWindow::ShowTrackInfoDialog()
       SaveTrackInfoDialogSize(width, height);
     delete dialog;
   });
+  dialog->present();
+}
+
+void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
+{
+  auto* dialog = new Gtk::Window();
+  dialog->set_title(artist_name);
+  dialog->set_transient_for(*this);
+  dialog->set_modal(true);
+  dialog->set_default_size(420, 520);
+
+  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
+  content->set_margin_top(18);
+  content->set_margin_bottom(18);
+  content->set_margin_start(18);
+  content->set_margin_end(18);
+
+  auto* title = Gtk::make_managed<Gtk::Label>(artist_name);
+  title->add_css_class("title-2");
+  title->set_wrap(true);
+  title->set_halign(Gtk::Align::START);
+  content->append(*title);
+
+  // Bio — opt-in via the same api_key already configured for Last.fm
+  // scrobbling (see ArtistInfoFetcher's own header comment for why no
+  // separate key is needed for this read-only lookup); nothing shown at
+  // all beyond a one-line explanation when it isn't set, rather than a
+  // "wird geladen" placeholder that would never resolve.
+  auto* bio_label = Gtk::make_managed<Gtk::Label>(
+      lastfm_api_key_.empty()
+          ? "Last.fm-API-Schlüssel in Einstellungen → Allgemein → Scrobbling eintragen, um eine Biografie "
+            "zu laden."
+          : "Biografie wird geladen …");
+  bio_label->set_wrap(true);
+  bio_label->set_halign(Gtk::Align::START);
+  bio_label->set_justify(Gtk::Justification::LEFT);
+  bio_label->set_selectable(true);
+  // See ShowTrackInfoDialog()'s own lyrics_label for why this needs an
+  // explicit set_can_focus(false) — a selectable Label is otherwise the
+  // first focusable widget GTK auto-focuses when this window is
+  // presented, which looked like the entire bio text was pre-selected.
+  bio_label->set_can_focus(false);
+  bio_label->add_css_class("caption");
+  content->append(*bio_label);
+
+  if (!lastfm_api_key_.empty())
+  {
+    auto bio_cancellable = Gio::Cancellable::create();
+    dialog->signal_hide().connect([bio_cancellable] { bio_cancellable->cancel(); });
+    std::string api_key = lastfm_api_key_;
+    ArtistInfoFetcher::Instance().RequestBio(
+        api_key, artist_name, [bio_label, bio_cancellable](std::string bio) {
+          if (bio_cancellable->is_cancelled())
+            return;
+          bio_label->set_text(bio.empty() ? "Keine Biografie gefunden." : bio);
+        });
+  }
+
+  content->append(*Gtk::make_managed<Gtk::Separator>(Gtk::Orientation::HORIZONTAL));
+
+  auto* related_heading = Gtk::make_managed<Gtk::Label>("Ähnliche Interpreten");
+  related_heading->set_halign(Gtk::Align::START);
+  related_heading->add_css_class("heading");
+  content->append(*related_heading);
+
+  auto* related_list = Gtk::make_managed<Gtk::ListBox>();
+  related_list->set_selection_mode(Gtk::SelectionMode::NONE);
+  related_list->add_css_class("boxed-list");
+  auto* related_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
+  related_scroller->set_child(*related_list);
+  related_scroller->set_vexpand(true);
+  related_scroller->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
+  content->append(*related_scroller);
+
+  auto* related_loading_placeholder = Gtk::make_managed<Gtk::Label>("Wird geladen …");
+  related_loading_placeholder->add_css_class("dim-label");
+  related_loading_placeholder->set_margin_top(12);
+  related_loading_placeholder->set_margin_bottom(12);
+  related_list->append(*related_loading_placeholder);
+
+  auto related_cancellable = Gio::Cancellable::create();
+  dialog->signal_hide().connect([related_cancellable] { related_cancellable->cancel(); });
+  ArtistInfoFetcher::Instance().RequestRelatedArtists(
+      artist_name, [this, dialog, related_list, related_cancellable](std::vector<RelatedArtist> related) {
+        if (related_cancellable->is_cancelled())
+          return;
+        while (Gtk::Widget* child = related_list->get_first_child())
+          related_list->remove(*child);
+        if (related.empty())
+        {
+          auto* placeholder = Gtk::make_managed<Gtk::Label>("Keine ähnlichen Interpreten gefunden.");
+          placeholder->add_css_class("dim-label");
+          placeholder->set_margin_top(12);
+          placeholder->set_margin_bottom(12);
+          related_list->append(*placeholder);
+          return;
+        }
+        for (const RelatedArtist& related_artist : related)
+        {
+          auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+          row_box->set_margin_top(6);
+          row_box->set_margin_bottom(6);
+          row_box->set_margin_start(6);
+          row_box->set_margin_end(6);
+          auto* name_label = Gtk::make_managed<Gtk::Label>(related_artist.name);
+          name_label->set_halign(Gtk::Align::START);
+          name_label->set_hexpand(true);
+          name_label->set_ellipsize(Pango::EllipsizeMode::END);
+          row_box->append(*name_label);
+          auto* search_button = Gtk::make_managed<Gtk::Button>();
+          search_button->set_icon_name("system-search-symbolic");
+          search_button->add_css_class("flat");
+          search_button->set_valign(Gtk::Align::CENTER);
+          search_button->set_tooltip_text("In der Bibliothek suchen");
+          std::string name = related_artist.name;
+          search_button->signal_clicked().connect([this, dialog, name] {
+            dialog->close();
+            ShowLibrarySearchDialog(name);
+          });
+          row_box->append(*search_button);
+          related_list->append(*row_box);
+        }
+      });
+
+  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
+  close_button->set_halign(Gtk::Align::END);
+  close_button->set_margin_top(6);
+  close_button->signal_clicked().connect([dialog] { dialog->close(); });
+  content->append(*close_button);
+
+  dialog->set_child(*content);
+  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 

@@ -9,6 +9,7 @@ gnomos_sources = files(
   'widgets/art-cache.cpp',
   'widgets/art-decode-pool.cpp',
   'widgets/artist-image-fetcher.cpp',
+  'widgets/artist-info-fetcher.cpp',
   'widgets/cover-thumbnail.cpp',
   'widgets/favorites-view.cpp',
   'widgets/history-view.cpp',

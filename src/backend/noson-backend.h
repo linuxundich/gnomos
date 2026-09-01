@@ -305,6 +305,20 @@ public:
   // replaces the queue outright and starts playing from the first item.
   void AddAllLibraryItemsToQueue();
   void PlayAllLibraryItemsAsync();
+  // Backs GnomosWindow's M3U/PLS playlist import: fetches the full local
+  // "A:TRACKS" listing once, entirely independent of the normal
+  // library-browsing state (library_entries_/signal_library_changed()) —
+  // so running this doesn't disrupt whatever the user is currently
+  // looking at in the Bibliothek view. Not cached/reused across imports;
+  // meant to be called once per import.
+  void FetchAllTracksForMatchingAsync();
+  std::vector<LibraryEntry> GetTracksForMatching() const;
+  sigc::signal<void()>& signal_tracks_for_matching_ready() { return signal_tracks_for_matching_ready_; }
+  // Adds the GetTracksForMatching()-indexed tracks at `indices` to the
+  // queue, in one batched call — same AddMultipleURIsToQueue() call
+  // AddAllLibraryItemsToQueue() already uses, just against an explicit
+  // subset from a separate list instead of "everything currently browsed".
+  void AddTrackMatchesToQueue(const std::vector<unsigned>& indices);
   // System::DestroySavedQueue() against library_entries_[index]'s own
   // object_id — GnomosWindow only offers this while browsing "SQ:" (the
   // "Playlisten" root), where every entry's object_id really is a
@@ -673,6 +687,7 @@ private:
   Glib::Dispatcher library_index_status_dispatcher_;
   Glib::Dispatcher room_now_playing_dispatcher_;
   Glib::Dispatcher group_volumes_dispatcher_;
+  Glib::Dispatcher tracks_for_matching_dispatcher_;
   // Written on tasks_'s own worker thread (TaskQueue's on_busy_changed
   // callback, passed in the constructor), read on the main thread once
   // busy_dispatcher_ wakes it up — the same "atomic handoff variable
@@ -701,6 +716,7 @@ private:
   sigc::signal<void()> signal_library_index_status_changed_;
   sigc::signal<void()> signal_room_now_playing_changed_;
   sigc::signal<void()> signal_group_volumes_changed_;
+  sigc::signal<void()> signal_tracks_for_matching_ready_;
 
   // Independent of libnoson entirely, and explicitly unsubscribed at the
   // very top of ~NosonBackend()'s body (before any member starts being
@@ -761,6 +777,11 @@ private:
   // group after the zone was first selected. Backs GetRoomVolume() for the
   // grouping popover's per-room sliders and master fader.
   std::map<std::string, uint8_t> group_room_volumes_by_uuid_;
+  // Index-aligned pair backing FetchAllTracksForMatchingAsync() — see its
+  // own comment for why this is deliberately separate from
+  // library_entries_/library_raw_.
+  std::vector<LibraryEntry> tracks_for_matching_;
+  std::vector<NSROOT::DigitalItemPtr> tracks_for_matching_raw_;
   std::vector<QueueItem> queue_;
   unsigned queue_update_id_ = 0;  // needed by Player::RemoveTrackFromQueue()
   // Set at the end of SelectZone()'s own task, right when player_ is
