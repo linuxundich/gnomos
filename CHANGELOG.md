@@ -8,6 +8,20 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.14.1] - 2026-09-01
+
+### Fixed
+- Searching for a specific artist or album (Titel-Details' search
+  buttons, a related artist, a history entry) only found anything if
+  you'd separately already browsed into the matching library section
+  beforehand — it now always searches the right one.
+- The "Sonos-System antwortet" spinner flickered on and off during
+  ordinary playback with nothing pending — it now only appears once
+  something has genuinely stayed busy for a moment, and its tooltip
+  only shows while it's actually spinning.
+- Geräteinfo always showed the very first room's model number
+  highlighted in blue, regardless of which model it actually was.
+
 ## [0.14.0] - 2026-09-01
 
 ### Added
