@@ -149,6 +149,18 @@ GnomosWindow::GnomosWindow()
   // the alarm regardless of which one it was, same call the play/pause
   // button already uses.
   add_action("stop-alarm", [this] { backend_->PauseOrStop(); });
+  // Reached from GnomosApplication's own "app."-scoped notification-*
+  // actions (see its own comment for why those have to be app-level, not
+  // win-level, to be reachable from a notification button at all) — same
+  // toggle logic player_bar_'s own play/pause button already uses.
+  add_action("play-pause", [this] {
+    NowPlaying np = backend_->GetNowPlaying();
+    if (np.valid && np.state == TransportState::Playing)
+      backend_->PauseOrStop();
+    else
+      backend_->Play();
+  });
+  add_action("next", [this] { backend_->Next(); });
   add_action("play-stream", sigc::mem_fun(*this, &GnomosWindow::ShowPlayStreamDialog));
   add_action("mute-everywhere", [this] {
     backend_->MuteAllRoomsAsync(true);
@@ -2417,16 +2429,43 @@ void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
   if (!body.empty())
     notification->set_body(body);
 
-  // Only ever the already-cached texture (memory or disk) — never a fresh
+  // Only ever the already-cached bytes (memory or disk) — never a fresh
   // network fetch here, so a notification is never held up waiting on one.
-  // Gdk::Texture doesn't implement Gio::Icon in this gtkmm version (see its
-  // own header), even though the underlying GdkTexture does at the C/GObject
-  // level, so the icon is set through the raw API instead.
+  // Two earlier attempts both failed to actually show a cover: a
+  // Gdk::Texture-backed GIcon isn't one of the types g_notification_set_icon()
+  // can serialize over D-Bus at all (confirmed live: silently dropped).
+  // GBytesIcon (tried next) DOES serialize — confirmed live by inspecting
+  // the raw org.gtk.Notifications AddNotification call, which carried
+  // correct JPEG bytes — but still never rendered, meaning this Shell's
+  // own icon deserialization doesn't handle the "bytes" variant. A plain
+  // file path is the one icon mechanism every notification daemon
+  // (including this one) has always had to support, so the bytes get
+  // written to a small reused cache file instead and referenced by path.
   if (!now_playing.art_uri.empty())
   {
-    if (auto texture = ArtCache::Instance().Get(now_playing.art_uri))
-      g_notification_set_icon(notification->gobj(), G_ICON(texture->gobj()));
+    if (auto raw_bytes = ArtCache::Instance().GetRawBytes(now_playing.art_uri))
+    {
+      std::string icon_dir = Glib::build_filename(Glib::get_user_cache_dir(), "gnomos");
+      g_mkdir_with_parents(icon_dir.c_str(), 0700);
+      std::string icon_path = Glib::build_filename(icon_dir, "notification-icon");
+      gsize icon_size = 0;
+      auto icon_data = static_cast<const char*>(raw_bytes->get_data(icon_size));
+      if (g_file_set_contents(icon_path.c_str(), icon_data, static_cast<gssize>(icon_size), nullptr))
+      {
+        auto icon_file = Gio::File::create_for_path(icon_path);
+        g_notification_set_icon(notification->gobj(), G_ICON(g_file_icon_new(icon_file->gobj())));
+      }
+    }
   }
+
+  // Clicking the notification body itself raises the window; the buttons
+  // are app-scoped forwards to the window's own real actions — see
+  // GnomosApplication::on_startup()'s own comment for why they have to be.
+  notification->set_default_action("app.notification-raise");
+  notification->add_button(now_playing.state == TransportState::Playing ? "Pause" : "Wiedergabe",
+                            "app.notification-play-pause");
+  if (now_playing.can_go_next)
+    notification->add_button("Weiter", "app.notification-next");
 
   if (auto app = get_application())
     app->send_notification("now-playing", notification);

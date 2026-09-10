@@ -42,6 +42,28 @@ void GnomosApplication::on_startup()
   std::string icon_dir = Glib::build_filename(SOURCE_ROOT, "data", "icons");
   if (Glib::file_test(icon_dir, Glib::FileTest::IS_DIR))
     Gtk::IconTheme::get_for_display(Gdk::Display::get_default())->add_search_path(icon_dir);
+
+  // The track-change notification's buttons/default action (see
+  // GnomosWindow::SendTrackChangeNotification()) can only ever reach
+  // "app."-scoped actions — a notification click is delivered over D-Bus
+  // via the application's own exported action group, which doesn't include
+  // a window's "win."-scoped actions even while that window is alive, so
+  // these exist purely to forward into the real "win.play-pause"/"win.next"
+  // ones GnomosWindow itself already has. window_ is guaranteed non-null by
+  // the time any of these can actually fire — a track-change notification
+  // is never sent before the window (and thus playback) exists.
+  add_action("notification-play-pause", [this] {
+    if (window_)
+      window_->activate_action("win.play-pause");
+  });
+  add_action("notification-next", [this] {
+    if (window_)
+      window_->activate_action("win.next");
+  });
+  add_action("notification-raise", [this] {
+    if (window_)
+      window_->present();
+  });
 }
 
 void GnomosApplication::on_activate()
