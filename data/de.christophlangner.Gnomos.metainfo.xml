@@ -15,6 +15,17 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.15.0" date="2026-09-10">
+      <description>
+        <p>The section sidebar and library grid/list toggle now use current
+        GNOME widgets (AdwSidebar, requiring the Flatpak runtime to move to
+        GNOME 50) for a more native look. Album/artist grid tiles now align
+        into a clean grid at any window size, and cover art is always
+        square. Also fixes cover art getting permanently stuck missing, a
+        crash switching between grid and list view, and lyrics search
+        failing for tracks tagged like "(PMEDIA)".</p>
+      </description>
+    </release>
     <release version="0.14.1" date="2026-09-01">
       <description>
         <p>Fixes searching for a specific artist/album only working after

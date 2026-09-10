@@ -8,6 +8,30 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.15.0] - 2026-09-10
+
+### Changed
+- The section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/
+  Bibliothek), the library grid/list toggle, Settings' color-scheme
+  picker, and various empty-state placeholders now use current GNOME/
+  libadwaita widgets (AdwSidebar, AdwToggleGroup, AdwStatusPage,
+  AdwSpinner) instead of hand-built equivalents, for a more native
+  look. Requires the Flatpak's GNOME runtime moving to 50.
+- Grid view (Alben/Interpreten) tiles now align into a clean, uniform
+  grid at any window size — previously could develop uneven padding,
+  mismatched column counts, or uneven row heights depending on title
+  length and window width.
+- Grid view cover art is now always square, even for non-square
+  source photos.
+
+### Fixed
+- Track cover art could get permanently stuck missing after one
+  failed fetch (reported with bonob/PMEDIA-tagged albums).
+- Lyrics search failed for tracks or albums with a release-group tag
+  like "(PMEDIA)" anywhere in the title or album name, not just the
+  album.
+- Switching between grid and list view in Bibliothek could crash.
+
 ## [0.14.1] - 2026-09-01
 
 ### Fixed
