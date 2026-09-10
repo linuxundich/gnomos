@@ -8,6 +8,18 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.16.0] - 2026-09-10
+
+### Added
+- The track-change desktop notification now has Play/Pause and (when
+  available) Next buttons, and clicking it anywhere brings Gnomos to
+  the front.
+
+### Fixed
+- The track-change notification never actually showed cover art,
+  despite being wired up to — it silently failed to serialize over
+  D-Bus regardless of whether a cover was cached.
+
 ## [0.15.0] - 2026-09-10
 
 ### Changed
