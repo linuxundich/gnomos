@@ -55,7 +55,8 @@ private:
   Gtk::SearchEntry search_entry_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
-  Gtk::Label placeholder_;
+  // AdwStatusPage — see LibraryView::placeholder_'s own comment.
+  GtkWidget* placeholder_ = nullptr;
   // The full, unfiltered list — ApplyFilter() re-renders from this on every
   // keystroke rather than mutating the list_box_ incrementally, same
   // "queues are small enough" reasoning QueueView documents for its own

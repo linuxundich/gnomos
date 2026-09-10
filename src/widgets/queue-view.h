@@ -82,6 +82,9 @@ private:
   Gtk::Label count_label_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
+  // AdwStatusPage — see LibraryView::placeholder_'s own comment. Previously
+  // had no empty-state at all (an empty queue just showed a blank list).
+  GtkWidget* placeholder_ = nullptr;
   // Both index-aligned with the list SetItems() was last called with;
   // rebuilt there. now_playing_icons_' visibility is only ever toggled by
   // SetCurrentIndex(); select_checks_' by select_mode_button_ (all of

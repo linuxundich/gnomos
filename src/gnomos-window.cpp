@@ -153,17 +153,20 @@ GnomosWindow::GnomosWindow()
   primary_menu_button_.set_menu_model(primary_menu);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(primary_menu_button_.gobj()));
 
-  activity_spinner_.set_margin_start(6);
-  activity_spinner_.set_margin_end(6);
-  // No tooltip set here — UpdateActivitySpinner() sets/clears it alongside
-  // start()/stop(), so hovering the (invisible but still hoverable while
-  // stopped) spinner area doesn't show "Sonos-System antwortet …" when
-  // nothing actually is.
+  activity_spinner_ = adw_spinner_new();
+  gtk_widget_set_margin_start(activity_spinner_, 6);
+  gtk_widget_set_margin_end(activity_spinner_, 6);
+  gtk_widget_set_tooltip_text(activity_spinner_, "Sonos-System antwortet …");
+  // Starts hidden — UpdateActivitySpinner() is the only thing that ever
+  // shows it, and a hidden widget can't be hovered, so (unlike the old
+  // Gtk::Spinner, which stayed hoverable even while stopped) the tooltip
+  // above never needs its own separate show/hide dance.
+  gtk_widget_set_visible(activity_spinner_, false);
   refresh_button_.set_icon_name("view-refresh-symbolic");
   refresh_button_.set_tooltip_text("Sonos-Geräte suchen");
   refresh_button_.signal_clicked().connect(sigc::mem_fun(*this, &GnomosWindow::OnRefreshClicked));
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(refresh_button_.gobj()));
-  adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(activity_spinner_.gobj()));
+  adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), activity_spinner_);
 
   // --- Grouping popover: which rooms play together with the selected zone ---
   grouping_list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
@@ -766,11 +769,11 @@ GnomosWindow::GnomosWindow()
     backend_->AddAllLibraryItemsToQueue();
     ShowToast("Zur Warteschlange hinzugefügt");
   });
-  // Re-renders the already-fetched current_library_entries_ with the
-  // flipped preference — no need to ask NosonBackend for anything again,
-  // this is purely a local rendering choice.
-  library_view_.signal_view_mode_toggled().connect([this] {
-    SetPreferGridView(!prefer_grid_view_);
+  // Re-renders the already-fetched current_library_entries_ with the new
+  // preference — no need to ask NosonBackend for anything again, this is
+  // purely a local rendering choice.
+  library_view_.signal_view_mode_toggled().connect([this](bool grid) {
+    SetPreferGridView(grid);
     OnLibraryChanged();
   });
 
@@ -1286,11 +1289,10 @@ void GnomosWindow::UpdateActivitySpinner()
     // immediately for every one of those made it flicker on and off
     // constantly even with nothing genuinely pending (reported live).
     // Only a task still running after this delay counts as worth showing.
-    if (!activity_spinner_.get_spinning() && !spinner_show_delay_connection_.connected())
+    if (!gtk_widget_get_visible(activity_spinner_) && !spinner_show_delay_connection_.connected())
       spinner_show_delay_connection_ = Glib::signal_timeout().connect(
           [this] {
-            activity_spinner_.set_tooltip_text("Sonos-System antwortet …");
-            activity_spinner_.start();
+            gtk_widget_set_visible(activity_spinner_, true);
             return false;  // one-shot
           },
           300);
@@ -1298,8 +1300,7 @@ void GnomosWindow::UpdateActivitySpinner()
   else
   {
     spinner_show_delay_connection_.disconnect();
-    activity_spinner_.stop();
-    activity_spinner_.set_has_tooltip(false);
+    gtk_widget_set_visible(activity_spinner_, false);
   }
 }
 
@@ -3517,13 +3518,13 @@ void GnomosWindow::ShowShortcutsDialog()
 
 namespace
 {
-// notify::selected has no gtkmm binding on AdwComboRow (an Adw-only
+// notify::active has no gtkmm binding on AdwToggleGroup (an Adw-only
 // widget) — same "raw GObject signal + trampoline" approach as
 // OnConfirmDialogResponse above.
-extern "C" void OnComboRowSelectedChanged(GObject* object, GParamSpec*, gpointer user_data)
+extern "C" void OnToggleGroupActiveChanged(GObject* object, GParamSpec*, gpointer user_data)
 {
   auto* callback = static_cast<std::function<void(guint)>*>(user_data);
-  (*callback)(adw_combo_row_get_selected(ADW_COMBO_ROW(object)));
+  (*callback)(adw_toggle_group_get_active(ADW_TOGGLE_GROUP(object)));
 }
 extern "C" void DeleteGuintCallback(gpointer data, GClosure*)
 {
@@ -3630,28 +3631,41 @@ void GnomosWindow::ShowSettingsDialog()
   GtkWidget* appearance_group = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(appearance_group), "Erscheinungsbild");
 
-  GtkWidget* scheme_row = adw_combo_row_new();
+  // AdwToggleGroup, not AdwComboRow — a 3-way segmented control shows all
+  // the choices at once, matching what GNOME Settings' own Appearance
+  // panel moved to for this exact light/dark/auto choice.
+  GtkWidget* scheme_row = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(scheme_row), "Farbschema");
-  std::vector<Glib::ustring> scheme_labels = {"Systemeinstellung", "Hell", "Dunkel"};
-  auto scheme_model = Gtk::StringList::create(scheme_labels);
-  adw_combo_row_set_model(ADW_COMBO_ROW(scheme_row), G_LIST_MODEL(scheme_model->gobj()));
+  GtkWidget* scheme_toggle_group = adw_toggle_group_new();
+  AdwToggle* system_toggle = adw_toggle_new();
+  adw_toggle_set_label(system_toggle, "System");
+  adw_toggle_group_add(ADW_TOGGLE_GROUP(scheme_toggle_group), system_toggle);
+  AdwToggle* light_toggle = adw_toggle_new();
+  adw_toggle_set_label(light_toggle, "Hell");
+  adw_toggle_group_add(ADW_TOGGLE_GROUP(scheme_toggle_group), light_toggle);
+  AdwToggle* dark_toggle = adw_toggle_new();
+  adw_toggle_set_label(dark_toggle, "Dunkel");
+  adw_toggle_group_add(ADW_TOGGLE_GROUP(scheme_toggle_group), dark_toggle);
   // AdwStyleManager itself is the source of truth for the current scheme
   // (ApplyColorScheme() sets it directly), so read it back rather than
   // tracking a separate member here.
   AdwColorScheme current_scheme = adw_style_manager_get_color_scheme(adw_style_manager_get_default());
-  adw_combo_row_set_selected(ADW_COMBO_ROW(scheme_row), current_scheme == ADW_COLOR_SCHEME_FORCE_LIGHT  ? 1
-                                                         : current_scheme == ADW_COLOR_SCHEME_FORCE_DARK ? 2
-                                                                                                          : 0);
-  auto* scheme_callback = new std::function<void(guint)>([this](guint selected) {
-    switch (selected)
+  adw_toggle_group_set_active(ADW_TOGGLE_GROUP(scheme_toggle_group),
+                               current_scheme == ADW_COLOR_SCHEME_FORCE_LIGHT  ? 1
+                               : current_scheme == ADW_COLOR_SCHEME_FORCE_DARK ? 2
+                                                                                : 0);
+  auto* scheme_callback = new std::function<void(guint)>([this](guint active) {
+    switch (active)
     {
       case 1: ApplyColorScheme("light"); break;
       case 2: ApplyColorScheme("dark"); break;
       default: ApplyColorScheme("default"); break;
     }
   });
-  g_signal_connect_data(scheme_row, "notify::selected", G_CALLBACK(OnComboRowSelectedChanged), scheme_callback,
-                         DeleteGuintCallback, static_cast<GConnectFlags>(0));
+  g_signal_connect_data(scheme_toggle_group, "notify::active", G_CALLBACK(OnToggleGroupActiveChanged),
+                         scheme_callback, DeleteGuintCallback, static_cast<GConnectFlags>(0));
+  gtk_widget_set_valign(scheme_toggle_group, GTK_ALIGN_CENTER);
+  adw_action_row_add_suffix(ADW_ACTION_ROW(scheme_row), scheme_toggle_group);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), scheme_row);
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(appearance_group));
 

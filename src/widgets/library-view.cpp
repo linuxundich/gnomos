@@ -4,8 +4,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <string>
 
+#include <adwaita.h>
 #include <gdkmm/graphene_rect.h>
 #include <glibmm/main.h>
 #include <gtkmm/adjustment.h>
@@ -24,10 +26,26 @@ bool ContainsCaseInsensitive(const std::string& haystack, const std::string& nee
                  [](unsigned char c) { return std::tolower(c); });
   return haystack_lower.find(needle_lower) != std::string::npos;
 }
+
+// notify::active has no gtkmm binding on AdwToggleGroup (an Adw-only
+// widget) — raw GObject signal + trampoline, same "heap-allocated
+// std::function + matching GClosureNotify" pattern gnomos-window.cpp uses
+// for its own Adw widgets. Named distinctly (not reused from there) since
+// extern "C" functions keep C language linkage across an anonymous
+// namespace, so an identically-named one in another translation unit
+// would collide at link time.
+extern "C" void OnLibraryViewModeToggleChanged(GObject* object, GParamSpec*, gpointer user_data)
+{
+  auto* callback = static_cast<std::function<void(guint)>*>(user_data);
+  (*callback)(adw_toggle_group_get_active(ADW_TOGGLE_GROUP(object)));
+}
+extern "C" void DeleteLibraryGuintCallback(gpointer data, GClosure*)
+{
+  delete static_cast<std::function<void(guint)>*>(data);
+}
 }  // namespace
 
-LibraryView::LibraryView()
-: Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeholder_("Keine Einträge gefunden.")
+LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 {
   set_vexpand(true);
   set_hexpand(true);
@@ -68,15 +86,36 @@ LibraryView::LibraryView()
   header->append(queue_all_button_);
 
   // Only ever shown when the current level has at least one grid-eligible
-  // entry (LibraryEntry::display_as_grid) — see SetEntries(). Icon
-  // reflects the mode switching *to*, matching the convention every other
-  // view-mode toggle in GNOME uses (e.g. Nautilus's own grid/list button).
-  view_mode_button_.set_icon_name("view-grid-symbolic");
-  view_mode_button_.add_css_class("flat");
-  view_mode_button_.set_tooltip_text("Als Raster/Liste anzeigen");
-  view_mode_button_.set_visible(false);
-  view_mode_button_.signal_clicked().connect([this] { signal_view_mode_toggled_.emit(); });
-  header->append(view_mode_button_);
+  // entry (LibraryEntry::display_as_grid) — see SetEntries(). A 2-way
+  // AdwToggleGroup showing both options at once, rather than a single
+  // button that flips its own icon to name whichever mode it would switch
+  // *to* — the same "show the actual choices" convention GNOME Settings'
+  // own Appearance panel moved to for light/dark/auto.
+  view_mode_toggle_group_ = adw_toggle_group_new();
+  AdwToggle* grid_toggle = adw_toggle_new();
+  adw_toggle_set_icon_name(grid_toggle, "view-grid-symbolic");
+  adw_toggle_set_tooltip(grid_toggle, "Als Raster anzeigen");
+  adw_toggle_group_add(ADW_TOGGLE_GROUP(view_mode_toggle_group_), grid_toggle);
+  AdwToggle* list_toggle = adw_toggle_new();
+  adw_toggle_set_icon_name(list_toggle, "view-list-symbolic");
+  adw_toggle_set_tooltip(list_toggle, "Als Liste anzeigen");
+  adw_toggle_group_add(ADW_TOGGLE_GROUP(view_mode_toggle_group_), list_toggle);
+  gtk_widget_set_visible(view_mode_toggle_group_, false);
+  // Guards against the programmatic adw_toggle_group_set_active() call in
+  // SetEntries() (keeping the group in sync with prefer_grid_view_) itself
+  // triggering this same "notify::active" handler right back — same
+  // "caller decides the new state, this widget just reports a genuine
+  // user action" split the header comment on signal_view_mode_toggled()
+  // already documents, adapted for AdwToggleGroup having no separate
+  // "clicked" signal to filter on the way Gtk::ToggleButton did.
+  g_signal_connect_data(
+      view_mode_toggle_group_, "notify::active", G_CALLBACK(OnLibraryViewModeToggleChanged),
+      new std::function<void(guint)>([this](guint active) {
+        if (!updating_view_mode_toggle_)
+          signal_view_mode_toggled_.emit(active == 0);
+      }),
+      DeleteLibraryGuintCallback, static_cast<GConnectFlags>(0));
+  header->append(*Glib::wrap(view_mode_toggle_group_));
 
   // Only ever shown while browsing "R:0/0" ("Radiosender") — see
   // SetAddVisible(). Placed right before search, same "actions before the
@@ -116,12 +155,11 @@ LibraryView::LibraryView()
   count_label_.set_margin_bottom(4);
   append(count_label_);
 
-  placeholder_.set_wrap(true);
-  placeholder_.add_css_class("dim-label");
-  placeholder_.set_margin_top(24);
-  placeholder_.set_margin_bottom(24);
+  placeholder_ = adw_status_page_new();
+  adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "folder-music-symbolic");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Keine Einträge gefunden");
 
-  list_box_.set_placeholder(placeholder_);
+  list_box_.set_placeholder(*Glib::wrap(placeholder_));
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
   list_box_.add_css_class("boxed-list");
   list_box_.set_margin_top(6);
@@ -144,37 +182,42 @@ LibraryView::LibraryView()
   // Grid mode (Albums/Artists — see the header comment on SetEntries()),
   // styled after Euphonica's own Albums/Artists grid
   // (https://github.com/htkhiem/euphonica): square tiles that reflow with
-  // the available width, rather than a plain list.
-  flow_box_.set_selection_mode(Gtk::SelectionMode::NONE);
-  flow_box_.set_homogeneous(true);
+  // the available width, rather than a plain list. AdwWrapBox instead of
+  // GtkFlowBox — confirmed live that FlowBox's homogeneous mode, even with
+  // max-children-per-line raised, stretches every cell in a row to fill
+  // whatever width is left over once it's decided how many columns fit,
+  // ballooning tiles at wide window sizes; AdwWrapBox lays children out at
+  // their own natural size with no such hidden stretch, exactly what a
+  // "square tiles, more of them as the window widens" grid needs.
+  wrap_box_ = adw_wrap_box_new();
+  // Takes ownership independent of whichever container currently parents
+  // it — see wrap_box_'s own header comment for why this matters.
+  g_object_ref_sink(wrap_box_);
   // Same value on every side and between rows/columns — Albums and
   // Artists (and any other grid-eligible level, e.g. a bonob category)
-  // all render through this one flow_box_, so there's nothing left to
+  // all render through this one wrap_box_, so there's nothing left to
   // unify between them; trimmed down from 12 across the board, which
   // read as more air than the tiles themselves needed.
-  flow_box_.set_row_spacing(8);
-  flow_box_.set_column_spacing(8);
-  // GtkFlowBox defaults max-children-per-line to 7 — reported live: at a
-  // wide window width, that cap (not the available space) is what was
-  // limiting the column count, so a homogeneous FlowBox just stretched
-  // those 7 columns to fill the extra width instead of adding more of
-  // them, leaving huge gaps once tile->set_halign(CENTER) (above/below)
-  // stopped the tiles themselves from stretching. A generous cap here
-  // lets it actually add columns as the window widens instead.
-  flow_box_.set_max_children_per_line(32);
-  flow_box_.set_margin_top(8);
-  flow_box_.set_margin_bottom(8);
-  flow_box_.set_margin_start(8);
-  flow_box_.set_margin_end(8);
-  flow_box_.set_valign(Gtk::Align::START);
-  flow_box_.set_activate_on_single_click(true);
-  // Same real-index-vs-display-position mismatch as list_box_'s row above
-  // — BuildGrid() stashes the real index as GObject data on each child.
-  flow_box_.signal_child_activated().connect([this](Gtk::FlowBoxChild* child) {
-    if (child)
-      signal_entry_activated_.emit(
-          static_cast<unsigned>(GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(child->gobj()), "entry-index"))));
-  });
+  adw_wrap_box_set_child_spacing(ADW_WRAP_BOX(wrap_box_), 8);
+  adw_wrap_box_set_line_spacing(ADW_WRAP_BOX(wrap_box_), 8);
+  // Unlike GtkFlowBox's own "homogeneous" (coupled to stretch-to-fill —
+  // see this block's header comment for why that was wrong here),
+  // AdwWrapBox keeps line_homogeneous and justify independent: this only
+  // equalizes tile sizes *within* each line to that line's own widest
+  // tile, with no leftover-space stretching (justify stays NONE below).
+  // Needed because a tile's own natural width isn't reliably uniform on
+  // its own — a title label with one long unbreakable word (e.g.
+  // "AnnenMayKantereit") reports a wider natural size than a short one —
+  // and without this, that row alone fit one fewer tile than the rows
+  // above/below it (reported live).
+  adw_wrap_box_set_line_homogeneous(ADW_WRAP_BOX(wrap_box_), true);
+  adw_wrap_box_set_justify(ADW_WRAP_BOX(wrap_box_), ADW_JUSTIFY_NONE);
+  adw_wrap_box_set_wrap_policy(ADW_WRAP_BOX(wrap_box_), ADW_WRAP_NATURAL);
+  gtk_widget_set_margin_top(wrap_box_, 8);
+  gtk_widget_set_margin_bottom(wrap_box_, 8);
+  gtk_widget_set_margin_start(wrap_box_, 8);
+  gtk_widget_set_margin_end(wrap_box_, 8);
+  gtk_widget_set_valign(wrap_box_, GTK_ALIGN_START);
 
   scroller_.set_child(list_box_);
   scroller_.set_vexpand(true);
@@ -194,6 +237,11 @@ LibraryView::LibraryView()
         },
         150);
   });
+}
+
+LibraryView::~LibraryView()
+{
+  g_object_unref(wrap_box_);
 }
 
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
@@ -222,11 +270,13 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
   filter_entry_.set_text("");
 
   bool grid = grid_available && grid_active;
-  view_mode_button_.set_visible(grid_available);
-  // Icon/tooltip reflect the mode a click switches *to*, not the current
-  // one.
-  view_mode_button_.set_icon_name(grid ? "view-list-symbolic" : "view-grid-symbolic");
-  view_mode_button_.set_tooltip_text(grid ? "Als Liste anzeigen" : "Als Raster anzeigen");
+  gtk_widget_set_visible(view_mode_toggle_group_, grid_available);
+  // See OnLibraryViewModeToggleChanged's registration comment for why this
+  // guard is needed — index 0 is the grid toggle, 1 is list, matching the
+  // order they were added in the constructor.
+  updating_view_mode_toggle_ = true;
+  adw_toggle_group_set_active(ADW_TOGGLE_GROUP(view_mode_toggle_group_), grid ? 0 : 1);
+  updating_view_mode_toggle_ = false;
 
   ApplyFilter();
 }
@@ -252,7 +302,7 @@ void LibraryView::ApplyFilter()
                                                 : std::to_string(indices.size()) + " Einträge");
 
   bool grid = grid_available_ && grid_active_;
-  scroller_.set_child(grid ? static_cast<Gtk::Widget&>(flow_box_) : static_cast<Gtk::Widget&>(list_box_));
+  scroller_.set_child(grid ? *Glib::wrap(wrap_box_) : static_cast<Gtk::Widget&>(list_box_));
   if (grid)
     BuildGrid(indices, load_artist_images_);
   else
@@ -470,13 +520,6 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
     tile->set_margin_bottom(6);
     tile->set_margin_start(6);
     tile->set_margin_end(6);
-    // A homogeneous FlowBox stretches every cell in a row to fill the full
-    // allocated width once it has decided how many columns fit — without
-    // this, a wide window made existing tiles balloon out well past their
-    // natural ~120px size instead of just fitting more columns. Centering
-    // the tile within its (possibly wider) cell keeps its own content at
-    // natural size regardless of how wide the cell became.
-    tile->set_halign(Gtk::Align::CENTER);
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>(120);
     thumbnail->set_halign(Gtk::Align::CENTER);
@@ -496,6 +539,16 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
     title->set_ellipsize(Pango::EllipsizeMode::END);
     title->set_lines(2);
     title->set_wrap(true);
+    // Plain word-wrap (the default wrap mode) can't break a single long
+    // unbroken word (e.g. "AnnenMayKantereit") at all, so a label like
+    // that requests more natural width than max_width_chars implies —
+    // and since AdwWrapBox lays out each line at its tiles' own natural
+    // size (not a shared homogeneous cell), that one wider tile shrinks
+    // how many fit in its row, breaking column alignment with the rows
+    // above/below it (reported live: a whole row falling short by one).
+    // Allowing a mid-word break when necessary keeps every tile's natural
+    // width capped the same regardless of what its title says.
+    title->set_wrap_mode(Pango::WrapMode::WORD_CHAR);
     title->set_max_width_chars(16);
     tile->append(*title);
 
@@ -511,12 +564,15 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
       tile->append(*subtitle);
     }
 
-    // Explicit Gtk::FlowBoxChild — see BuildList()'s identical Gtk::ListBoxRow
-    // comment for why.
-    auto* child = Gtk::make_managed<Gtk::FlowBoxChild>();
-    g_object_set_data(G_OBJECT(child->gobj()), "entry-index", GUINT_TO_POINTER(index));
-    child->set_child(*tile);
-    flow_box_.append(*child);
+    // AdwWrapBox takes plain widgets directly (no GtkFlowBoxChild-style
+    // wrapper needed) and has no activation signal of its own, so each
+    // tile gets its own click gesture — capturing `index` directly here
+    // sidesteps the whole "real index vs. display position" bug class
+    // BuildList()'s row-level GObject-data workaround exists for.
+    auto click = Gtk::GestureClick::create();
+    click->signal_released().connect([this, index](int, double, double) { signal_entry_activated_.emit(index); });
+    tile->add_controller(click);
+    adw_wrap_box_append(ADW_WRAP_BOX(wrap_box_), GTK_WIDGET(tile->gobj()));
   }
 }
 
@@ -539,8 +595,7 @@ void LibraryView::Clear()
 {
   while (Gtk::Widget* child = list_box_.get_first_child())
     list_box_.remove(*child);
-  while (Gtk::Widget* child = flow_box_.get_first_child())
-    flow_box_.remove(*child);
+  adw_wrap_box_remove_all(ADW_WRAP_BOX(wrap_box_));
   thumbnails_.clear();
 }
 

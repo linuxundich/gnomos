@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 
+#include <adwaita.h>
 #include <gtkmm/box.h>
 #include <pangomm/layout.h>
 
@@ -22,7 +23,7 @@ bool ContainsCaseInsensitive(const std::string& haystack, const std::string& nee
 }
 }  // namespace
 
-FavoritesView::FavoritesView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeholder_("Keine Favoriten gefunden.")
+FavoritesView::FavoritesView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 {
   set_vexpand(true);
   set_hexpand(true);
@@ -52,12 +53,11 @@ FavoritesView::FavoritesView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeh
   search_entry_.signal_search_changed().connect(sigc::mem_fun(*this, &FavoritesView::ApplyFilter));
   append(search_entry_);
 
-  placeholder_.set_wrap(true);
-  placeholder_.add_css_class("dim-label");
-  placeholder_.set_margin_top(24);
-  placeholder_.set_margin_bottom(24);
+  placeholder_ = adw_status_page_new();
+  adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "starred-symbolic");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Keine Favoriten gefunden");
 
-  list_box_.set_placeholder(placeholder_);
+  list_box_.set_placeholder(*Glib::wrap(placeholder_));
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
   list_box_.add_css_class("boxed-list");
   list_box_.set_margin_top(12);

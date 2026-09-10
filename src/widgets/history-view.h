@@ -35,7 +35,8 @@ private:
   Gtk::Button clear_button_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
-  Gtk::Label placeholder_;
+  // AdwStatusPage — see LibraryView::placeholder_'s own comment.
+  GtkWidget* placeholder_ = nullptr;
   sigc::signal<void()> signal_clear_requested_;
   sigc::signal<void(unsigned)> signal_search_requested_;
 };

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <string>
 
+#include <adwaita.h>
 #include <gdkmm/contentprovider.h>
 #include <glibmm/value.h>
 #include <gtkmm/dragsource.h>
@@ -69,6 +70,11 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   });
   toolbar->append(remove_selected_button_);
   append(*toolbar);
+
+  placeholder_ = adw_status_page_new();
+  adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "view-list-symbolic");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Warteschlange ist leer");
+  list_box_.set_placeholder(*Glib::wrap(placeholder_));
 
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
   list_box_.add_css_class("boxed-list");

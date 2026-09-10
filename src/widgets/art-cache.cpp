@@ -3,6 +3,7 @@
 #include "art-cache.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <vector>
 
@@ -146,8 +147,33 @@ Glib::RefPtr<Gdk::Texture> ArtCache::DecodeScaledTexture(const Glib::RefPtr<Glib
     gsize size = 0;
     gconstpointer data = raw_bytes->get_data(size);
     stream->add_data(data, static_cast<gssize>(size), nullptr);
-    auto pixbuf = Gdk::Pixbuf::create_from_stream_at_scale(stream, target_size, target_size, true);
-    return Gdk::Texture::create_for_pixbuf(pixbuf);
+    // Decoded at natural resolution first, not scaled straight to
+    // target_size×target_size with preserve_aspect_ratio — that "contain"
+    // scale (the *longer* side clamped to target_size) leaves a non-square
+    // texture for any non-square source, which most artist/cover photos
+    // are, and Gtk::Image::set() then renders a texture at its own
+    // intrinsic size regardless of pixel_size_ (that property only
+    // applies to set_from_icon_name()'s fallback glyph) — so grid tiles
+    // ended up visibly different sizes depending on each cover's own
+    // aspect ratio (reported live: "die Cover sind nicht alle gleich
+    // groß"). Scaling so the *shorter* side reaches target_size, then
+    // center-cropping to an exact square, is the standard "cover" (not
+    // "contain") thumbnail crop every grid view actually wants.
+    auto pixbuf = Gdk::Pixbuf::create_from_stream(stream);
+    int width = pixbuf->get_width();
+    int height = pixbuf->get_height();
+    if (width <= 0 || height <= 0)
+      return {};
+    double scale = std::max(static_cast<double>(target_size) / width, static_cast<double>(target_size) / height);
+    int scaled_width = std::max(target_size, static_cast<int>(std::lround(width * scale)));
+    int scaled_height = std::max(target_size, static_cast<int>(std::lround(height * scale)));
+    auto scaled = pixbuf->scale_simple(scaled_width, scaled_height, Gdk::InterpType::BILINEAR);
+    if (!scaled)
+      return {};
+    int x_offset = (scaled_width - target_size) / 2;
+    int y_offset = (scaled_height - target_size) / 2;
+    auto cropped = Gdk::Pixbuf::create_subpixbuf(scaled, x_offset, y_offset, target_size, target_size);
+    return Gdk::Texture::create_for_pixbuf(cropped);
   }
   catch (const Glib::Error&)
   {

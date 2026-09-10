@@ -17,7 +17,6 @@
 #include <gtkmm/popover.h>
 #include <gtkmm/scale.h>
 #include <gtkmm/scrolledwindow.h>
-#include <gtkmm/spinner.h>
 #include <gtkmm/switch.h>
 #include <gtkmm/togglebutton.h>
 
@@ -314,13 +313,16 @@ private:
   GtkWidget* toast_overlay_ = nullptr;
 
   Gtk::Label window_title_;
-  // Spins while either discovering_ (zone discovery in progress) or
+  // Visible while either discovering_ (zone discovery in progress) or
   // backend_busy_ (any other action currently waiting on the Sonos
   // system) is true — see UpdateActivitySpinner()'s own comment for why
   // both conditions share the one spinner rather than each getting its
-  // own indicator.
-  Gtk::Spinner activity_spinner_;
-  // Debounces actually starting activity_spinner_ — see
+  // own indicator. AdwSpinner (unlike Gtk::Spinner) has no start()/stop()/
+  // "spinning" state of its own — it just animates continuously whenever
+  // visible — so UpdateActivitySpinner() drives it purely through
+  // gtk_widget_set_visible() instead.
+  GtkWidget* activity_spinner_ = nullptr;
+  // Debounces actually showing activity_spinner_ — see
   // UpdateActivitySpinner()'s own comment for why.
   sigc::connection spinner_show_delay_connection_;
   bool discovering_ = false;
@@ -406,6 +408,13 @@ private:
   // service (Spotify, bonob, ...) — the same list BrowseLibraryAsync("")
   // returns for the library's own root level, so jumping straight to
   // "Interpreten" from the sidebar doesn't need a second source of truth.
+  //
+  // AdwSidebar (libadwaita 1.9) would replace this whole hand-rolled
+  // ListBox/action-vector pair far more cleanly — tried live and it
+  // worked well, but the Flatpak build (GNOME 49 runtime) only ships
+  // libadwaita 1.8, which doesn't have it at all (confirmed: no
+  // adw-sidebar*.h in that SDK's include dir). Revisit once the Flatpak
+  // runtime moves to 50+.
   Gtk::ListBox nav_list_box_;
   // One action per nav_list_box_ row, in the same append order — the five
   // static top-level rows first (built once in the constructor and never

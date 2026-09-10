@@ -2,6 +2,7 @@
 
 #include "history-view.h"
 
+#include <adwaita.h>
 #include <gtkmm/box.h>
 #include <pangomm/layout.h>
 
@@ -10,7 +11,7 @@
 namespace gnomos
 {
 
-HistoryView::HistoryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeholder_("Noch nichts gespielt.")
+HistoryView::HistoryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 {
   set_vexpand(true);
   set_hexpand(true);
@@ -26,12 +27,11 @@ HistoryView::HistoryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0), placeholde
   toolbar->append(clear_button_);
   append(*toolbar);
 
-  placeholder_.set_wrap(true);
-  placeholder_.add_css_class("dim-label");
-  placeholder_.set_margin_top(24);
-  placeholder_.set_margin_bottom(24);
+  placeholder_ = adw_status_page_new();
+  adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "document-open-recent-symbolic");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Noch nichts gespielt");
 
-  list_box_.set_placeholder(placeholder_);
+  list_box_.set_placeholder(*Glib::wrap(placeholder_));
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
   list_box_.add_css_class("boxed-list");
   list_box_.set_margin_top(6);

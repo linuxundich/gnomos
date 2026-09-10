@@ -5,12 +5,11 @@
 
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
-#include <gtkmm/flowbox.h>
+#include <gtkmm/gestureclick.h>
 #include <gtkmm/label.h>
 #include <gtkmm/listbox.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/searchentry.h>
-#include <gtkmm/togglebutton.h>
 #include <sigc++/sigc++.h>
 
 #include "../backend/noson-types.h"
@@ -30,15 +29,17 @@ namespace gnomos
 // comment) — so GnomosWindow itself no longer branches on where the level
 // came from; it just checks whether *any* entry wants a grid. Whether to
 // actually render one *when available* is the user's own choice, via
-// view_mode_button_.
+// view_mode_toggle_group_.
 class LibraryView : public Gtk::Box
 {
 public:
   LibraryView();
+  // wrap_box_ needs its own explicit reference — see its own comment.
+  ~LibraryView() override;
 
   // grid_available: whether this level has any grid-eligible entries at
   // all (LibraryEntry::display_as_grid) — controls whether
-  // view_mode_button_ is shown; a level of plain leaf tracks or local
+  // view_mode_toggle_group_ is shown; a level of plain leaf tracks or local
   // Genres/Playlists never offers the choice in the first place.
   // grid_active: whether to actually render as a grid right now (only
   // meaningful when grid_available is true) — GnomosWindow decides this
@@ -173,13 +174,13 @@ public:
   // hidden entirely rather than being ambiguous.
   sigc::signal<void()>& signal_play_all_requested() { return signal_play_all_requested_; }
   sigc::signal<void()>& signal_queue_all_requested() { return signal_queue_all_requested_; }
-  // Fires on user click only (Gtk::Button::signal_clicked(), not
-  // ToggleButton's own signal_toggled(), which also fires for the
-  // programmatic set_active() SetEntries() itself makes) — GnomosWindow
-  // decides the new grid/list state itself and calls SetEntries() again
-  // with it, the same "caller decides, this widget just reports the
-  // click" split every other toggle in this app already uses.
-  sigc::signal<void()>& signal_view_mode_toggled() { return signal_view_mode_toggled_; }
+  // Carries the newly-selected mode directly (true = grid) rather than
+  // "toggle to the other one" — AdwToggleGroup's own "notify::active"
+  // fires for a programmatic adw_toggle_group_set_active() too (the
+  // constructor's own updating_view_mode_toggle_ guard filters those out,
+  // but passing the explicit target state as well means even a
+  // hypothetical double-fire is idempotent rather than a state flip).
+  sigc::signal<void(bool)>& signal_view_mode_toggled() { return signal_view_mode_toggled_; }
 
 private:
   // Re-renders from all_entries_/the flags SetEntries() last stored,
@@ -212,7 +213,10 @@ private:
   Gtk::Label count_label_;
   Gtk::Button play_all_button_;
   Gtk::Button queue_all_button_;
-  Gtk::ToggleButton view_mode_button_;
+  GtkWidget* view_mode_toggle_group_ = nullptr;
+  // See the constructor's own comment on OnLibraryViewModeToggleChanged's
+  // registration for why this exists.
+  bool updating_view_mode_toggle_ = false;
   // Custom radio stream — see SetAddVisible()/signal_add_requested()'s own
   // comments. Placed before search_button_, same reasoning as
   // play_all_button_/queue_all_button_.
@@ -225,8 +229,20 @@ private:
   Gtk::SearchEntry filter_entry_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
-  Gtk::FlowBox flow_box_;
-  Gtk::Label placeholder_;
+  // scroller_.set_child() repeatedly swaps between this and list_box_ as
+  // the active child (see ApplyFilter()) — unlike list_box_, a genuine
+  // gtkmm member whose C++ object lifetime doesn't depend on GTK's own
+  // parent/child ref-counting, this raw GtkWidget* is only kept alive by
+  // whichever container currently parents it. Without the extra
+  // g_object_ref_sink() the constructor takes (released in the
+  // destructor), switching to list mode and back left this pointer
+  // dangling — confirmed live as a real crash ("invalid unclassed pointer
+  // in cast to 'AdwWrapBox'") the moment Clear() next touched it.
+  GtkWidget* wrap_box_ = nullptr;
+  // AdwStatusPage, not a plain dim-label Label — the GNOME-native way to
+  // show an empty state (icon + title), same reasoning as every other
+  // list-backed view widget's own placeholder_.
+  GtkWidget* placeholder_ = nullptr;
   // Every CoverThumbnail BuildList()/BuildGrid() created for the current
   // (unfiltered-position-indexed — irrelevant here, this is only ever
   // walked for visibility, not indexed into) level, cleared and
@@ -267,7 +283,7 @@ private:
   sigc::signal<void()> signal_add_requested_;
   sigc::signal<void()> signal_play_all_requested_;
   sigc::signal<void()> signal_queue_all_requested_;
-  sigc::signal<void()> signal_view_mode_toggled_;
+  sigc::signal<void(bool)> signal_view_mode_toggled_;
 };
 
 }  // namespace gnomos

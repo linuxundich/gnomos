@@ -50,7 +50,8 @@ private:
   Gtk::Button add_button_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
-  Gtk::Label placeholder_;
+  // AdwStatusPage — see LibraryView::placeholder_'s own comment.
+  GtkWidget* placeholder_ = nullptr;
   sigc::signal<void(std::string, bool)> signal_enabled_toggled_;
   sigc::signal<void(std::string, bool)> signal_include_linked_zones_toggled_;
   sigc::signal<void(std::string)> signal_delete_requested_;
