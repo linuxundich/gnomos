@@ -23,6 +23,42 @@ std::string ToLower(const std::string& s)
   return lower;
 }
 
+// Strips one trailing "(...)"/"[...]" group (and any whitespace right
+// before it) from a title or album string, if the string ends with one —
+// a release-group/rip-source tag like "(PMEDIA)" can land in *either*
+// field depending on what a linked service (e.g. bonob) reports, and
+// LRCLIB's search treats both as real filters rather than ignoring the
+// noise in them (confirmed live for both: "Invaincu (PMEDIA)" as the
+// track title itself found nothing until stripped down to "Invaincu";
+// "Santé" with album "Multitude (PMEDIA)" needed the album stripped
+// instead). Returns the input unchanged if it doesn't end in a bracket, or
+// if the brackets don't balance (better to leave odd input alone than
+// mis-strip it).
+std::string StripTrailingBracketedSuffix(const std::string& s)
+{
+  if (s.empty())
+    return s;
+  char close = s.back();
+  char open = close == ')' ? '(' : close == ']' ? '[' : '\0';
+  if (!open)
+    return s;
+
+  int depth = 0;
+  for (std::string::size_type i = s.size(); i-- > 0;)
+  {
+    if (s[i] == close)
+      ++depth;
+    else if (s[i] == open && --depth == 0)
+    {
+      std::string stripped = s.substr(0, i);
+      while (!stripped.empty() && std::isspace(static_cast<unsigned char>(stripped.back())))
+        stripped.pop_back();
+      return stripped;
+    }
+  }
+  return s;  // unbalanced — leave as-is
+}
+
 // Picks the best "plainLyrics" from an /api/search response body. LRCLIB's
 // search (unlike its exact-match /api/get) tolerates a duration that
 // doesn't line up perfectly with what Sonos reports, at the cost of
@@ -112,13 +148,38 @@ void LyricsFetcher::RequestLyrics(const std::string& artist, const std::string& 
     return;
   }
 
-  RequestLyricsSearch(artist, title, album, key, std::move(callback), cancellable);
+  // Built once, tried in order until one finds a match:
+  //  1. title/album exactly as reported — the common case, unpolluted.
+  //  2. both with a trailing "(...)"/"[...]" release-group tag stripped —
+  //     only added if that actually changes something, since a
+  //     genuinely meaningful trailing group (say "(Live)") should still
+  //     get its own real shot first, not be skipped straight to.
+  //  3. stripped title with album dropped entirely — LRCLIB's search
+  //     treats album_name as a real filter, so even a *clean-looking*
+  //     album name can zero out a match a plain title+artist search would
+  //     have found (e.g. a compilation title LRCLIB doesn't have indexed
+  //     under). Album-only, since title is what's actually being searched
+  //     for.
+  std::string stripped_title = StripTrailingBracketedSuffix(title);
+  std::string stripped_album = StripTrailingBracketedSuffix(album);
+  std::vector<std::pair<std::string, std::string>> attempts;
+  attempts.emplace_back(title, album);
+  if (stripped_title != title || stripped_album != album)
+    attempts.emplace_back(stripped_title, stripped_album);
+  if (!album.empty())
+    attempts.emplace_back(stripped_title, "");
+
+  RequestLyricsAttempt(artist, std::move(attempts), 0, key, std::move(callback), cancellable);
 }
 
-void LyricsFetcher::RequestLyricsSearch(const std::string& artist, const std::string& title, const std::string& album,
-                                         const std::string& cache_key, std::function<void(std::string)> callback,
-                                         const Glib::RefPtr<Gio::Cancellable>& cancellable)
+void LyricsFetcher::RequestLyricsAttempt(const std::string& artist,
+                                          std::vector<std::pair<std::string, std::string>> attempts, size_t index,
+                                          const std::string& cache_key, std::function<void(std::string)> callback,
+                                          const Glib::RefPtr<Gio::Cancellable>& cancellable)
 {
+  const std::string& title = attempts[index].first;
+  const std::string& album = attempts[index].second;
+
   std::string url = "https://lrclib.net/api/search?track_name=" + Glib::uri_escape_string(title);
   if (!artist.empty())
     url += "&artist_name=" + Glib::uri_escape_string(artist);
@@ -127,18 +188,11 @@ void LyricsFetcher::RequestLyricsSearch(const std::string& artist, const std::st
 
   HttpFetch(
       url,
-      [this, cache_key, artist, title, album, callback, cancellable](std::string body) {
+      [this, artist, attempts, index, cache_key, callback, cancellable](std::string body) mutable {
         std::string lyrics = ExtractBestLyrics(body, artist);
-        if (lyrics.empty() && !album.empty())
+        if (lyrics.empty() && index + 1 < attempts.size())
         {
-          // Album metadata tends to be the noisiest field a Sonos-visible
-          // source reports (release-group tags like "(PMEDIA)", remaster/
-          // disc suffixes, ...), and LRCLIB's search treats album_name as
-          // a real filter rather than ignoring noise in it — confirmed
-          // live: "Stromae - Santé" found nothing with its reported album
-          // name, but matched instantly once album_name was dropped.
-          // Retry once without it before giving up for good.
-          RequestLyricsSearch(artist, title, "", cache_key, std::move(callback), cancellable);
+          RequestLyricsAttempt(artist, std::move(attempts), index + 1, cache_key, std::move(callback), cancellable);
           return;
         }
         cache_[cache_key] = lyrics;

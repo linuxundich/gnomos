@@ -4,6 +4,8 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include <giomm/cancellable.h>
 
@@ -43,15 +45,16 @@ public:
 private:
   LyricsFetcher() = default;
 
-  // Does the actual LRCLIB /api/search request; RequestLyrics() calls this
-  // once with `album`, and — only if that comes up empty — once more with
-  // an empty album to retry without it. `cache_key` stays the original
-  // (artist, title, album) triple either way, so future lookups for the
-  // exact same track hit the cache regardless of which attempt actually
-  // found the match.
-  void RequestLyricsSearch(const std::string& artist, const std::string& title, const std::string& album,
-                            const std::string& cache_key, std::function<void(std::string)> callback,
-                            const Glib::RefPtr<Gio::Cancellable>& cancellable);
+  // Tries each (title, album) pair in `attempts`, in order, until one finds
+  // a match or they're exhausted — RequestLyrics() builds this list once
+  // (see its own comment on why more than one variant is ever needed).
+  // `cache_key` stays the original (artist, title, album) triple throughout,
+  // so future lookups for the exact same track hit the cache regardless of
+  // which attempt actually found the match.
+  void RequestLyricsAttempt(const std::string& artist,
+                             std::vector<std::pair<std::string, std::string>> attempts, size_t index,
+                             const std::string& cache_key, std::function<void(std::string)> callback,
+                             const Glib::RefPtr<Gio::Cancellable>& cancellable);
 
   // Empty string is itself a valid, cached "looked up, nothing found"
   // result — same convention as ArtistImageFetcher::cache_.

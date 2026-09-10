@@ -154,6 +154,14 @@ LibraryView::LibraryView()
   // read as more air than the tiles themselves needed.
   flow_box_.set_row_spacing(8);
   flow_box_.set_column_spacing(8);
+  // GtkFlowBox defaults max-children-per-line to 7 — reported live: at a
+  // wide window width, that cap (not the available space) is what was
+  // limiting the column count, so a homogeneous FlowBox just stretched
+  // those 7 columns to fill the extra width instead of adding more of
+  // them, leaving huge gaps once tile->set_halign(CENTER) (above/below)
+  // stopped the tiles themselves from stretching. A generous cap here
+  // lets it actually add columns as the window widens instead.
+  flow_box_.set_max_children_per_line(32);
   flow_box_.set_margin_top(8);
   flow_box_.set_margin_bottom(8);
   flow_box_.set_margin_start(8);
