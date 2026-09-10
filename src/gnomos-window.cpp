@@ -66,11 +66,36 @@
 namespace gnomos
 {
 
-// Number of nav_list_box_ rows built once in the constructor and never
-// rebuilt (Warteschlange/Favoriten/Alarme/Verlauf/Bibliothek) — matches
-// kNavPages's own size further down; RebuildLibraryNavEntries() uses this
-// to know where the library's own sub-item rows start.
-constexpr size_t kStaticNavRowCount = 5;
+namespace
+{
+// Attaches an action directly onto an AdwSidebarItem (read back on
+// selection by OnNavSidebarSelectedChanged()) — replaces the old
+// nav_list_box_/nav_row_actions_ index-matched parallel-vector pattern
+// (see nav_sidebar_'s own comment) with the action living on the item
+// itself, so nothing can ever misindex.
+constexpr const char* kSidebarItemActionKey = "gnomos-sidebar-action";
+
+void DeleteSidebarItemAction(gpointer data)
+{
+  delete static_cast<std::function<void()>*>(data);
+}
+
+void SetSidebarItemAction(AdwSidebarItem* item, std::function<void()> action)
+{
+  g_object_set_data_full(G_OBJECT(item), kSidebarItemActionKey, new std::function<void()>(std::move(action)),
+                          DeleteSidebarItemAction);
+}
+
+extern "C" void OnNavSidebarSelectedChanged(GObject* sidebar_obj, GParamSpec*, gpointer)
+{
+  AdwSidebarItem* item = adw_sidebar_get_selected_item(ADW_SIDEBAR(sidebar_obj));
+  if (!item)
+    return;
+  auto* action = static_cast<std::function<void()>*>(g_object_get_data(G_OBJECT(item), kSidebarItemActionKey));
+  if (action)
+    (*action)();
+}
+}  // namespace
 
 GnomosWindow::GnomosWindow()
 {
@@ -610,9 +635,9 @@ GnomosWindow::GnomosWindow()
 
   // --- Section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/
   // Bibliothek) — replaces the AdwViewSwitcher this app used to have as a
-  // top tab bar, styled after noson-app's own left-hand navigation and
-  // matching zones_list_box_'s own icon-row look (see nav_list_box_'s
-  // header comment). Built from the same (page-name, title, icon) tuples
+  // top tab bar, styled after noson-app's own left-hand navigation (see
+  // nav_sidebar_'s own comment for why AdwSidebar replaced a hand-rolled
+  // Gtk::ListBox). Built from the same (page-name, title, icon) tuples
   // view_stack_'s pages themselves use, so the two can never drift apart. ---
   static const std::array<std::tuple<const char*, const char*, const char*>, 5> kNavPages = {{
       {"queue", "Warteschlange", "view-list-symbolic"},
@@ -621,24 +646,16 @@ GnomosWindow::GnomosWindow()
       {"history", "Verlauf", "document-open-recent-symbolic"},
       {"library", "Bibliothek", "folder-music-symbolic"},
   }};
-  nav_list_box_.set_selection_mode(Gtk::SelectionMode::SINGLE);
-  nav_list_box_.add_css_class("navigation-sidebar");
-  nav_list_box_.signal_row_selected().connect(sigc::mem_fun(*this, &GnomosWindow::OnNavRowSelected));
+  nav_sidebar_ = adw_sidebar_new();
+  g_signal_connect_data(nav_sidebar_, "notify::selected", G_CALLBACK(OnNavSidebarSelectedChanged), nullptr, nullptr,
+                         GConnectFlags(0));
+  AdwSidebarSection* static_nav_section = adw_sidebar_section_new();
+  adw_sidebar_append(ADW_SIDEBAR(nav_sidebar_), static_nav_section);
   for (const auto& [name, title, icon] : kNavPages)
   {
-    auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
-    row_box->set_margin_top(8);
-    row_box->set_margin_bottom(8);
-    row_box->set_margin_start(8);
-    row_box->set_margin_end(8);
-    auto* row_icon = Gtk::make_managed<Gtk::Image>();
-    row_icon->set_from_icon_name(icon);
-    row_icon->add_css_class("dim-label");
-    row_box->append(*row_icon);
-    auto* row_label = Gtk::make_managed<Gtk::Label>(title);
-    row_label->set_halign(Gtk::Align::START);
-    row_box->append(*row_label);
-    nav_list_box_.append(*row_box);
+    AdwSidebarItem* item = adw_sidebar_item_new(title);
+    adw_sidebar_item_set_icon_name(item, icon);
+    adw_sidebar_section_append(static_nav_section, item);
 
     std::string page_name = name;
     if (page_name == "library")
@@ -653,7 +670,7 @@ GnomosWindow::GnomosWindow()
       // (RebuildLibraryNavEntries()'s own append_entry lambda) — just with
       // no category pushed on top, since this one means the overview
       // itself, not a specific category within it.
-      nav_row_actions_.push_back([this, page_name] {
+      SetSidebarItemAction(item, [this, page_name] {
         library_stack_.clear();
         library_stack_.push_back({"", "Bibliothek"});
         backend_->BrowseLibraryAsync("");
@@ -662,15 +679,17 @@ GnomosWindow::GnomosWindow()
     }
     else
     {
-      nav_row_actions_.push_back([this, page_name] {
+      SetSidebarItemAction(item, [this, page_name] {
         adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str());
       });
     }
   }
-  auto* nav_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
-  nav_scroller->set_child(nav_list_box_);
-  nav_scroller->set_min_content_width(200);
-  nav_scroller->set_vexpand(true);
+  library_nav_section_ = adw_sidebar_section_new();
+  g_object_ref(library_nav_section_);
+  adw_sidebar_section_set_title(library_nav_section_, "Bibliothek");
+  services_nav_section_ = adw_sidebar_section_new();
+  g_object_ref(services_nav_section_);
+  adw_sidebar_section_set_title(services_nav_section_, "Dienste");
 
   // --- Content: queue/favorites/alarms/library pages. The Now Playing
   // panel (player_bar_) is docked separately, as a bottom bar spanning
@@ -808,12 +827,12 @@ GnomosWindow::GnomosWindow()
   // lets it collapse behind sidebar_toggle_button_ on narrow windows (see
   // the AdwBreakpoint below), the adaptive behavior the README used to
   // list as a known gap. min/max width mirror the fixed 240px paned
-  // position this replaced. nav_scroller (built above, wrapping
-  // nav_list_box_) is the sidebar now; view_stack_ is used directly as the
-  // content, since content_box_ no longer exists — it only ever wrapped
-  // view_stack_ together with the now-removed AdwViewSwitcher.
+  // position this replaced. nav_sidebar_ (built above) is the sidebar now;
+  // view_stack_ is used directly as the content, since content_box_ no
+  // longer exists — it only ever wrapped view_stack_ together with the
+  // now-removed AdwViewSwitcher.
   split_view_ = adw_overlay_split_view_new();
-  adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(nav_scroller->gobj()));
+  adw_overlay_split_view_set_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_view_), nav_sidebar_);
   adw_overlay_split_view_set_content(ADW_OVERLAY_SPLIT_VIEW(split_view_), GTK_WIDGET(view_stack_));
   adw_overlay_split_view_set_min_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 200);
   adw_overlay_split_view_set_max_sidebar_width(ADW_OVERLAY_SPLIT_VIEW(split_view_), 260);
@@ -942,6 +961,12 @@ GnomosWindow::GnomosWindow()
       Glib::signal_timeout().connect(sigc::mem_fun(*this, &GnomosWindow::OnPositionTimerTick), 1000);
 }
 
+GnomosWindow::~GnomosWindow()
+{
+  g_object_unref(library_nav_section_);
+  g_object_unref(services_nav_section_);
+}
+
 void GnomosWindow::OnRefreshClicked()
 {
   discovering_ = true;
@@ -977,28 +1002,17 @@ void GnomosWindow::OnZoneRowSelected(Gtk::ListBoxRow* row)
   UpdateRoomButtonLabel();
 }
 
-void GnomosWindow::OnNavRowSelected(Gtk::ListBoxRow* row)
-{
-  if (!row || !view_stack_)
-    return;
-  int index = row->get_index();
-  if (index < 0 || static_cast<size_t>(index) >= nav_row_actions_.size())
-    return;
-  nav_row_actions_[static_cast<size_t>(index)]();
-}
-
 void GnomosWindow::RebuildLibraryNavEntries()
 {
-  // The five static top-level rows (Warteschlange/Favoriten/Alarme/Verlauf/
-  // Bibliothek) are never touched here — only whatever library sub-item
-  // rows a previous call appended after them.
-  while (nav_row_actions_.size() > kStaticNavRowCount)
-  {
-    int last_index = static_cast<int>(nav_row_actions_.size()) - 1;
-    if (Gtk::ListBoxRow* row = nav_list_box_.get_row_at_index(last_index))
-      nav_list_box_.remove(*row);
-    nav_row_actions_.pop_back();
-  }
+  // The static first section (Warteschlange/Favoriten/Alarme/Verlauf/
+  // Bibliothek) is never touched here — only library_nav_section_/
+  // services_nav_section_, cleared and repopulated in place below.
+  adw_sidebar_section_remove_all(library_nav_section_);
+  adw_sidebar_section_remove_all(services_nav_section_);
+  if (adw_sidebar_section_get_sidebar(library_nav_section_))
+    adw_sidebar_remove(ADW_SIDEBAR(nav_sidebar_), library_nav_section_);
+  if (adw_sidebar_section_get_sidebar(services_nav_section_))
+    adw_sidebar_remove(ADW_SIDEBAR(nav_sidebar_), services_nav_section_);
 
   // Splits the flat root-category list into two labeled groups: "Bibliothek"
   // (the locally-indexed-share namespace, object_id prefix "A:" — see
@@ -1013,49 +1027,14 @@ void GnomosWindow::RebuildLibraryNavEntries()
   // on the true library root where it's shown as a regular entry — not
   // obvious, confirmed live as a real "how do I even link a service"
   // question once "Dienste" existed as an obvious place to expect it.
-  auto append_header = [this](const char* title) {
-    auto* header_label = Gtk::make_managed<Gtk::Label>(title);
-    header_label->set_halign(Gtk::Align::START);
-    header_label->add_css_class("heading");
-    header_label->set_margin_top(6);
-    header_label->set_margin_bottom(6);
-    header_label->set_margin_start(8);
-    header_label->set_margin_end(8);
-    nav_list_box_.append(*header_label);
-    // Every nav_list_box_ row needs a matching nav_row_actions_ slot —
-    // OnNavRowSelected() indexes into it by row position — even a header
-    // row that does nothing when clicked.
-    nav_row_actions_.push_back([] {});
-  };
-  // Icon + label, same construction kNavPages' own static rows use just
-  // above (row_icon/row_label/8px gap) — every row in a GtkListBox styled
-  // ".navigation-sidebar" carrying an icon is the actual GNOME convention
-  // here, not just the five top-level ones; a sub-item used to be a bare
-  // label. The extra margin_start (24 vs. the top-level rows' 8) is the
-  // only thing marking this as a nested entry rather than its own size or
-  // icon presence — a smaller step than the old plain-label version's 40,
-  // now that the icon itself already carries most of that visual weight.
-  auto append_entry = [this](const LibraryEntry& entry) {
-    auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
-    row_box->set_margin_top(6);
-    row_box->set_margin_bottom(6);
-    row_box->set_margin_start(24);
-    row_box->set_margin_end(8);
-    auto* row_icon = Gtk::make_managed<Gtk::Image>();
+  auto append_entry = [this](AdwSidebarSection* section, const LibraryEntry& entry) {
+    AdwSidebarItem* item = adw_sidebar_item_new(entry.title.c_str());
     // Every root entry populates its own icon_name (BrowseLibraryAsync())
     // except a genuinely unexpected one this list was never meant to
     // handle — a plain folder glyph reads as "some kind of container"
-    // regardless, rather than leaving the row with no icon at all.
-    row_icon->set_from_icon_name(entry.icon_name.empty() ? "folder-symbolic" : entry.icon_name);
-    row_icon->add_css_class("dim-label");
-    row_box->append(*row_icon);
-    auto* row_label = Gtk::make_managed<Gtk::Label>(entry.title);
-    row_label->set_halign(Gtk::Align::START);
-    row_label->set_ellipsize(Pango::EllipsizeMode::END);
-    row_label->add_css_class("dim-label");
-    row_label->add_css_class("caption");
-    row_box->append(*row_label);
-    nav_list_box_.append(*row_box);
+    // regardless, rather than leaving the item with no icon at all.
+    adw_sidebar_item_set_icon_name(item, entry.icon_name.empty() ? "folder-symbolic" : entry.icon_name.c_str());
+    adw_sidebar_section_append(section, item);
 
     // Same special-case OnLibraryEntryActivated() already has for clicking
     // this same entry from the actual root level — opens the picker
@@ -1063,13 +1042,13 @@ void GnomosWindow::RebuildLibraryNavEntries()
     // object_id that was never a real container to begin with.
     if (entry.object_id == kLinkServiceSentinel)
     {
-      nav_row_actions_.push_back([this] { ShowLinkServiceDialog(); });
+      SetSidebarItemAction(item, [this] { ShowLinkServiceDialog(); });
       return;
     }
 
     std::string object_id = entry.object_id;
     std::string title = entry.title;
-    nav_row_actions_.push_back([this, object_id, title] {
+    SetSidebarItemAction(item, [this, object_id, title] {
       // Jump straight to this category, discarding any deeper browse
       // position — matches what clicking it from the actual library root
       // level would do, since that's exactly where this list comes from.
@@ -1088,17 +1067,17 @@ void GnomosWindow::RebuildLibraryNavEntries()
 
   if (has_library)
   {
-    append_header("Bibliothek");
     for (const LibraryEntry& entry : library_root_entries_)
       if (entry.object_id.compare(0, 2, "A:") == 0)
-        append_entry(entry);
+        append_entry(library_nav_section_, entry);
+    adw_sidebar_append(ADW_SIDEBAR(nav_sidebar_), library_nav_section_);
   }
   if (has_services)
   {
-    append_header("Dienste");
     for (const LibraryEntry& entry : library_root_entries_)
       if (entry.object_id.compare(0, 2, "A:") != 0)
-        append_entry(entry);
+        append_entry(services_nav_section_, entry);
+    adw_sidebar_append(ADW_SIDEBAR(nav_sidebar_), services_nav_section_);
   }
 }
 

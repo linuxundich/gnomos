@@ -38,7 +38,9 @@ class GnomosWindow : public Gtk::ApplicationWindow
 {
 public:
   GnomosWindow();
-  ~GnomosWindow() override = default;
+  // library_nav_section_/services_nav_section_ need their extra reference
+  // released — see their own comment.
+  ~GnomosWindow() override;
 
 private:
   void OnRefreshClicked();
@@ -61,18 +63,13 @@ private:
   // selection and every zones_list_box_ rebuild (a topology change can
   // rename the selected zone, e.g. joining/leaving a group).
   void UpdateRoomButtonLabel();
-  // nav_list_box_ (the section sidebar: Warteschlange/Favoriten/Alarme/
-  // Verlauf/Bibliothek) replaced the old top AdwViewSwitcher. Every row —
-  // the five static top-level ones and the library's own sub-items alike
-  // — carries its own action in nav_row_actions_ (index-matched, see that
-  // member's comment); this just runs the one for the row clicked.
-  void OnNavRowSelected(Gtk::ListBoxRow* row);
   // Rebuilds the indented library sub-item rows nested under "Bibliothek"
   // (Interpreten/Alben/.../linked services) from library_root_entries_ —
   // called whenever the library root is (re)fetched (see OnLibraryChanged())
   // so a newly linked/unlinked service is reflected without restarting.
-  // Only ever touches rows after the five static ones — see
-  // nav_row_actions_'s own comment for why those are never rebuilt.
+  // Only ever touches library_nav_section_/services_nav_section_ — see
+  // nav_sidebar_'s own comment for why the five static items are never
+  // rebuilt.
   void RebuildLibraryNavEntries();
   void ShowAddAlarmDialog();
   // duplicate: pre-fills every field from *existing (same as editing), but
@@ -385,7 +382,7 @@ private:
   bool suppress_sound_signals_ = false;
 
   // Section sidebar (Warteschlange/Favoriten/Alarme/Verlauf/Bibliothek,
-  // noson-app-style — see nav_list_box_'s own comment) | tab content, with
+  // noson-app-style — see nav_sidebar_'s own comment) | tab content, with
   // player_bar_ docked as its own fixed-height bar along the bottom of
   // the whole window (see the constructor's root_box) — not part of this
   // split at all. split_view_ is an AdwOverlaySplitView (not a plain
@@ -398,35 +395,38 @@ private:
   // navigation instead.
   GtkWidget* split_view_ = nullptr;
   Gtk::ToggleButton sidebar_toggle_button_;
-  // Icon+label rows for the five view_stack_ pages, replacing the
-  // AdwViewSwitcher this app used to have as a top tab bar — styled after
+  // AdwSidebar (libadwaita 1.9 — needs the Flatpak's runtime-version 50 in
+  // the manifest; confirmed live once that a build targeting 49's
+  // libadwaita 1.8 fails outright, no adw-sidebar*.h there at all) —
+  // icon+label items for the five view_stack_ pages, replacing the
+  // AdwViewSwitcher this app used to have as a top tab bar, styled after
   // noson-app's own left-hand navigation (Meine Dienste/Mein
   // Musikverzeichnis/Meine Radiosender/Favoriten/Wiedergabelisten/Wecker/
-  // Dieses Gerät). Below the "Bibliothek" row, RebuildLibraryNavEntries()
-  // appends one indented, icon-less row per root library category
-  // (Interpreten/Alben/Genres/Titel/Playlisten/Radiosender) and per linked
-  // service (Spotify, bonob, ...) — the same list BrowseLibraryAsync("")
-  // returns for the library's own root level, so jumping straight to
-  // "Interpreten" from the sidebar doesn't need a second source of truth.
-  //
-  // AdwSidebar (libadwaita 1.9) would replace this whole hand-rolled
-  // ListBox/action-vector pair far more cleanly — tried live and it
-  // worked well, but the Flatpak build (GNOME 49 runtime) only ships
-  // libadwaita 1.8, which doesn't have it at all (confirmed: no
-  // adw-sidebar*.h in that SDK's include dir). Revisit once the Flatpak
-  // runtime moves to 50+.
-  Gtk::ListBox nav_list_box_;
-  // One action per nav_list_box_ row, in the same append order — the five
-  // static top-level rows first (built once in the constructor and never
-  // rebuilt, so their selection state and row identity survive library
-  // refreshes), then the library's own sub-items (rebuilt in place by
-  // RebuildLibraryNavEntries() whenever the library root changes).
-  // OnNavRowSelected() just runs nav_row_actions_[row->get_index()]() —
-  // same index-into-a-parallel-vector pattern current_zones_ already uses,
-  // but per-row *behavior* rather than per-row *data*, since a sub-item's
-  // action (jump to that library category) differs in kind from a
-  // top-level row's (switch view_stack_ page).
-  std::vector<std::function<void()>> nav_row_actions_;
+  // Dieses Gerät). Previously a hand-rolled Gtk::ListBox with an
+  // index-matched action vector (the same "parallel array, one bug away
+  // from misindexing" pattern already bit LibraryView's own row
+  // activation once this session) — AdwSidebar's own section/item model
+  // replaces that with each item's action attached directly to the item
+  // itself (see OnNavSidebarSelectedChanged's own comment), and its
+  // section titles replace the hand-drawn "Bibliothek"/"Dienste" header
+  // labels natively.
+  GtkWidget* nav_sidebar_ = nullptr;
+  // The five static top-level items (Warteschlange/Favoriten/Alarme/
+  // Verlauf/Bibliothek) live directly in nav_sidebar_'s first section,
+  // built once in the constructor and never rebuilt, so their selection
+  // state and identity survive library refreshes. These two sections hold
+  // the library's own root categories/linked services instead — cleared
+  // and repopulated in place by RebuildLibraryNavEntries() whenever the
+  // library root changes, and attached/detached from nav_sidebar_
+  // depending on whether either group actually has anything in it (see
+  // that method's own comment). Each needs an explicit extra reference
+  // (released in ~GnomosWindow(), same reasoning as LibraryView::wrap_box_
+  // — AdwSidebarSection is a plain GObject, not GInitiallyUnowned, so it
+  // never even starts "floating"; nothing guarantees adw_sidebar_remove()
+  // leaves a ref behind for reuse next rebuild without this) so they
+  // survive being detached from nav_sidebar_ when temporarily empty.
+  AdwSidebarSection* library_nav_section_ = nullptr;
+  AdwSidebarSection* services_nav_section_ = nullptr;
 
   // Room/zone list — see room_button_'s own comment on where it's shown
   // now; this pair of widgets is unchanged from when it was the permanent
