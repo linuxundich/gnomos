@@ -43,6 +43,16 @@ public:
 private:
   LyricsFetcher() = default;
 
+  // Does the actual LRCLIB /api/search request; RequestLyrics() calls this
+  // once with `album`, and — only if that comes up empty — once more with
+  // an empty album to retry without it. `cache_key` stays the original
+  // (artist, title, album) triple either way, so future lookups for the
+  // exact same track hit the cache regardless of which attempt actually
+  // found the match.
+  void RequestLyricsSearch(const std::string& artist, const std::string& title, const std::string& album,
+                            const std::string& cache_key, std::function<void(std::string)> callback,
+                            const Glib::RefPtr<Gio::Cancellable>& cancellable);
+
   // Empty string is itself a valid, cached "looked up, nothing found"
   // result — same convention as ArtistImageFetcher::cache_.
   std::unordered_map<std::string, std::string> cache_;

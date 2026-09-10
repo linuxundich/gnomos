@@ -454,6 +454,21 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
     const LibraryEntry& entry = all_entries_[index];
     auto* tile = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
     tile->set_size_request(120, -1);
+    // Uniform padding on every side — without it, only the *bottom* of a
+    // tile had breathing room (the gap before the next row), since nothing
+    // ever margined the top of the thumbnail itself (reported live: "kein
+    // padding oberhalb des Covers").
+    tile->set_margin_top(6);
+    tile->set_margin_bottom(6);
+    tile->set_margin_start(6);
+    tile->set_margin_end(6);
+    // A homogeneous FlowBox stretches every cell in a row to fill the full
+    // allocated width once it has decided how many columns fit — without
+    // this, a wide window made existing tiles balloon out well past their
+    // natural ~120px size instead of just fitting more columns. Centering
+    // the tile within its (possibly wider) cell keeps its own content at
+    // natural size regardless of how wide the cell became.
+    tile->set_halign(Gtk::Align::CENTER);
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>(120);
     thumbnail->set_halign(Gtk::Align::CENTER);

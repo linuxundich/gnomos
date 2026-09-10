@@ -455,11 +455,26 @@ void PlayerBar::OnArtLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::
     }
     else
     {
+      // A genuinely failed fetch (reported live: bonob/PMEDIA-tagged
+      // albums sometimes don't show a cover until a few other tracks from
+      // the same album have played — consistent with a cold-starting art
+      // proxy occasionally 404ing/timing out right after playback starts)
+      // must not leave current_art_uri_ pointing at a URI that was never
+      // actually cached — LoadArt()'s own uri==current_art_uri_ guard
+      // would otherwise silently skip every future retry for as long as
+      // the same URI kept being reported (which can be every track of an
+      // album sharing one art URL), leaving the fallback icon shown
+      // indefinitely. Clearing it lets the very next now-playing refresh
+      // for this URI retry from scratch instead — verified live with a
+      // synthetic unreachable URI that a second LoadArt() call for the
+      // exact same URI now correctly retries instead of short-circuiting.
+      current_art_uri_.clear();
       adw_avatar_set_custom_image(ADW_AVATAR(avatar_), nullptr);
     }
   }
   catch (const Glib::Error&)
   {
+    current_art_uri_.clear();
     adw_avatar_set_custom_image(ADW_AVATAR(avatar_), nullptr);
   }
 }

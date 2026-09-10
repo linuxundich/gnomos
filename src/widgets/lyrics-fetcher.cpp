@@ -112,6 +112,13 @@ void LyricsFetcher::RequestLyrics(const std::string& artist, const std::string& 
     return;
   }
 
+  RequestLyricsSearch(artist, title, album, key, std::move(callback), cancellable);
+}
+
+void LyricsFetcher::RequestLyricsSearch(const std::string& artist, const std::string& title, const std::string& album,
+                                         const std::string& cache_key, std::function<void(std::string)> callback,
+                                         const Glib::RefPtr<Gio::Cancellable>& cancellable)
+{
   std::string url = "https://lrclib.net/api/search?track_name=" + Glib::uri_escape_string(title);
   if (!artist.empty())
     url += "&artist_name=" + Glib::uri_escape_string(artist);
@@ -120,9 +127,21 @@ void LyricsFetcher::RequestLyrics(const std::string& artist, const std::string& 
 
   HttpFetch(
       url,
-      [this, key, artist, callback](std::string body) {
+      [this, cache_key, artist, title, album, callback, cancellable](std::string body) {
         std::string lyrics = ExtractBestLyrics(body, artist);
-        cache_[key] = lyrics;
+        if (lyrics.empty() && !album.empty())
+        {
+          // Album metadata tends to be the noisiest field a Sonos-visible
+          // source reports (release-group tags like "(PMEDIA)", remaster/
+          // disc suffixes, ...), and LRCLIB's search treats album_name as
+          // a real filter rather than ignoring noise in it — confirmed
+          // live: "Stromae - Santé" found nothing with its reported album
+          // name, but matched instantly once album_name was dropped.
+          // Retry once without it before giving up for good.
+          RequestLyricsSearch(artist, title, "", cache_key, std::move(callback), cancellable);
+          return;
+        }
+        cache_[cache_key] = lyrics;
         callback(lyrics);
       },
       cancellable);
