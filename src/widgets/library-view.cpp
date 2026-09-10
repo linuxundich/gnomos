@@ -550,7 +550,38 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
     // width capped the same regardless of what its title says.
     title->set_wrap_mode(Pango::WrapMode::WORD_CHAR);
     title->set_max_width_chars(16);
-    tile->append(*title);
+    // set_lines(2) only CAPS the rendered height at two lines — it doesn't
+    // RESERVE that height, so a one-line title (most of them) naturally
+    // requests a shorter box than a neighbouring two-line one. Since
+    // AdwWrapBox's line_homogeneous only equalizes tile height *within* a
+    // line, that left whole rows visibly shorter or taller than the rows
+    // above/below depending on which titles happened to wrap that line
+    // (reported live: "sollen sauber in einem Raster angeordnet sein").
+    // Measured once against the title label's own resolved font/theme
+    // (not a hardcoded pixel guess, so it still holds under a different
+    // font size or accessibility setting) and reused for every tile, so
+    // every row ends up the same height regardless of content.
+    // Forcing the height directly on the wrapping/ellipsizing label itself
+    // (tried first) fed back into its own width negotiation — Pango ended
+    // up choosing a much narrower layout width to make the text tall
+    // enough to fill that forced minimum, breaking even short one-word
+    // titles like "Adele" mid-word. A plain, non-wrapping wrapper box
+    // around the label keeps the label's own width/wrap solving entirely
+    // unaffected — only the wrapper's own allocation grows, with the
+    // label staying top-anchored inside it and the leftover space simply
+    // unused below a one-line title.
+    static int two_line_title_height = 0;
+    if (two_line_title_height == 0)
+    {
+      int width_unused = 0;
+      title->create_pango_layout("Ay\nAy")->get_pixel_size(width_unused, two_line_title_height);
+    }
+    auto* title_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL);
+    title_box->set_valign(Gtk::Align::START);
+    title_box->set_size_request(-1, two_line_title_height);
+    title->set_valign(Gtk::Align::START);
+    title_box->append(*title);
+    tile->append(*title_box);
 
     if (!entry.subtitle.empty())
     {
