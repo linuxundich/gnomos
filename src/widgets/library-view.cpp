@@ -43,6 +43,73 @@ extern "C" void DeleteLibraryGuintCallback(gpointer data, GClosure*)
 {
   delete static_cast<std::function<void(guint)>*>(data);
 }
+
+// Every attempt at constraining a grid tile's title/subtitle to a fixed
+// pixel width via the LABEL's own properties failed to hold: max_width_chars
+// is only an average-character estimate (a title with more wide glyphs
+// than that average — capitals, accents, "¿" — measured genuinely wider
+// than plainer text under the same limit); set_size_request() only raises
+// a widget's MINIMUM, it doesn't cap the NATURAL size a wrapping/ellipsizing
+// label reports for its own full text; GTK CSS has no max-width property
+// that affects layout at all. Since AdwWrapBox packs each line by its
+// tiles' own natural width, any one too-wide tile shrank how many fit in
+// its row, breaking column alignment with the rows above/below it — and
+// separately, left visibly uneven left/right padding for short entries.
+// Pre-computing the wrapped/truncated text ourselves and handing the
+// label an already-narrow string sidesteps the whole "what does this
+// label consider its own natural width" question — its natural width for
+// a string that's already at most kTileContentWidth wide is, definitionally,
+// at most kTileContentWidth.
+std::string TruncateToWidth(const Glib::RefPtr<Pango::Layout>& layout, const std::string& text, int width_px)
+{
+  layout->set_width(-1);
+  layout->set_text(text);
+  int width = 0, height_unused = 0;
+  layout->get_pixel_size(width, height_unused);
+  if (width <= width_px)
+    return text;
+  Glib::ustring utext(text);
+  std::string::size_type lo = 0, hi = utext.size();
+  while (lo < hi)
+  {
+    std::string::size_type mid = (lo + hi + 1) / 2;
+    layout->set_text(utext.substr(0, mid) + "…");
+    layout->get_pixel_size(width, height_unused);
+    if (width <= width_px)
+      lo = mid;
+    else
+      hi = mid - 1;
+  }
+  return utext.substr(0, lo) + "…";
+}
+
+std::string WrapTitleToTwoLines(const Glib::RefPtr<Pango::Layout>& layout, const std::string& text, int width_px)
+{
+  layout->set_text(text);
+  layout->set_width(width_px * Pango::SCALE);
+  layout->set_wrap(Pango::WrapMode::WORD_CHAR);
+  if (layout->get_line_count() <= 1)
+    return text;
+  Glib::RefPtr<Pango::LayoutLine> first_line = layout->get_line(0);
+  auto split = static_cast<std::string::size_type>(first_line->get_start_index() + first_line->get_length());
+  std::string first = text.substr(0, split);
+  std::string rest = text.substr(split);
+  // The break lands right after the word-boundary space WORD_CHAR chose —
+  // strip it so the second line doesn't start with a leading blank.
+  while (!rest.empty() && rest.front() == ' ')
+    rest.erase(rest.begin());
+  // `rest` is everything AFTER the first wrapped line, not necessarily
+  // itself narrow enough to fit — for text needing a third Pango-computed
+  // line, that leftover crammed onto an unwrapped second line came out
+  // wider than width_px (confirmed live: a whole row's columns drifted
+  // out of alignment with the rows above/below it). Routing it back
+  // through TruncateToWidth() gives the second line the exact same
+  // pixel-measured guarantee the first line already gets from the split
+  // point above, rather than trusting the label's own wrap/ellipsize to
+  // catch what's left — which is the very thing this function exists to
+  // avoid relying on.
+  return first + "\n" + TruncateToWidth(layout, rest, width_px);
+}
 }  // namespace
 
 LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
@@ -533,66 +600,61 @@ void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_arti
     tile->append(*thumbnail);
     thumbnails_.push_back(thumbnail);
 
-    auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? "Unbenannt" : entry.title);
+    // See WrapTitleToTwoLines()/TruncateToWidth()'s own comment for why
+    // this is done to the actual text up front, rather than left to any
+    // of the label's own width-constraining properties.
+    constexpr int kTileContentWidth = 108;
+    Glib::RefPtr<Pango::Layout> measure_layout = tile->create_pango_layout("");
+
+    auto* title = Gtk::make_managed<Gtk::Label>(
+        WrapTitleToTwoLines(measure_layout, entry.title.empty() ? "Unbenannt" : entry.title, kTileContentWidth));
     title->set_halign(Gtk::Align::CENTER);
     title->set_justify(Gtk::Justification::CENTER);
+    // A safety net only, in case a single already-unbreakable word on the
+    // second line is itself still wider than kTileContentWidth — the
+    // ordinary case (two lines that already fit) never needs it.
     title->set_ellipsize(Pango::EllipsizeMode::END);
     title->set_lines(2);
-    title->set_wrap(true);
-    // Plain word-wrap (the default wrap mode) can't break a single long
-    // unbroken word (e.g. "AnnenMayKantereit") at all, so a label like
-    // that requests more natural width than max_width_chars implies —
-    // and since AdwWrapBox lays out each line at its tiles' own natural
-    // size (not a shared homogeneous cell), that one wider tile shrinks
-    // how many fit in its row, breaking column alignment with the rows
-    // above/below it (reported live: a whole row falling short by one).
-    // Allowing a mid-word break when necessary keeps every tile's natural
-    // width capped the same regardless of what its title says.
-    title->set_wrap_mode(Pango::WrapMode::WORD_CHAR);
-    title->set_max_width_chars(16);
-    // set_lines(2) only CAPS the rendered height at two lines — it doesn't
-    // RESERVE that height, so a one-line title (most of them) naturally
-    // requests a shorter box than a neighbouring two-line one. Since
-    // AdwWrapBox's line_homogeneous only equalizes tile height *within* a
-    // line, that left whole rows visibly shorter or taller than the rows
-    // above/below depending on which titles happened to wrap that line
-    // (reported live: "sollen sauber in einem Raster angeordnet sein").
-    // Measured once against the title label's own resolved font/theme
-    // (not a hardcoded pixel guess, so it still holds under a different
-    // font size or accessibility setting) and reused for every tile, so
-    // every row ends up the same height regardless of content.
-    // Forcing the height directly on the wrapping/ellipsizing label itself
-    // (tried first) fed back into its own width negotiation — Pango ended
-    // up choosing a much narrower layout width to make the text tall
-    // enough to fill that forced minimum, breaking even short one-word
-    // titles like "Adele" mid-word. A plain, non-wrapping wrapper box
-    // around the label keeps the label's own width/wrap solving entirely
-    // unaffected — only the wrapper's own allocation grows, with the
-    // label staying top-anchored inside it and the leftover space simply
-    // unused below a one-line title.
+    tile->append(*title);
+
+    if (!entry.subtitle.empty())
+    {
+      auto* subtitle =
+          Gtk::make_managed<Gtk::Label>(TruncateToWidth(measure_layout, entry.subtitle, kTileContentWidth));
+      subtitle->set_halign(Gtk::Align::CENTER);
+      subtitle->set_justify(Gtk::Justification::CENTER);
+      subtitle->add_css_class("dim-label");
+      subtitle->add_css_class("caption");
+      tile->append(*subtitle);
+    }
+
+    // set_lines(2) only CAPS the title's height at two lines, it doesn't
+    // RESERVE it, so a one-line title (most of them) left its own row
+    // shorter than a neighbouring row with a two-line title (AdwWrapBox's
+    // line_homogeneous only equalizes height *within* one line). Padding
+    // the title's own box up to two-line height directly (tried first)
+    // pushed the subtitle down behind a visible blank line under every
+    // short title (reported live: "bei einem kurzen Namen... erst nach
+    // einer Leerzeile"). Measuring this tile's OWN actual title height and
+    // only making up the missing difference *after* the subtitle instead
+    // keeps title and subtitle sitting naturally together, with the
+    // padding landing as trailing space at the tile's bottom, not between
+    // its lines of text.
     static int two_line_title_height = 0;
     if (two_line_title_height == 0)
     {
       int width_unused = 0;
       title->create_pango_layout("Ay\nAy")->get_pixel_size(width_unused, two_line_title_height);
     }
-    auto* title_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL);
-    title_box->set_valign(Gtk::Align::START);
-    title_box->set_size_request(-1, two_line_title_height);
-    title->set_valign(Gtk::Align::START);
-    title_box->append(*title);
-    tile->append(*title_box);
-
-    if (!entry.subtitle.empty())
+    int title_min_height = 0, title_nat_height = 0, baseline_unused = 0;
+    title->measure(Gtk::Orientation::VERTICAL, kTileContentWidth, title_min_height, title_nat_height,
+                   baseline_unused, baseline_unused);
+    int spacer_height = std::max(0, two_line_title_height - title_nat_height);
+    if (spacer_height > 0)
     {
-      auto* subtitle = Gtk::make_managed<Gtk::Label>(entry.subtitle);
-      subtitle->set_halign(Gtk::Align::CENTER);
-      subtitle->set_justify(Gtk::Justification::CENTER);
-      subtitle->set_ellipsize(Pango::EllipsizeMode::END);
-      subtitle->set_max_width_chars(16);
-      subtitle->add_css_class("dim-label");
-      subtitle->add_css_class("caption");
-      tile->append(*subtitle);
+      auto* spacer = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL);
+      spacer->set_size_request(-1, spacer_height);
+      tile->append(*spacer);
     }
 
     // AdwWrapBox takes plain widgets directly (no GtkFlowBoxChild-style
