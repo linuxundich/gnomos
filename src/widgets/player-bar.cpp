@@ -452,7 +452,10 @@ void PlayerBar::OnArtLoaded(Glib::RefPtr<Gio::AsyncResult>& result, const Glib::
       g_free(contents);
       auto texture = ArtCache::Instance().Put(current_art_uri_, bytes);
       if (texture)
+      {
         adw_avatar_set_custom_image(ADW_AVATAR(avatar_), GDK_PAINTABLE(texture->gobj()));
+        signal_art_ready_.emit(current_art_uri_);
+      }
       else
         adw_avatar_set_custom_image(ADW_AVATAR(avatar_), nullptr);
     }

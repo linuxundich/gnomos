@@ -22,7 +22,9 @@
 #include <giomm/menu.h>
 #include <giomm/notification.h>
 #include <glib.h>
+#include <glib/gstdio.h>
 #include <glibmm/bytes.h>
+#include <glibmm/checksum.h>
 #include <glibmm/error.h>
 #include <glibmm/keyfile.h>
 #include <glibmm/uriutils.h>
@@ -841,6 +843,7 @@ GnomosWindow::GnomosWindow()
       [this](double value) { backend_->SetVolume(static_cast<uint8_t>(value)); });
   player_bar_.signal_mute_toggled().connect([this](bool muted) { backend_->SetMuted(muted); });
   player_bar_.signal_seek_requested().connect([this](unsigned seconds) { backend_->SeekAsync(seconds); });
+  player_bar_.signal_art_ready().connect(sigc::mem_fun(*this, &GnomosWindow::OnNotificationArtReady));
 
   queue_view_.signal_item_activated().connect([this](unsigned index) { backend_->PlayQueueItem(index); });
   queue_view_.signal_item_remove_requested().connect([this](unsigned index) { backend_->RemoveQueueItem(index); });
@@ -2457,23 +2460,56 @@ void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
   // own icon deserialization doesn't handle the "bytes" variant. A plain
   // file path is the one icon mechanism every notification daemon
   // (including this one) has always had to support, so the bytes get
-  // written to a small reused cache file instead and referenced by path.
+  // written to a cache file and referenced by path instead.
+  //
+  // That file used to be a single fixed name, reused (overwritten) for
+  // every track — confirmed live that this made the cover show up
+  // unreliably: this "now-playing" notification is updated in place on
+  // every track change rather than re-created, and Shell doesn't always
+  // reload an already-displayed notification's icon texture from disk
+  // just because the file's *content* changed while its *path* didn't.
+  // Hashing art_uri into the filename gives every distinct cover its own
+  // path, so an update always points the notification at a path Shell
+  // hasn't already loaded — the previous track's file is removed right
+  // after, so this still never accumulates more than one file on disk.
+  // Whether GetRawBytes() below actually found something — art_uri not
+  // being cached *yet* (a first-time fetch still in flight; see
+  // OnNotificationArtReady()) is the common case, not a failure, so it's
+  // tracked separately from "no art at all" rather than treated the same.
+  bool icon_set = false;
   if (!now_playing.art_uri.empty())
   {
     if (auto raw_bytes = ArtCache::Instance().GetRawBytes(now_playing.art_uri))
     {
       std::string icon_dir = Glib::build_filename(Glib::get_user_cache_dir(), "gnomos");
       g_mkdir_with_parents(icon_dir.c_str(), 0700);
-      std::string icon_path = Glib::build_filename(icon_dir, "notification-icon");
+      std::string icon_path = Glib::build_filename(
+          icon_dir, "notification-icon-" +
+                        Glib::Checksum::compute_checksum(Glib::Checksum::Type::SHA256, now_playing.art_uri));
       gsize icon_size = 0;
       auto icon_data = static_cast<const char*>(raw_bytes->get_data(icon_size));
-      if (g_file_set_contents(icon_path.c_str(), icon_data, static_cast<gssize>(icon_size), nullptr))
+      if (icon_path == last_notification_icon_path_ ||
+          g_file_set_contents(icon_path.c_str(), icon_data, static_cast<gssize>(icon_size), nullptr))
       {
         auto icon_file = Gio::File::create_for_path(icon_path);
         g_notification_set_icon(notification->gobj(), G_ICON(g_file_icon_new(icon_file->gobj())));
+        if (!last_notification_icon_path_.empty() && last_notification_icon_path_ != icon_path)
+          g_remove(last_notification_icon_path_.c_str());
+        last_notification_icon_path_ = icon_path;
+        icon_set = true;
       }
     }
   }
+  // PlayerBar::LoadArt() triggers the same fetch (called from Update(),
+  // just before this function's own caller runs) but it's async — for a
+  // cover never seen before, GetRawBytes() above runs well before that
+  // fetch lands, so the notification would otherwise permanently go out
+  // iconless for exactly the tracks that most need it (previously unseen
+  // ones). Remembering this one and reacting to signal_art_ready() lets
+  // OnNotificationArtReady() retry once the same fetch actually finishes.
+  notification_icon_pending_ = !icon_set && !now_playing.art_uri.empty();
+  if (notification_icon_pending_)
+    pending_notification_track_ = now_playing;
 
   // Clicking the notification body itself raises the window; the buttons
   // are app-scoped forwards to the window's own real actions — see
@@ -2486,6 +2522,12 @@ void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
 
   if (auto app = get_application())
     app->send_notification("now-playing", notification);
+}
+
+void GnomosWindow::OnNotificationArtReady(const std::string& uri)
+{
+  if (notification_icon_pending_ && uri == pending_notification_track_.art_uri)
+    SendTrackChangeNotification(pending_notification_track_);
 }
 
 void GnomosWindow::LoadRunInBackgroundSetting()

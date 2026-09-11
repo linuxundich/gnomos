@@ -223,6 +223,10 @@ private:
   void LoadNotificationSetting();
   void SetNotifyOnTrackChange(bool enabled);
   void SendTrackChangeNotification(const NowPlaying& now_playing);
+  // Retries SendTrackChangeNotification() once art for the track it's
+  // still pending on (see pending_notification_art_uri_'s own comment)
+  // actually finishes loading.
+  void OnNotificationArtReady(const std::string& uri);
   // [general] run_in_background in state.ini — see run_in_background_'s own
   // comment.
   void LoadRunInBackgroundSetting();
@@ -480,6 +484,18 @@ private:
   // fires twice for the same track. Off by default (opt-in via Settings);
   // persisted to state.ini's [notifications] group.
   bool notify_on_track_change_ = false;
+  // Path of the cache file the previous SendTrackChangeNotification() call
+  // wrote its cover to — see that function's own comment for why each
+  // track needs a distinct filename, and why the previous one still needs
+  // deleting here rather than just left behind.
+  std::string last_notification_icon_path_;
+  // The most recent SendTrackChangeNotification() call's own now_playing,
+  // kept only for the case its art_uri wasn't cached yet (a first-time
+  // fetch still in flight — see PlayerBar::signal_art_ready()'s own
+  // comment) so OnNotificationArtReady() can retry once it is. Cleared
+  // once that retry happens, or once a newer track supersedes it.
+  NowPlaying pending_notification_track_;
+  bool notification_icon_pending_ = false;
   // Whether closing the window hides it instead of quitting Gnomos —
   // MPRIS control and Last.fm/ListenBrainz scrobbling otherwise die the
   // moment the window closes, even though the Sonos speakers themselves

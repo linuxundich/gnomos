@@ -69,6 +69,12 @@ public:
   // set_value() calls.
   sigc::signal<void(unsigned)>& signal_seek_requested() { return signal_seek_requested_; }
   sigc::signal<void()>& signal_art_clicked() { return signal_art_clicked_; }
+  // Fires once a track's cover finishes loading into ArtCache via the
+  // async fetch OnArtLoaded() runs — never for a cache hit, since callers
+  // needing that can just read it synchronously right after Update()
+  // instead. GnomosWindow uses this to retry a track-change notification
+  // that went out without a cover because the fetch hadn't finished yet.
+  sigc::signal<void(const std::string&)>& signal_art_ready() { return signal_art_ready_; }
 
 private:
   void LoadArt(const std::string& uri);
@@ -144,6 +150,7 @@ private:
   sigc::signal<void()> signal_add_to_favorites_clicked_;
   sigc::signal<void(unsigned)> signal_seek_requested_;
   sigc::signal<void()> signal_art_clicked_;
+  sigc::signal<void(const std::string&)> signal_art_ready_;
 };
 
 }  // namespace gnomos
