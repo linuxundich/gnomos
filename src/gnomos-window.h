@@ -22,6 +22,7 @@
 
 #include "backend/noson-backend.h"
 #include "backend/noson-types.h"
+#include "global-shortcuts-service.h"
 #include "mpris-service.h"
 #include "radio-content-filter.h"
 #include "widgets/alarms-view.h"
@@ -301,6 +302,12 @@ private:
   // backend_ through its own signal connections and getters, same as every
   // other backend consumer in this class.
   std::unique_ptr<MprisService> mpris_;
+  // Doesn't touch backend_ at all — only ever activates this same
+  // window's own "win.*" actions (see their own "reached two ways"
+  // comment) — but constructed alongside mpris_ regardless, since both
+  // are the same kind of "give the desktop a way to control playback
+  // without the window being focused" integration.
+  std::unique_ptr<GlobalShortcutsService> global_shortcuts_;
 
   // libadwaita widgets, constructed via the C API and used through gtkmm
   // only as plain Gtk::Widget children — gtkmm has no bindings for

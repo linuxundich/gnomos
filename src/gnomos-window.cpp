@@ -149,10 +149,15 @@ GnomosWindow::GnomosWindow()
   // the alarm regardless of which one it was, same call the play/pause
   // button already uses.
   add_action("stop-alarm", [this] { backend_->PauseOrStop(); });
-  // Reached from GnomosApplication's own "app."-scoped notification-*
-  // actions (see its own comment for why those have to be app-level, not
-  // win-level, to be reachable from a notification button at all) — same
-  // toggle logic player_bar_'s own play/pause button already uses.
+  // Reached two ways that both need real actions to forward to rather than
+  // wiring up their own playback calls directly: GnomosApplication's own
+  // "app."-scoped notification-* actions (see its own comment for why
+  // those have to be app-level, not win-level, to be reachable from a
+  // notification button at all), and GlobalShortcutsService's Activated
+  // handler (a global shortcut fires even while the window is hidden, so
+  // it needs a real action to activate rather than a UI signal only
+  // player_bar_'s own buttons emit). play-pause mirrors the same toggle
+  // logic player_bar_'s own play/pause button already uses.
   add_action("play-pause", [this] {
     NowPlaying np = backend_->GetNowPlaying();
     if (np.valid && np.state == TransportState::Playing)
@@ -161,6 +166,7 @@ GnomosWindow::GnomosWindow()
       backend_->Play();
   });
   add_action("next", [this] { backend_->Next(); });
+  add_action("previous", [this] { backend_->Previous(); });
   add_action("play-stream", sigc::mem_fun(*this, &GnomosWindow::ShowPlayStreamDialog));
   add_action("mute-everywhere", [this] {
     backend_->MuteAllRoomsAsync(true);
@@ -935,6 +941,7 @@ GnomosWindow::GnomosWindow()
   backend_->signal_error().connect(sigc::mem_fun(*this, &GnomosWindow::OnBackendError));
 
   mpris_ = std::make_unique<MprisService>(*backend_, *this);
+  global_shortcuts_ = std::make_unique<GlobalShortcutsService>(*this);
   radio_history_filter_ = std::make_unique<RadioContentFilter>(*backend_);
   radio_lyrics_filter_ = std::make_unique<RadioContentFilter>(*backend_);
 

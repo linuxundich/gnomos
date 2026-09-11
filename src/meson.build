@@ -3,6 +3,7 @@ gnomos_sources = files(
   'gnomos-application.cpp',
   'gnomos-window.cpp',
   'mpris-service.cpp',
+  'global-shortcuts-service.cpp',
   'radio-content-filter.cpp',
   'backend/noson-backend.cpp',
   'widgets/alarms-view.cpp',
