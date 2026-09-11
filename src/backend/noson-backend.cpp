@@ -4138,7 +4138,6 @@ void NosonBackend::RefreshVolumeLocked()
   // group" check.
   unsigned sum = 0, count = 0;
   bool any_unmuted = false;
-  bool have_db = false;
   room_volumes_.clear();
   for (const NSROOT::SRProperty& srp : player_->GetRenderingProperty())
   {
@@ -4149,13 +4148,6 @@ void NosonBackend::RefreshVolumeLocked()
     if (!srp.property.MuteMaster)
       any_unmuted = true;
     room_volumes_[srp.uuid] = static_cast<uint8_t>(srp.property.VolumeMaster);
-    // See VolumeInfo::volume_db's own comment — just one representative
-    // member (whichever this loop reaches first), not an average.
-    if (!have_db)
-    {
-      volume_.volume_db = static_cast<int16_t>(srp.property.VolumeDecibelMaster);
-      have_db = true;
-    }
   }
   if (count > 0)
   {

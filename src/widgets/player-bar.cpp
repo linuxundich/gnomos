@@ -297,7 +297,10 @@ PlayerBar::PlayerBar()
   // (hovering + scrolling adjusts the value, no extra wiring needed) reads
   // these from the underlying Adjustment; left unset, they default to 0,
   // so scrolling technically works but visibly changes nothing at all.
-  volume_scale_.set_increments(2, 10);
+  // Confirmed live that a single wheel notch moves by the *page* increment,
+  // not the step one (arrow keys use step) — so it's this second value,
+  // not the first, that sets how coarse one scroll notch feels.
+  volume_scale_.set_increments(1, 2);
   volume_scale_.set_size_request(120, -1);
   volume_scale_.set_valign(Gtk::Align::CENTER);
   volume_scale_.signal_value_changed().connect([this] {
@@ -484,10 +487,7 @@ void PlayerBar::UpdateVolume(const VolumeInfo& volume)
   suppress_volume_signal_ = true;
   volume_scale_.set_value(volume.volume);
   suppress_volume_signal_ = false;
-  // See VolumeInfo::volume_db's own comment — informational only, one
-  // representative room's dB value, not a group concept the way the
-  // percentage's own group average is.
-  volume_scale_.set_tooltip_text(std::to_string(volume.volume) + "% (" + std::to_string(volume.volume_db) + " dB)");
+  volume_scale_.set_tooltip_text(std::to_string(volume.volume) + "%");
 
   muted_ = volume.muted;
   mute_button_.set_icon_name(IconForVolume(volume.volume, volume.muted));
