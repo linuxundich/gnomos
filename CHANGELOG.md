@@ -8,6 +8,15 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.17.1] - 2026-09-11
+
+### Fixed
+- Scrolling over the volume slider jumped by roughly 10% per notch
+  instead of a small, controlled step.
+- The volume tooltip always showed "(0 dB)" next to the percentage;
+  this hardware doesn't support the dB scale at all, so it never
+  showed a real reading. Removed.
+
 ## [0.17.0] - 2026-09-11
 
 ### Added

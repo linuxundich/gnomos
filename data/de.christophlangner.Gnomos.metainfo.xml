@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.17.1" date="2026-09-11">
+      <description>
+        <p>Fixes the volume slider jumping by a large step when scrolled,
+        and removes a "(0 dB)" tooltip reading that this hardware never
+        actually supports.</p>
+      </description>
+    </release>
     <release version="0.17.0" date="2026-09-11">
       <description>
         <p>Adds global keyboard shortcuts (play/pause, next/previous track,
