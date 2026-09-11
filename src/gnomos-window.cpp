@@ -180,21 +180,31 @@ GnomosWindow::GnomosWindow()
   // on (see OnCloseRequest()) — this is the one reachable way to actually
   // terminate Gnomos in that case.
   add_action("quit", sigc::mem_fun(*this, &GnomosWindow::QuitApplication));
-  auto primary_menu = Gio::Menu::create();
-  primary_menu->append("Stream abspielen…", "win.play-stream");
-  primary_menu->append("Überall stummschalten", "win.mute-everywhere");
-  primary_menu->append("Szenen…", "win.scenes");
-  primary_menu->append("Radiosender-Favoriten exportieren…", "win.export-radio-favorites");
-  primary_menu->append("Radiosender-Favoriten importieren…", "win.import-radio-favorites");
-  primary_menu->append("M3U/PLS-Playlist importieren…", "win.import-m3u-playlist");
-  primary_menu->append("Einstellungen", "win.settings");
-  primary_menu->append("Tastenkürzel", "win.shortcuts");
-  primary_menu->append("Über Gnomos", "win.about");
-  primary_menu->append("Gnomos beenden", "win.quit");
+  primary_menu_ = Gio::Menu::create();
+  primary_menu_->append("Stream abspielen…", "win.play-stream");
+  primary_menu_->append("Überall stummschalten", "win.mute-everywhere");
+  primary_menu_->append("Szenen…", "win.scenes");
+  primary_menu_->append("Radiosender-Favoriten exportieren…", "win.export-radio-favorites");
+  primary_menu_->append("Radiosender-Favoriten importieren…", "win.import-radio-favorites");
+  primary_menu_->append("M3U/PLS-Playlist importieren…", "win.import-m3u-playlist");
+  primary_menu_->append("Einstellungen", "win.settings");
+  primary_menu_->append("Tastenkürzel", "win.shortcuts");
+  primary_menu_->append("Über Gnomos", "win.about");
+  primary_menu_->append("Gnomos beenden", "win.quit");
   primary_menu_button_.set_icon_name("open-menu-symbolic");
   primary_menu_button_.set_tooltip_text("Hauptmenü");
-  primary_menu_button_.set_menu_model(primary_menu);
+  primary_menu_button_.set_menu_model(primary_menu_);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(primary_menu_button_.gobj()));
+  // Backgrounding (see OnCloseRequest()) hides this same window rather than
+  // destroying it, so re-presenting it later remaps the very GtkPopoverMenu
+  // built above instead of a fresh one — confirmed live that this popover's
+  // items all come back permanently insensitive after such a remap (every
+  // "win.*" item greyed out and unclickable, while plain signal-connected
+  // buttons elsewhere in the window keep working fine), even though the
+  // "win" actions themselves are untouched. Reassigning the same menu model
+  // forces GtkMenuButton to rebuild its popover from scratch, which
+  // re-establishes the action binding.
+  signal_map().connect([this] { primary_menu_button_.set_menu_model(primary_menu_); });
 
   activity_spinner_ = adw_spinner_new();
   gtk_widget_set_margin_start(activity_spinner_, 6);

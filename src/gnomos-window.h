@@ -7,6 +7,7 @@
 
 #include <adwaita.h>
 #include <sigc++/connection.h>
+#include <giomm/menu.h>
 #include <gtkmm/applicationwindow.h>
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
@@ -333,6 +334,9 @@ private:
   bool backend_busy_ = false;
   Gtk::Button refresh_button_;
   Gtk::MenuButton primary_menu_button_;
+  // Reapplied to primary_menu_button_ on every signal_map() — see that
+  // connection's own comment for why a stale GtkPopoverMenu needs this.
+  Glib::RefPtr<Gio::Menu> primary_menu_;
 
   // Room/zone picker — a header-bar popover now, not a permanent sidebar
   // (see split_view_'s own comment for what replaced it there). Reuses
