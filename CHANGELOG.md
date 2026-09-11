@@ -8,6 +8,19 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.17.0] - 2026-09-11
+
+### Added
+- Global keyboard shortcuts (Wiedergabe/Pause, Nächster/Vorheriger Titel,
+  Überall stummschalten) via the xdg-desktop-portal GlobalShortcuts
+  portal, configurable through GNOME's own "Add Keyboard Shortcuts"
+  dialog and working even while Gnomos isn't focused.
+
+### Fixed
+- Running in the background (closing via the window's close button) and
+  then relaunching Gnomos left every entry in the hamburger menu greyed
+  out and unusable.
+
 ## [0.16.0] - 2026-09-10
 
 ### Added
