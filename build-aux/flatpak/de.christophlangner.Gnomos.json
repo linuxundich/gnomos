@@ -11,7 +11,8 @@
         "--socket=fallback-x11",
         "--device=dri",
         "--share=network",
-        "--own-name=org.mpris.MediaPlayer2.gnomos"
+        "--own-name=org.mpris.MediaPlayer2.gnomos",
+        "--own-name=de.christophlangner.Gnomos.Zone"
     ],
     "cleanup": [
         "/include",

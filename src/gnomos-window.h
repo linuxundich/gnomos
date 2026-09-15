@@ -32,6 +32,7 @@
 #include "widgets/library-view.h"
 #include "widgets/player-bar.h"
 #include "widgets/queue-view.h"
+#include "zone-volume-service.h"
 
 namespace gnomos
 {
@@ -307,6 +308,9 @@ private:
   // backend_ through its own signal connections and getters, same as every
   // other backend consumer in this class.
   std::unique_ptr<MprisService> mpris_;
+  // Same construction/destruction-order reasoning as mpris_ above — see
+  // ZoneVolumeService's own header comment for what it's for.
+  std::unique_ptr<ZoneVolumeService> zone_volume_;
   // Doesn't touch backend_ at all — only ever activates this same
   // window's own "win.*" actions (see their own "reached two ways"
   // comment) — but constructed alongside mpris_ regardless, since both

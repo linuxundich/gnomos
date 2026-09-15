@@ -99,6 +99,10 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - MPRIS2 integration, so GNOME's media keys, the Quick Settings player
   widget and the lock screen all work with Gnomos like any other player,
   including setting shuffle/repeat from there
+- An optional companion GNOME Shell extension
+  (`gnome-shell-extension/gnomos-volume@christophlangner.de`, installed
+  separately) that adds the current zone's volume as its own slider in the
+  system volume Quick Settings menu
 - A "Gen 1" badge identifying original first-generation hardware in a room
 - Light/dark appearance override, adjustable cover art cache size
 - Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
@@ -150,7 +154,7 @@ install it separately. If you already cloned without that flag, run
 `git submodule update --init` to fetch it afterwards.
 
 A Flatpak manifest exists under `build-aux/flatpak/` and has been verified
-end to end (builds, installs, and runs against `org.gnome.Platform`//49).
+end to end (builds, installs, and runs against `org.gnome.Platform`//50).
 It isn't published anywhere — the author builds it sporadically, for local
 testing, rather than as a release channel kept in sync with every version.
 To build and install it yourself:
@@ -162,6 +166,11 @@ flatpak-builder --user --install --force-clean --repo=.flatpak-repo .flatpak-bui
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the manifest's version
 pins.
+
+The companion GNOME Shell extension
+(`gnome-shell-extension/gnomos-volume@christophlangner.de/`) is a separate,
+optional install — see its own [README](gnome-shell-extension/gnomos-volume@christophlangner.de/README.md)
+for how to add it.
 
 ## Status
 

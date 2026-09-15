@@ -886,6 +886,12 @@ VolumeInfo NosonBackend::GetVolume() const
   return volume_;
 }
 
+std::string NosonBackend::GetCurrentZoneName() const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  return current_zone_ ? current_zone_->GetZoneShortName() : "";
+}
+
 std::vector<QueueItem> NosonBackend::GetQueue() const
 {
   std::lock_guard<std::mutex> lock(state_mutex_);

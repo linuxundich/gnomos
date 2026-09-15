@@ -1608,3 +1608,135 @@ Still unverified:
 - Queue reordering via drag and drop is the one feature that's genuinely
   hard to test without a human hand on a mouse, so it's the least-verified
   piece of UI in the app.
+
+### Zone volume in GNOME's own volume Quick Settings menu
+
+Requested directly: the currently selected zone's volume, as an additional
+slider inside GNOME's actual system volume popup (Quick Settings), not just
+somewhere inside Gnomos's own window.
+
+Gnomos already exposes volume read-write via MPRIS (`MprisService`'s
+`Volume` property) — that turned out to be the wrong mechanism entirely.
+Checked directly against GNOME Shell's own source
+(`js/ui/mpris.js`, GNOME Shell 50): it implements MPRIS transport controls
+and metadata only, no `Volume` handling and no slider UI of any kind.
+GNOME Shell's Quick Settings volume sliders are hardcoded to real
+PulseAudio/PipeWire stream volumes; there's no way to inject an arbitrary
+value into that same UI from an MPRIS property, and Gnomos has no local
+audio stream of its own to piggyback on either — Sonos playback happens on
+the speaker, never through the controlling machine's own audio pipeline.
+
+Two real options exist for getting a value into that literal UI: a fake
+local PipeWire/PulseAudio stream (silent, looping, volume mirrored
+bidirectionally with the zone) that would show up the way any other app's
+stream does, or a genuine GNOME Shell extension using the Quick Settings
+API to add a real slider directly. Asked the user to choose given the
+tradeoffs (the first stays entirely inside the existing C++ app but needs a
+new libpulse/pipewire dependency, a permanently-running silent stream, and
+carries real feedback-loop risk; the second is architecturally cleaner but
+is a wholly separate artifact in a different language/runtime with its own
+install step) — the extension was picked.
+
+**Split across two artifacts, deliberately not merged into `MprisService`**:
+MPRIS's name/paths/interface are fixed by that spec and are about playback,
+not volume-as-a-system-concept; a consumer that only wants volume shouldn't
+need to speak MPRIS at all.
+
+- **`src/zone-volume-service.{h,cpp}`** (new, mirrors `MprisService`'s own
+  `Gio::DBus::own_name()` + `register_object()` pattern almost exactly):
+  owns its own session-bus name, `de.christophlangner.Gnomos.Zone`, at
+  `/de/christophlangner/Gnomos/Zone`. `Volume`/`Muted`/`ZoneName` are
+  read-only *properties* (so a `GDBusProxy` on the extension side gets them
+  for free via the standard `GetAll`/`PropertiesChanged` machinery, no
+  custom polling), but read-write via explicit `SetVolume(d)`/`SetMuted(b)`
+  *methods* rather than `Properties.Set` — simpler for the GJS side to call
+  directly, no need to hand-wrap a value in the right variant type the way
+  a real `Properties.Set` call would need. Subscribes to both
+  `signal_volume_changed()` (volume/mute changes) and
+  `signal_player_ready()` (fires on every zone switch — needed on top of
+  volume-changed since switching zones can leave `ZoneName` the only thing
+  that actually changed, e.g. two rooms happening to sit at the same
+  volume). `NosonBackend` gained one new accessor for this,
+  `GetCurrentZoneName()` (`current_zone_->GetZoneShortName()` under the
+  same lock every other getter already uses) — `Zones()` returns every
+  zone in the household, not "the one currently selected", so nothing
+  already public could answer that.
+- **`gnome-shell-extension/gnomos-volume@christophlangner.de/`** (new,
+  separate from the main meson build entirely — a GNOME Shell extension is
+  installed per-user, not compiled or packaged alongside the app itself):
+  a `QuickSettings.QuickSlider` subclass, following the pattern documented
+  at gjs.guide's own Quick Settings guide (`QuickSlider` + `SystemIndicator`
+  + `addExternalIndicator()`, stable API since GNOME Shell 45). Proxies
+  `de.christophlangner.Gnomos.Zone` via `Gio.DBusProxy.makeProxyWrapper()`
+  against a local copy of the exact same introspection XML
+  `zone-volume-service.cpp` registers server-side. `Gio.bus_watch_name()`
+  adds/removes the whole indicator as Gnomos itself starts and stops —
+  there's nothing to control while it isn't running, the same reasoning a
+  per-app PulseAudio volume row only exists while that app has an active
+  stream. An `_applyingRemote` guard flag on the slider keeps an incoming
+  `PropertiesChanged` update (writing `this.slider.value`) from bouncing
+  straight back out as a `SetVolume()` call via the slider's own
+  `notify::value` handler — without it, every property sync would
+  immediately re-send the exact value it just received. The slider's icon
+  reuses the same low/medium/high/muted threshold convention `PlayerBar`'s
+  own mute button icon already established, and its icon is clickable
+  (`iconReactive` + `icon-clicked` → `SetMuted()`) to toggle mute, mirroring
+  the stock output-volume row's own icon-click-to-mute behavior.
+- **Flatpak permissions**: `build-aux/flatpak/de.christophlangner.Gnomos.json`
+  needed a second `--own-name=` entry
+  (`de.christophlangner.Gnomos.Zone`, alongside the existing
+  `org.mpris.MediaPlayer2.gnomos`) — confirmed live that the app actually
+  runs sandboxed in this environment (its D-Bus names show up owned via
+  `xdg-dbus-proxy` in `busctl --user list`), so without this the new
+  service would own_name() silently fail inside the sandbox even though a
+  native build works fine, exactly the kind of gap that's invisible until
+  someone actually runs the Flatpak build.
+
+**Follow-up, reported live**: after installing and enabling the extension,
+Gnomos's own D-Bus side confirmed working (`gdbus`: `GetAll` returned the
+real zone's live state, a `SetVolume()` call actually moved the real
+speaker) and the extension showed as `ACTIVE` with no reported error, but
+no slider appeared anywhere in Quick Settings.
+
+Root-caused to two independent things, only found by reading GNOME Shell's
+own source directly (`js/ui/panel.js`, `js/ui/quickSettings.js`) rather than
+trusting the gjs.guide example's placement as-is:
+
+- **Wrong insertion point.** `addExternalIndicator()` — the API the
+  gjs.guide example uses — does *not* insert a `QuickSlider` anywhere near
+  volume/brightness at all: it calls `this._addItemsBefore(indicator.quickSettingsItems,
+  sibling, colSpan)` with `sibling` pinned to the *last item of the
+  Background Apps indicator* (or the grid's end if that indicator doesn't
+  exist), regardless of the `colSpan` argument passed in — that argument
+  only sets the item's column width, not its row position. Matches the
+  originally-requested "just make it appear somewhere" framing, but not the
+  follow-up ask ("appear right under the normal volume slider") at all.
+  Replaced with `QuickSettingsMenu.insertItemBefore(item, sibling, colSpan)`
+  directly, using `Main.panel.statusArea.quickSettings._brightness`'s own
+  first `quickSettingsItem` as `sibling` — confirmed from
+  `insertItemBefore`'s own source that it calls
+  `this._grid.insert_child_below(item, sibling)`, and cross-checked what
+  "below" actually means there against `addExternalIndicator()`'s own use
+  of the identical call (commented literally "Insert before …" for that
+  same `insert_child_below()`): despite the name, it inserts *before*
+  `sibling` in child order, i.e. visually *above* it in a top-to-bottom
+  grid — so passing the brightness item as `sibling` lands the new row
+  between volume and brightness, immediately under the system volume
+  slider as asked. Falls back to `menu.addItem()` (appended at the grid's
+  end) if `_brightness` doesn't exist at all (no backlight hardware).
+- **GNOME Shell doesn't hot-reload an extension's JS on Wayland.** Toggling
+  `gnome-extensions disable`/`enable` genuinely flips the reported
+  `INACTIVE`/`ACTIVE` state and re-runs `enable()` — confirmed live with
+  temporary file-writing debug tracing added at the very first line of
+  `enable()` — yet the trace file was never created across several
+  disable/enable cycles after edits landed on disk, meaning the *previous*
+  in-memory module kept running regardless. GJS's ES module loader caches
+  by resolved file URL for the process's lifetime; only a full Shell
+  restart (`Alt`+`F2` → `r`, X11 only — impossible on Wayland, hence the
+  logout/login this project's own README already calls for) actually
+  re-imports changed extension code. This means every iteration on
+  `extension.js` needs a fresh logout/login to verify, not just the first
+  install — confirmed by first exhausting every less disruptive option
+  (`org.gnome.Shell.Eval` over D-Bus: refused, unsafe mode off;
+  `journalctl` by PID: no matching output at all) before accepting that a
+  disable/enable cycle alone proves nothing about edited code.

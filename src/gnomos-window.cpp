@@ -954,6 +954,7 @@ GnomosWindow::GnomosWindow()
   backend_->signal_error().connect(sigc::mem_fun(*this, &GnomosWindow::OnBackendError));
 
   mpris_ = std::make_unique<MprisService>(*backend_, *this);
+  zone_volume_ = std::make_unique<ZoneVolumeService>(*backend_);
   global_shortcuts_ = std::make_unique<GlobalShortcutsService>(*this);
   radio_history_filter_ = std::make_unique<RadioContentFilter>(*backend_);
   radio_lyrics_filter_ = std::make_unique<RadioContentFilter>(*backend_);

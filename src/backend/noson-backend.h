@@ -109,6 +109,12 @@ public:
 
   NowPlaying GetNowPlaying() const;
   VolumeInfo GetVolume() const;
+  // Zone::GetZoneShortName() for whichever zone SelectZone() most recently
+  // selected, or empty before any selection — used by ZoneVolumeService to
+  // label the currently controlled zone's volume for its D-Bus consumer
+  // (a companion GNOME Shell extension), independent of Zones()'s full
+  // per-household list.
+  std::string GetCurrentZoneName() const;
   std::vector<QueueItem> GetQueue() const;
 
   void Play();
