@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.18.0" date="2026-09-15">
+      <description>
+        <p>Adds the currently selected Sonos zone's volume as its own
+        slider in GNOME's system volume Quick Settings menu, via a new
+        optional companion GNOME Shell extension.</p>
+      </description>
+    </release>
     <release version="0.17.1" date="2026-09-11">
       <description>
         <p>Fixes the volume slider jumping by a large step when scrolled,

@@ -8,6 +8,16 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.18.0] - 2026-09-15
+
+### Added
+- The currently selected Sonos zone's volume is now available as its own
+  slider in GNOME's system volume Quick Settings menu, directly under the
+  regular output volume slider — via a new companion GNOME Shell extension
+  (`gnome-shell-extension/gnomos-volume@christophlangner.de/`, installed
+  separately) talking to a small new D-Bus interface Gnomos itself now
+  exposes (`de.christophlangner.Gnomos.Zone`).
+
 ## [0.17.1] - 2026-09-11
 
 ### Fixed
