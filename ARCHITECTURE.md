@@ -1740,3 +1740,177 @@ trusting the gjs.guide example's placement as-is:
   (`org.gnome.Shell.Eval` over D-Bus: refused, unsafe mode off;
   `journalctl` by PID: no matching output at all) before accepting that a
   disable/enable cycle alone proves nothing about edited code.
+
+### Every room's volume, behind the slider's own expand arrow
+
+Requested directly, once the single-zone slider was working: the same
+row should reach every room in the household, not just whichever zone is
+currently selected — main slider = current zone (unchanged), an expand
+arrow next to it (mirroring GNOME's own sound-output device picker)
+reveals every *other* room, each independently adjustable.
+
+`QuickSettings.QuickSlider` (the class `GnomosZoneSlider` already extends)
+turns out to already carry exactly this arrow-plus-submenu machinery
+built in — checked directly against GNOME Shell's own source
+(`js/ui/quickSettings.js`'s `QuickSlider._init()`) rather than assumed:
+a `menu-enabled` GObject property toggles a small `go-next-symbolic`
+button's visibility, and `hasMenu: true` (passed to the `QuickSettingsItem`
+base constructor) already gives every `QuickSlider` a real
+`PopupMenu.PopupMenu` at `this.menu`, opened by that button. GNOME's own
+real output-volume row (`OutputStreamSlider` in `js/ui/status/volume.js`)
+uses the identical mechanism for its own device-picker submenu — so this
+isn't a workaround, it's the same built-in feature GNOME's own slider
+already relies on.
+
+- **`GnomosRoomSliderItem`** (new, in `extension.js`): one row per room —
+  `PopupMenu.PopupBaseMenuItem` (`reactive: false, activate: false`, same
+  "non-activatable container hosting its own interactive child" pattern
+  `QuickSlider` itself uses for the *main* slider) holding an `St.Icon` +
+  `St.Label` + its own `Slider` (`resource:///org/gnome/shell/ui/slider.js`,
+  the identical widget class `QuickSlider` itself is built from). Each
+  row owns its own `_applyingRemote` guard, same reasoning as the main
+  slider's.
+- **`GnomosZoneSlider._syncRoomsFromProxy()`**: diffs the incoming `Rooms`
+  property against a `uuid -> GnomosRoomSliderItem` map instead of
+  clearing and rebuilding the submenu on every sync. `Rooms` arrives
+  alongside every other property change — including a plain volume
+  tick — so a naive rebuild would tear down and recreate every row (and
+  fight the user's own in-progress drag on one of them) far more often
+  than the room list itself actually changes. Opening the menu
+  (`this.menu`'s own `open-state-changed`) triggers a fresh
+  `RefreshRoomsRemote()` call, the same "meant to be called while the
+  popover is open" pattern `RefreshGroupVolumesAsync()` already documents
+  for the in-app grouping popover.
+- **Deliberately unfiltered**: every room from `Rooms()` is shown,
+  including whichever one the main slider already represents — mirroring
+  the in-app grouping popover's own master-fader-plus-per-room-sliders
+  layout exactly, rather than inventing new filtering semantics (which
+  would also need a way to tell "is this uuid part of the currently
+  selected zone" over D-Bus, information nothing else here needs yet).
+- **A real, silent write-path bug found by testing this live**:
+  `NosonBackend::SetRoomVolume()` (pre-existing, backing the in-app
+  grouping popover) routed through `player_->SetVolume(uuid, value)` —
+  which only ever reaches a uuid that's currently one of the *selected*
+  zone's own `Player`-subscribed subordinates. Setting a room outside
+  that group (confirmed live: "Bad" while "Arbeitszimmer" was selected,
+  in a completely different, ungrouped zone) was a silent no-op — the
+  D-Bus call succeeded, `RefreshRooms` + a re-read showed the old value
+  unchanged. `GetRoomVolume()`'s own comment already documents that the
+  *read* side (`RefreshGroupVolumesAsync()`) was deliberately built
+  independent of `player_`'s subordinate list for exactly this reason;
+  the write side never got the matching fix. Fixed by giving
+  `ApplyRoomVolumeAsync()` the identical direct, throwaway
+  `NSROOT::RenderingControl rc(zp->GetHost(), zp->GetPort())` approach the
+  read side already uses (reusing the existing `FindZonePlayer()` helper),
+  instead of `player_`. Confirmed live end-to-end afterward: `SetRoomVolume`
+  on a room outside the current group actually moved it, `Rooms` reflected
+  the change, and the value was restored to what it was before testing.
+  This also transparently fixes the exact same latent gap in the in-app
+  grouping popover itself, for a room that joined the group very recently.
+- **A second real bug, this time in the extension's own JS, found by
+  static review rather than live testing** (each fix needs a full
+  logout/login to verify, so getting it right on paper first matters
+  more here than almost anywhere else in this project): two places wrote
+  a GObject property directly via snake_case dot-notation *after*
+  construction — `this.slider.x_expand = true` and
+  `this.slider.accessible_name = label` (the latter pre-existing, in the
+  main slider's own `_syncFromProxy()`). Per GJS's own style guide, that
+  spelling is only reliable *inside* a construction-time property-bag
+  object literal (`new St.Bin({x_expand: true, ...})`, used correctly
+  elsewhere in this same file) — as a direct post-construction
+  assignment, it silently sets a throwaway plain JS property instead of
+  the real Clutter property, rather than erroring. Fixed to the
+  camelCase form (`xExpand`, `accessibleName`) GJS's direct property
+  access actually requires.
+
+### Per-room mute in the same submenu
+
+Requested right after the per-room volume sliders confirmed working live:
+the main slider's own icon already mutes *its own* zone (click-to-mute,
+`GnomosZoneSlider._onIconClicked()`), but every other room in the
+"Andere Räume" submenu had no mute of its own at all — only a volume
+slider.
+
+- **Backend**: `RenderingControl` already exposes `GetMute()`/`SetMute()`
+  (used by the existing whole-zone `SetMuted()`/`MuteAllRoomsAsync()`),
+  just never wired up per-room. `RefreshGroupVolumesAsync()` now also
+  calls `rc.GetMute()` alongside its existing `rc.GetVolume()` for every
+  room, into a new parallel `group_room_muted_by_uuid_` map (mirroring
+  `group_room_volumes_by_uuid_` exactly), read back via a new
+  `GetRoomMuted()`. `SetRoomMuted()` reuses the exact same direct,
+  throwaway `NSROOT::RenderingControl`-by-host approach the volume write
+  side was just fixed to use (see the previous section) — not debounced,
+  unlike `SetRoomVolume()`, since a mute toggle is one discrete click, not
+  a rapid-fire drag.
+- **D-Bus**: `Rooms`' signature grew from `a(ssd)` to `a(ssdb)` (uuid,
+  name, volume, muted), and a new `SetRoomMuted(s PlayerUuid, b Muted)`
+  method was added alongside `SetRoomVolume`, both in
+  `zone-volume-service.cpp` and the extension's own local copy of the
+  same introspection XML.
+- **Extension**: `GnomosRoomSliderItem`'s leading icon changed from a
+  static `network-wireless-symbolic` glyph to a clickable one (`St.Button`
+  wrapping `St.Icon`, the same hand-built construction `QuickSlider`'s own
+  icon button uses internally — `PopupBaseMenuItem` has no ready-made
+  "clickable icon" the way `QuickSlider` itself exposes via
+  `iconReactive`/`icon-clicked`) reflecting `iconNameForVolume(volume,
+  muted)` — the exact same helper the main slider's own icon already
+  used, reused here instead of inventing a second convention. Clicking it
+  calls the new `SetRoomMutedRemote()`. Caught (and fixed) the identical
+  snake_case-dot-assignment mistake described just above while writing
+  this — `this._icon.icon_name = ...` instead of `.iconName` — before it
+  ever shipped, by re-scanning the whole file for the same pattern rather
+  than assuming a fix made once wouldn't recur.
+
+Two follow-ups, both requested live while watching the feature actually
+running (real "Bad" happened to be genuinely muted by someone/something
+else in the household at the time, confirmed via `gdbus` before touching
+any code — a good, unplanned live confirmation that the icon reflects
+real state, not just whatever this session last set):
+
+- **A muted room's slider now greys out and stops accepting drags**
+  (`GnomosRoomSliderItem._updateMutedStyle()`, called from both `_init`
+  and `setMuted()`): `this.slider.reactive = false` plus a reduced
+  `opacity` while muted. Mute and volume stay fully independent Sonos
+  properties regardless (same reasoning the main slider's own
+  icon-click-to-mute already relies on — muting never touches the volume
+  value itself), so this is purely a visual/input-blocking layer over
+  that, not a change to what mute actually means.
+- **Every row's slider is now the same length**, previously not the case
+  since each label's width naturally matched its own room name, pushing
+  wildly different sliders to wildly different start positions. Fixed in
+  `_syncRoomsFromProxy()`: after adding/updating rows, it measures every
+  label's natural width (`GnomosRoomSliderItem.getLabelNaturalWidth()`,
+  `St.Label.get_preferred_width(-1)`) and applies the widest one as a
+  shared fixed width to every row's label. A new `MAX_ROOM_NAME_CHARS`
+  cap (18, with an ellipsis) keeps one implausibly long room name from
+  setting an oversized shared column for every other row.
+
+A third bug turned up live-testing the mute click itself (against real
+hardware, via `gdbus` standing in for the click while the panel automation
+struggled to hit a ~20px icon reliably — see the actual click-to-mute
+confirmation note below): clicking a room's mute icon fired
+`SetRoomMutedRemote()` correctly, but its icon/slider visibly did
+*nothing* until the submenu was closed and reopened. Root cause: unlike
+the slider (whose position the user's own drag already moves directly,
+independent of any server round trip), the icon has no local input to
+reflect optimistically on its own — it only ever changes via the next
+`Rooms` sync, and `Rooms` only ever refreshes on an explicit poll (menu
+open, or a `RefreshRooms` call), never a live push subscription the way
+the *current* zone's own `Muted` gets from its subscribed `Player`. Fixed
+two ways in `GnomosRoomSliderItem._onIconClicked()`: applies the new muted
+state to the widget immediately (optimistic, same idea `_applyingRemote`
+already protects the *slider* value from bouncing back out), **and**
+chains a `RefreshRoomsRemote()` call into `SetRoomMutedRemote()`'s own
+completion callback — both land on `NosonBackend`'s single serial task
+queue in that order, so the refresh's `GetMute()` is guaranteed to run
+only after the mute itself actually reached the device, not just after
+the D-Bus call returned. Without that second part, an unrelated property
+tick (the *current* zone's own independent live Volume/Muted updates)
+could re-run `_syncRoomsFromProxy()` against the still-stale cached
+`Rooms` and immediately stomp the optimistic value back to the old one.
+Deliberately not applied to the volume slider's own `_onSliderChanged()`
+the same way — that fires on every pixel of a drag, and chaining a real
+per-room-household SOAP refresh into *each* of those would be wasteful
+and could visibly fight an in-progress drag; the slider's own directly-
+user-driven value makes that race far narrower in practice than the
+single discrete mute click's was.

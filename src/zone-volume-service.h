@@ -23,13 +23,21 @@ namespace gnomos
 //
 // Deliberately a separate D-Bus service, not folded into MprisService:
 // MPRIS's name/paths/interface are fixed by that spec and unrelated to this
-// (a plain property bag plus two setters, nothing about playback), and a
+// (a plain property bag plus a few setters, nothing about playback), and a
 // consumer only interested in volume shouldn't need to understand MPRIS at
-// all. Volume/Muted are read-only *properties* (so a proxy's normal
+// all. Volume/Muted/Rooms are read-only *properties* (so a proxy's normal
 // GetAll/PropertiesChanged bookkeeping keeps them in sync for free) but
-// read-write via explicit SetVolume()/SetMuted() *methods* rather than
-// Properties.Set — simpler for a GJS consumer to call directly, no need to
-// hand-wrap a value in the right variant type for Properties.Set.
+// read-write via explicit SetVolume()/SetMuted()/SetRoomVolume() *methods*
+// rather than Properties.Set — simpler for a GJS consumer to call directly,
+// no need to hand-wrap a value in the right variant type for Properties.Set.
+//
+// Rooms exists so the extension's slider can also reach every *other* room
+// in the household from an expandable submenu (mirroring the in-app
+// grouping popover's own per-room sliders — see NosonBackend::GetRoomVolume()'s
+// own comment for why that, not the current zone's own group members list,
+// is the right source: it already covers every physically known room,
+// regardless of current grouping), not just the currently selected zone the
+// main slider already controls.
 class ZoneVolumeService
 {
 public:
@@ -51,6 +59,11 @@ private:
                       const Glib::ustring& sender, const Glib::ustring& object_path,
                       const Glib::ustring& interface_name, const Glib::ustring& property_name);
 
+  // uuid/name/volume for every room GetRoomVolume() currently has a value
+  // for (i.e. reached by at least one RefreshGroupVolumesAsync() call) —
+  // a room never refreshed yet is omitted rather than shown with a stale
+  // or fabricated 0%.
+  Glib::VariantBase BuildRooms();
   void EmitPropertiesChanged();
 
   NosonBackend& backend_;
@@ -61,6 +74,8 @@ private:
 
   sigc::connection volume_connection_;
   sigc::connection player_ready_connection_;
+  sigc::connection group_volumes_connection_;
+  sigc::connection zones_connection_;
 };
 
 }  // namespace gnomos

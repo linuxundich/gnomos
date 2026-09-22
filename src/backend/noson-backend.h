@@ -167,10 +167,21 @@ public:
   // which responds to GetVolume() but is skipped here the same way
   // SetVolume()'s own scaling skips it elsewhere).
   bool GetRoomVolume(const std::string& player_uuid, uint8_t& out_volume) const;
+  // Per-member mute, populated by the same RefreshGroupVolumesAsync() call
+  // and gated the same way (never-yet-refreshed room returns false) —
+  // added for ZoneVolumeService's own per-room mute toggle, no existing
+  // in-app UI needed this before now.
+  bool GetRoomMuted(const std::string& player_uuid, bool& out_muted) const;
   sigc::signal<void()>& signal_group_volumes_changed() { return signal_group_volumes_changed_; }
   // Also debounced per-room, same reasoning as SetVolume() above — the
   // grouping popover has one of these sliders per room.
   void SetRoomVolume(const std::string& player_uuid, uint8_t value);
+  // Not debounced, unlike SetRoomVolume() — a single discrete toggle, not
+  // a rapid-fire drag. Same direct, throwaway
+  // NSROOT::RenderingControl-by-host approach SetRoomVolume() itself now
+  // uses (see ApplyRoomVolumeAsync()'s own comment for why), scoped to one
+  // room instead of MuteAllRoomsAsync()'s every-room sweep.
+  void SetRoomMuted(const std::string& player_uuid, bool muted);
   // Both read the current AVTProperty::CurrentPlayMode and cycle it.
   // ToggleRepeat() cycles Off -> All -> One -> Off while not shuffling
   // (noson-app's own Player::toggleRepeat(), player.cpp, only ever
@@ -783,6 +794,9 @@ private:
   // group after the zone was first selected. Backs GetRoomVolume() for the
   // grouping popover's per-room sliders and master fader.
   std::map<std::string, uint8_t> group_room_volumes_by_uuid_;
+  // uuid -> muted, populated alongside group_room_volumes_by_uuid_ by the
+  // same RefreshGroupVolumesAsync() call. Backs GetRoomMuted().
+  std::map<std::string, bool> group_room_muted_by_uuid_;
   // Index-aligned pair backing FetchAllTracksForMatchingAsync() — see its
   // own comment for why this is deliberately separate from
   // library_entries_/library_raw_.

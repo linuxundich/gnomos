@@ -4174,6 +4174,7 @@ void NosonBackend::RefreshGroupVolumesAsync()
     }
 
     std::map<std::string, uint8_t> results;
+    std::map<std::string, bool> muted_results;
     for (const NSROOT::ZonePlayerPtr& zp : players)
     {
       if (!zp->IsValid())
@@ -4189,11 +4190,15 @@ void NosonBackend::RefreshGroupVolumesAsync()
       uint8_t volume = 0;
       if (rc.GetVolume(&volume))
         results[zp->GetUUID()] = volume;
+      uint8_t muted = 0;
+      if (rc.GetMute(&muted))
+        muted_results[zp->GetUUID()] = muted != 0;
     }
 
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       group_room_volumes_by_uuid_ = std::move(results);
+      group_room_muted_by_uuid_ = std::move(muted_results);
     }
     group_volumes_dispatcher_.emit();
   });
@@ -4206,6 +4211,16 @@ bool NosonBackend::GetRoomVolume(const std::string& player_uuid, uint8_t& out_vo
   if (it == group_room_volumes_by_uuid_.end())
     return false;
   out_volume = it->second;
+  return true;
+}
+
+bool NosonBackend::GetRoomMuted(const std::string& player_uuid, bool& out_muted) const
+{
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  auto it = group_room_muted_by_uuid_.find(player_uuid);
+  if (it == group_room_muted_by_uuid_.end())
+    return false;
+  out_muted = it->second;
   return true;
 }
 
@@ -4226,10 +4241,44 @@ void NosonBackend::SetRoomVolume(const std::string& player_uuid, uint8_t value)
 void NosonBackend::ApplyRoomVolumeAsync(const std::string& player_uuid, uint8_t value)
 {
   tasks_.Push([this, player_uuid, value] {
-    auto player = SnapshotPlayer();
-    if (!player)
+    // Deliberately NOT player_->SetVolume(player_uuid, value): that only
+    // reaches a uuid that's currently one of player_'s own RenderingControl
+    // subordinates — i.e. only works for a room already inside the
+    // *currently selected* zone's own group, silently doing nothing for
+    // any other room. Same direct, throwaway RenderingControl-by-host
+    // approach RefreshGroupVolumesAsync() already uses for the read side
+    // (its own comment: "isn't tied to player_'s own fixed subordinate
+    // list") — the write side needs the identical independence, confirmed
+    // live: setting a room outside the selected zone's group via the old
+    // player_->SetVolume() path was silently a no-op.
+    NSROOT::ZonePlayerPtr zp;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      zp = FindZonePlayer(zones_by_uuid_, player_uuid);
+    }
+    if (!zp || !zp->IsValid())
       return;
-    player->SetVolume(player_uuid, value);
+    NSROOT::RenderingControl rc(zp->GetHost(), zp->GetPort());
+    rc.SetVolume(value);
+  });
+}
+
+void NosonBackend::SetRoomMuted(const std::string& player_uuid, bool muted)
+{
+  // Not debounced — a single discrete toggle, not a rapid-fire drag.
+  // Same direct, throwaway RenderingControl-by-host approach
+  // ApplyRoomVolumeAsync() uses, for the same reason (a uuid outside the
+  // currently selected zone's own group isn't reachable through player_).
+  tasks_.Push([this, player_uuid, muted] {
+    NSROOT::ZonePlayerPtr zp;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      zp = FindZonePlayer(zones_by_uuid_, player_uuid);
+    }
+    if (!zp || !zp->IsValid())
+      return;
+    NSROOT::RenderingControl rc(zp->GetHost(), zp->GetPort());
+    rc.SetMute(muted ? 1 : 0);
   });
 }
 
