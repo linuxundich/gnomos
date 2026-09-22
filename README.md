@@ -20,6 +20,24 @@ the cover-art grid view for a linked third-party service's Albums listing
 (here, bonob) — the same list/grid toggle is available for the local
 library's own Albums and Artists.
 
+## Download
+
+Prebuilt Flatpak bundles are published on the
+[Releases page](https://github.com/linuxundich/gnomos/releases) — no build
+tools needed. Download the `.flatpak` file from the latest release, then:
+
+```sh
+flatpak install --user gnomos-*.flatpak
+```
+
+This needs the `org.gnome.Platform` 50 runtime, which Flatpak will offer to
+install automatically from Flathub if it isn't already present. Updates
+aren't delivered automatically this way (there's no hosted repo behind
+it, just the bundle file) — check the Releases page for newer versions.
+See [Building](#building) below to build from source instead, including
+the companion GNOME Shell extension, which isn't part of the Flatpak
+bundle and is always a separate, manual install either way.
+
 ## About
 
 Gnomos is built on top of [libnoson](https://github.com/janbar/noson), the
@@ -102,7 +120,9 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - An optional companion GNOME Shell extension
   (`gnome-shell-extension/gnomos-volume@christophlangner.de`, installed
   separately) that adds the current zone's volume as its own slider in the
-  system volume Quick Settings menu
+  system volume Quick Settings menu, with an expandable list reaching
+  every other room too — an independent volume slider and click-to-mute
+  icon per room
 - A "Gen 1" badge identifying original first-generation hardware in a room
 - Light/dark appearance override, adjustable cover art cache size
 - Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
@@ -155,9 +175,9 @@ install it separately. If you already cloned without that flag, run
 
 A Flatpak manifest exists under `build-aux/flatpak/` and has been verified
 end to end (builds, installs, and runs against `org.gnome.Platform`//50).
-It isn't published anywhere — the author builds it sporadically, for local
-testing, rather than as a release channel kept in sync with every version.
-To build and install it yourself:
+See [Download](#download) above for prebuilt bundles, published on
+GitHub Releases but not tracked as closely as every single commit — to
+build and install it yourself instead:
 
 ```sh
 cd build-aux/flatpak

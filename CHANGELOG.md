@@ -8,6 +8,24 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.19.0] - 2026-09-22
+
+### Added
+- The zone volume slider in GNOME's Quick Settings menu now has an
+  expandable "Andere Räume" list, reaching every other room in the
+  household, not just the currently selected zone: an independent
+  volume slider per room (uniformly sized regardless of room name
+  length) and a click-to-mute icon that greys out the slider while
+  muted.
+- A prebuilt Flatpak bundle is now published on the GitHub Releases
+  page, for installing without building from source.
+
+### Fixed
+- `SetRoomVolume()` silently did nothing when targeting a room outside
+  the currently selected zone's own group (used by the grouping
+  popover's per-room sliders, and now also by the Quick Settings room
+  list above).
+
 ## [0.18.0] - 2026-09-15
 
 ### Added

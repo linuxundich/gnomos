@@ -4,6 +4,10 @@ builddir/
 .flatpak-build/
 .flatpak-repo/
 _flatpak_build/
+# Built Flatpak bundles are published as GitHub Release assets, not
+# tracked in git history (they're binaries, and each release regenerates
+# one anyway) — see build-aux/flatpak/gnomos-*.flatpak.
+build-aux/flatpak/*.flatpak
 *.o
 *.swp
 
