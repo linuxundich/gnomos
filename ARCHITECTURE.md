@@ -1942,3 +1942,77 @@ so they were reapplied on their own:
   codebase that hadn't gotten that treatment. Pure modernization, no
   behavior change — verified live against a real playing track and a
   real artist lookup.
+
+### A compact "mini player" window (`src/mini-player-window.{h,cpp}`)
+
+A small, standalone secondary window — art, title/artist, previous/
+play-pause/next, seek — reached via "Mini-Player…" in the primary menu.
+Same "purely a view" division of labor `PlayerBar` itself already
+follows: `MiniPlayerWindow` only emits signals for user actions and
+exposes `Update()`/`UpdatePosition()`/`SetEnabled()` setters;
+`GnomosWindow::ShowMiniPlayerWindow()` wires it to `NosonBackend&`,
+mirroring the exact same calls it already makes for `player_bar_`, and
+`OnPlayerReady()`/`OnNowPlayingChanged()`/`OnPositionChanged()` each grew
+a null-guarded mirror call so both stay in sync while the window is open.
+
+Deliberately **not** a thin reuse of `PlayerBar` itself: that widget is
+built around a wide horizontal `CenterBar`, by its own header comment's
+design goal — cramming it into a small window would visually break, so
+this is a dedicated compact vertical layout instead, reusing individual
+proven pieces (`CoverThumbnail`, the seek-bar debounce pattern, the
+button-styling conventions) rather than the whole class.
+
+Deliberately **not** "always on top" either: GTK4 removed
+`gtk_window_set_keep_above()` entirely, and Wayland compositors (this
+project's actual target platform) give an ordinary top-level window no
+way to request that without a layer-shell-style protocol GTK4/libadwaita
+doesn't use here. Confirmed against the real platform before building
+this at all, rather than promising "always on top" and silently not
+delivering it — still genuinely useful as a much smaller footprint than
+the full window while the Sonos system keeps playing regardless of what
+any app window is doing.
+
+Lifecycle follows the same single-instance-tracked pattern
+`open_settings_dialog_` already establishes for `ShowSettingsDialog()`:
+`mini_player_window_` is set on construction and nulled once the window
+closes, with `ShowMiniPlayerWindow()` re-`present()`ing the existing
+instance rather than creating a second one if already open. As a plain
+`Gtk::Window` (not a self-owning `AdwDialog`), it also needs the explicit
+`delete window;` the other secondary `Gtk::Window`s in this file already
+use — but hooked on `signal_close_request()`, not `signal_hide()` the
+way those others do it.
+
+That's not a stylistic choice: this window has no in-app "Schließen"
+button of its own (unlike the dialogs that use the `signal_hide()`
+pattern, which all close via an explicit button calling `hide()`) — its
+native titlebar close button is the *only* way to close it, and
+confirmed live, that path never emits "hide" here at all; it goes
+straight from `close-request` to destroying the window. This is the
+exact same "GTK's own default close-request handling destroys the
+window without ever emitting a hide signal" gotcha `OnCloseRequest()`'s
+own comment already documents for the main window — turns out it isn't
+`Gtk::ApplicationWindow`-specific, a plain `Gtk::Window` closed via its
+own default titlebar button hits it too. Debugged live with `fprintf`s
+that only showed up once redirected to `stderr` and explicitly
+`fflush()`ed (stdout is fully block-buffered once it isn't a TTY, and a
+forcibly-killed test process never flushes it — cost a fair amount of
+back-and-forth before landing on the real cause).
+
+The two windows substitute for each other rather than coexisting:
+opening the mini player calls `set_visible(false)` on the full window —
+the exact same call `OnCloseRequest()` already uses for backgrounding,
+so it never trips the "really closing" `release()` path further down
+that function — and the mini player's own `close-request` handler calls
+`present()` on the full window again, synchronously, in the same call
+chain as the user's click, before returning `false` to let GTK's own
+default close proceed. Verified live across repeated open/close cycles:
+the full window reliably reappears every time, with no leaked or
+dangling `MiniPlayerWindow` instances.
+
+Verified live: cover art, title/artist, and seek bar render correctly
+for the actual playing track; the play/pause button correctly toggles
+playback and stays in sync with the main window's own `player_bar_` in
+both directions (confirmed via the real backend, not a mock); the
+position label and seek bar tick forward live; closing and reopening the
+window correctly tears down and recreates the C++ object with no crash
+and no stale state.

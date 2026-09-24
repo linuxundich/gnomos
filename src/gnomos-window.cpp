@@ -178,6 +178,7 @@ GnomosWindow::GnomosWindow()
   add_action("import-radio-favorites", sigc::mem_fun(*this, &GnomosWindow::ImportRadioFavorites));
   add_action("scenes", sigc::mem_fun(*this, &GnomosWindow::ShowScenesDialog));
   add_action("import-m3u-playlist", sigc::mem_fun(*this, &GnomosWindow::ImportM3uPlaylist));
+  add_action("mini-player", sigc::mem_fun(*this, &GnomosWindow::ShowMiniPlayerWindow));
   // The window's own close button just hides it when run_in_background_ is
   // on (see OnCloseRequest()) — this is the one reachable way to actually
   // terminate Gnomos in that case.
@@ -189,6 +190,7 @@ GnomosWindow::GnomosWindow()
   primary_menu_->append("Radiosender-Favoriten exportieren…", "win.export-radio-favorites");
   primary_menu_->append("Radiosender-Favoriten importieren…", "win.import-radio-favorites");
   primary_menu_->append("M3U/PLS-Playlist importieren…", "win.import-m3u-playlist");
+  primary_menu_->append("Mini-Player…", "win.mini-player");
   primary_menu_->append("Einstellungen", "win.settings");
   primary_menu_->append("Tastenkürzel", "win.shortcuts");
   primary_menu_->append("Über Gnomos", "win.about");
@@ -1510,6 +1512,8 @@ void GnomosWindow::OnZonesChanged()
 void GnomosWindow::OnPlayerReady()
 {
   player_bar_.SetEnabled(true);
+  if (mini_player_window_)
+    mini_player_window_->SetEnabled(true);
   backend_->RefreshQueueAsync();
 }
 
@@ -1517,6 +1521,8 @@ void GnomosWindow::OnNowPlayingChanged()
 {
   NowPlaying np = backend_->GetNowPlaying();
   player_bar_.Update(np);
+  if (mini_player_window_)
+    mini_player_window_->Update(np);
   // Skipped while TransportState::Transitioning — np.playing_from_queue is
   // *always* false for that one event (CurrentTrack/AVTransportURI are
   // unreliable mid-transition; see RefreshNowPlayingLocked()'s own
@@ -1543,7 +1549,11 @@ void GnomosWindow::OnNowPlayingChanged()
 
 void GnomosWindow::OnPositionChanged()
 {
-  player_bar_.UpdatePosition(backend_->GetPosition(), backend_->GetNowPlaying().duration);
+  unsigned position = backend_->GetPosition();
+  unsigned duration = backend_->GetNowPlaying().duration;
+  player_bar_.UpdatePosition(position, duration);
+  if (mini_player_window_)
+    mini_player_window_->UpdatePosition(position, duration);
 }
 
 bool GnomosWindow::OnPositionTimerTick()
@@ -3659,6 +3669,77 @@ extern "C" void DeleteStringCallback(gpointer data, GClosure*)
   delete static_cast<std::function<void(const std::string&)>*>(data);
 }
 }  // namespace
+
+void GnomosWindow::ShowMiniPlayerWindow()
+{
+  // The two windows are meant to substitute for each other, not coexist —
+  // opening the mini player hides the full window (same set_visible(false)
+  // OnCloseRequest() itself uses for backgrounding, so this never trips
+  // the "really closing" quit path below), and closing the mini player
+  // brings the full window back.
+  set_visible(false);
+
+  if (mini_player_window_)
+  {
+    mini_player_window_->present();
+    return;
+  }
+
+  auto* window = new MiniPlayerWindow();
+  mini_player_window_ = window;
+  // Hooked on close-request, not signal_hide() (the pattern every other
+  // secondary Gtk::Window in this file uses for its own cleanup) — this
+  // window has no in-app "Schließen" button of its own, so its native
+  // titlebar close button is the only way to close it, and confirmed
+  // live: that path never emits "hide" at all here, it goes straight to
+  // destroying the window (same "GTK's own default close-request
+  // handling destroys the window without ever emitting a hide signal"
+  // gotcha OnCloseRequest()'s own comment already documents for the main
+  // window — it isn't ApplicationWindow-specific, a plain Gtk::Window
+  // closed via its own default titlebar button hits it too). Returning
+  // false here doesn't block that default destroy; it just gets our own
+  // cleanup and the main window's present() to run reliably first, in
+  // the same call chain as the user's actual click.
+  window->signal_close_request().connect(
+      [this, window] {
+        if (mini_player_window_ == window)
+          mini_player_window_ = nullptr;
+        present();
+        // GTK's own destroy (about to run right after this handler
+        // returns) already tears down `window`'s underlying GtkWindow;
+        // deleting the C++ wrapper here too, deferred to the next
+        // main-loop iteration rather than inline — same reasoning as
+        // RefreshOpenSettingsDialog()'s own comment — avoids touching it
+        // while it's mid-teardown.
+        Glib::signal_idle().connect_once([window] { delete window; });
+        return false;
+      },
+      false);
+
+  window->signal_play_pause().connect([this] {
+    NowPlaying np = backend_->GetNowPlaying();
+    if (np.valid && np.state == TransportState::Playing)
+      backend_->PauseOrStop();
+    else
+      backend_->Play();
+  });
+  window->signal_next().connect([this] { backend_->Next(); });
+  window->signal_previous().connect([this] { backend_->Previous(); });
+  window->signal_seek_requested().connect([this](unsigned seconds) { backend_->SeekAsync(seconds); });
+
+  NowPlaying np = backend_->GetNowPlaying();
+  // No standalone "is the player ready" accessor on NosonBackend —
+  // player_bar_ itself is only ever enabled once, from OnPlayerReady()
+  // (see its mirrored call above), and np.valid is already the same
+  // proxy Update() below relies on for "is there a usable player state
+  // at all", so it doubles as a reasonable initial guess here for a
+  // window that can be opened after that point.
+  window->SetEnabled(np.valid);
+  window->Update(np);
+  window->UpdatePosition(backend_->GetPosition(), np.duration);
+
+  window->present();
+}
 
 void GnomosWindow::ShowSettingsDialog()
 {

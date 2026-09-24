@@ -24,6 +24,7 @@
 #include "backend/noson-backend.h"
 #include "backend/noson-types.h"
 #include "global-shortcuts-service.h"
+#include "mini-player-window.h"
 #include "mpris-service.h"
 #include "radio-content-filter.h"
 #include "widgets/alarms-view.h"
@@ -84,6 +85,10 @@ private:
   void OnAlarmEditRequested(std::string alarm_id);
   void OnAlarmDuplicateRequested(std::string alarm_id);
   void ShowAboutDialog();
+  // Single-instance-tracked compact secondary window (see
+  // mini_player_window_'s own comment) — mirrors ShowSettingsDialog()'s
+  // present-existing-or-construct-new pattern.
+  void ShowMiniPlayerWindow();
   void ShowSettingsDialog();
   // Closes and immediately reopens open_settings_dialog_, if one is
   // currently open, so an async change that happened while it was open
@@ -575,6 +580,12 @@ private:
   // unlike the plain Gtk::Window dialogs elsewhere in this file that need
   // an explicit `delete`).
   AdwDialog* open_settings_dialog_ = nullptr;
+  // The currently open MiniPlayerWindow from ShowMiniPlayerWindow(), if
+  // any — nullptr otherwise. Unlike open_settings_dialog_ above (an
+  // AdwDialog, self-owning), this is a plain Gtk::Window and needs the
+  // same explicit `delete`-on-hide lifecycle the other secondary
+  // Gtk::Window dialogs in this file use.
+  MiniPlayerWindow* mini_player_window_ = nullptr;
   // MaybeScheduleScrobble()'s own dedup key ("title\x1fartist" of the
   // track a scrobble is currently scheduled or already sent for) and
   // one-shot timer — see that method's own comment.
