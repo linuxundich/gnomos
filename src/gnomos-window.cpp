@@ -716,7 +716,11 @@ GnomosWindow::GnomosWindow()
   }
   library_nav_section_ = adw_sidebar_section_new();
   g_object_ref(library_nav_section_);
-  adw_sidebar_section_set_title(library_nav_section_, "Bibliothek");
+  // Deliberately untitled — the static "Bibliothek" row directly above
+  // already establishes this section's context; titling it "Bibliothek"
+  // again read as the label appearing twice in a row (a clickable item
+  // immediately followed by an unclickable section header repeating the
+  // same word).
   services_nav_section_ = adw_sidebar_section_new();
   g_object_ref(services_nav_section_);
   adw_sidebar_section_set_title(services_nav_section_, "Dienste");
@@ -4833,6 +4837,18 @@ bool ParseRadioSongContent(const std::string& content, std::string& title, std::
   artist = content.substr(sep + 3);
   return !title.empty() && !artist.empty();
 }
+
+// AdwDialog's "closed" signal — (AdwDialog*, gpointer), unlike every other
+// signal trampoline above this point in the file, which are all
+// "notify::property" (GObject*, GParamSpec*, gpointer). DeleteVoidCallback
+// (defined near ShowSettingsDialog, in the same translation-unit-wide
+// anonymous namespace) already matches std::function<void()>'s own
+// cleanup, so only the actual invoking trampoline is new here. Shared by
+// this dialog and ShowArtistInfoDialog() further down.
+extern "C" void OnDialogClosed(AdwDialog*, gpointer user_data)
+{
+  (*static_cast<std::function<void()>*>(user_data))();
+}
 }  // namespace
 
 void GnomosWindow::ShowTrackInfoDialog()
@@ -4841,10 +4857,18 @@ void GnomosWindow::ShowTrackInfoDialog()
   if (!np.valid)
     return;
 
-  auto* dialog = new Gtk::Window();
-  dialog->set_title("Titel-Details");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
+  // AdwDialog (not a plain Gtk::Window): its own header bar supplies the
+  // standard close ("X") action, so — unlike the old plain-window version
+  // — no separate bottom "Schließen" button is needed at all.
+  AdwDialog* dialog = adw_dialog_new();
+  adw_dialog_set_title(dialog, "Titel-Details");
+
+  GtkWidget* header_bar = adw_header_bar_new();
+  adw_header_bar_set_title_widget(ADW_HEADER_BAR(header_bar), adw_window_title_new("Titel-Details", nullptr));
+
+  GtkWidget* toolbar_view = adw_toolbar_view_new();
+  adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view), header_bar);
+
   // Uses the size the user last left this dialog at (see
   // track_info_dialog_width_/_height_'s own comment for why this replaced
   // a natural/content-driven size) — falls back to a one-time default (420
@@ -4865,15 +4889,31 @@ void GnomosWindow::ShowTrackInfoDialog()
   constexpr int kHeightInset = 64;
   int max_height = app_height > kHeightInset ? app_height - kHeightInset : app_height;
   if (track_info_dialog_width_ > 0 && track_info_dialog_height_ > 0)
-    dialog->set_default_size(track_info_dialog_width_, std::min(track_info_dialog_height_, max_height));
+  {
+    adw_dialog_set_content_width(dialog, track_info_dialog_width_);
+    adw_dialog_set_content_height(dialog, std::min(track_info_dialog_height_, max_height));
+  }
   else
-    dialog->set_default_size(420, max_height > 0 ? max_height : -1);
+  {
+    adw_dialog_set_content_width(dialog, 420);
+    if (max_height > 0)
+      adw_dialog_set_content_height(dialog, max_height);
+  }
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
   content->set_margin_bottom(18);
   content->set_margin_start(18);
   content->set_margin_end(18);
+
+  // Caps the readable line width once the dialog is resized much wider
+  // than its 420px default (tracked/persisted above) — cover art and text
+  // stay centered and reasonably sized instead of stretching edge to
+  // edge; the lyrics scroller (added to content further down) benefits
+  // from this the most, since unclamped it would otherwise span the full
+  // dialog width at any saved size.
+  GtkWidget* clamp = adw_clamp_new();
+  adw_clamp_set_maximum_size(ADW_CLAMP(clamp), 440);
 
   auto* art = Gtk::make_managed<Gtk::Image>();
   art->set_from_icon_name("audio-x-generic-symbolic");
@@ -4928,7 +4968,9 @@ void GnomosWindow::ShowTrackInfoDialog()
       // needs an explicit is_cancelled() check, same reasoning as the
       // lyrics fetch below.
       auto cancellable = Gio::Cancellable::create();
-      dialog->signal_hide().connect([cancellable] { cancellable->cancel(); });
+      g_signal_connect_data(dialog, "closed", G_CALLBACK(OnDialogClosed),
+                             new std::function<void()>([cancellable] { cancellable->cancel(); }), DeleteVoidCallback,
+                             static_cast<GConnectFlags>(0));
       std::string art_uri = np.art_uri;
       HttpFetch(
           art_uri,
@@ -5015,7 +5057,9 @@ void GnomosWindow::ShowTrackInfoDialog()
     // explicit is_cancelled() check before this touches it, in case the
     // response arrives after dialog (and so lyrics_label) is already gone.
     auto lyrics_cancellable = Gio::Cancellable::create();
-    dialog->signal_hide().connect([lyrics_cancellable] { lyrics_cancellable->cancel(); });
+    g_signal_connect_data(dialog, "closed", G_CALLBACK(OnDialogClosed),
+                           new std::function<void()>([lyrics_cancellable] { lyrics_cancellable->cancel(); }),
+                           DeleteVoidCallback, static_cast<GConnectFlags>(0));
     // np.album is the station's own metadata for radio, not a real album
     // (and often empty) — never a useful hint for the query, unlike a
     // genuine album name from the queue/library.
@@ -5040,6 +5084,10 @@ void GnomosWindow::ShowTrackInfoDialog()
     content->append(*spacer);
   }
 
+  // .flat throughout, same convention every other icon-only button row in
+  // this codebase already follows — this row was previously the one
+  // inconsistent exception (confirmed by grep: every other button_box in
+  // this file already adds "flat" to each of its buttons).
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
@@ -5051,6 +5099,7 @@ void GnomosWindow::ShowTrackInfoDialog()
     clipboard_text += " — " + np.album;
   auto* copy_button = Gtk::make_managed<Gtk::Button>();
   copy_button->set_icon_name("edit-copy-symbolic");
+  copy_button->add_css_class("flat");
   copy_button->set_tooltip_text("Titel-Infos kopieren");
   copy_button->signal_clicked().connect([this, clipboard_text] { get_clipboard()->set_text(clipboard_text); });
   button_box->append(*copy_button);
@@ -5059,19 +5108,21 @@ void GnomosWindow::ShowTrackInfoDialog()
   {
     auto* search_artist_button = Gtk::make_managed<Gtk::Button>();
     search_artist_button->set_icon_name("system-search-symbolic");
+    search_artist_button->add_css_class("flat");
     search_artist_button->set_tooltip_text("Interpret in der Bibliothek suchen");
     std::string artist = np.artist;
     search_artist_button->signal_clicked().connect([this, dialog, artist] {
-      dialog->close();
+      adw_dialog_close(dialog);
       ShowLibrarySearchDialog(artist, "A:ALBUMARTIST");
     });
     button_box->append(*search_artist_button);
 
     auto* artist_info_button = Gtk::make_managed<Gtk::Button>();
     artist_info_button->set_icon_name("avatar-default-symbolic");
+    artist_info_button->add_css_class("flat");
     artist_info_button->set_tooltip_text("Über den Interpreten");
     artist_info_button->signal_clicked().connect([this, dialog, artist] {
-      dialog->close();
+      adw_dialog_close(dialog);
       ShowArtistInfoDialog(artist);
     });
     button_box->append(*artist_info_button);
@@ -5081,50 +5132,54 @@ void GnomosWindow::ShowTrackInfoDialog()
   {
     auto* search_album_button = Gtk::make_managed<Gtk::Button>();
     search_album_button->set_icon_name("media-optical-cd-audio-symbolic");
+    search_album_button->add_css_class("flat");
     search_album_button->set_tooltip_text("Album in der Bibliothek suchen");
     std::string album = np.album;
     search_album_button->signal_clicked().connect([this, dialog, album] {
-      dialog->close();
+      adw_dialog_close(dialog);
       ShowLibrarySearchDialog(album, "A:ALBUM");
     });
     button_box->append(*search_album_button);
   }
 
-  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
-  close_button->signal_clicked().connect([dialog] { dialog->close(); });
-  button_box->append(*close_button);
   content->append(*button_box);
 
-  dialog->set_child(*content);
-  dialog->signal_hide().connect([this, dialog] {
-    int width = 0, height = 0;
-    dialog->get_default_size(width, height);
-    if (width > 0 && height > 0)
-      SaveTrackInfoDialogSize(width, height);
-    delete dialog;
-  });
-  dialog->present();
+  adw_clamp_set_child(ADW_CLAMP(clamp), GTK_WIDGET(content->gobj()));
+  adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar_view), clamp);
+  adw_dialog_set_child(dialog, toolbar_view);
+  g_signal_connect_data(
+      dialog, "closed", G_CALLBACK(OnDialogClosed),
+      new std::function<void()>([this, dialog] {
+        int width = adw_dialog_get_content_width(dialog);
+        int height = adw_dialog_get_content_height(dialog);
+        if (width > 0 && height > 0)
+          SaveTrackInfoDialogSize(width, height);
+      }),
+      DeleteVoidCallback, static_cast<GConnectFlags>(0));
+  adw_dialog_present(dialog, GTK_WIDGET(gobj()));
 }
 
 void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
 {
-  auto* dialog = new Gtk::Window();
-  dialog->set_title(artist_name);
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
-  dialog->set_default_size(420, 520);
+  // AdwDialog (not a plain Gtk::Window): its own header bar supplies the
+  // standard close ("X") action, so — unlike the old plain-window version
+  // — no separate bottom "Schließen" button is needed at all.
+  AdwDialog* dialog = adw_dialog_new();
+  adw_dialog_set_title(dialog, artist_name.c_str());
+  adw_dialog_set_content_width(dialog, 420);
+  adw_dialog_set_content_height(dialog, 520);
+
+  GtkWidget* header_bar = adw_header_bar_new();
+  adw_header_bar_set_title_widget(ADW_HEADER_BAR(header_bar), adw_window_title_new(artist_name.c_str(), nullptr));
+
+  GtkWidget* toolbar_view = adw_toolbar_view_new();
+  adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view), header_bar);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
   content->set_margin_bottom(18);
   content->set_margin_start(18);
   content->set_margin_end(18);
-
-  auto* title = Gtk::make_managed<Gtk::Label>(artist_name);
-  title->add_css_class("title-2");
-  title->set_wrap(true);
-  title->set_halign(Gtk::Align::START);
-  content->append(*title);
 
   // Bio — opt-in via the same api_key already configured for Last.fm
   // scrobbling (see ArtistInfoFetcher's own header comment for why no
@@ -5151,7 +5206,9 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
   if (!lastfm_api_key_.empty())
   {
     auto bio_cancellable = Gio::Cancellable::create();
-    dialog->signal_hide().connect([bio_cancellable] { bio_cancellable->cancel(); });
+    g_signal_connect_data(dialog, "closed", G_CALLBACK(OnDialogClosed),
+                           new std::function<void()>([bio_cancellable] { bio_cancellable->cancel(); }),
+                           DeleteVoidCallback, static_cast<GConnectFlags>(0));
     std::string api_key = lastfm_api_key_;
     ArtistInfoFetcher::Instance().RequestBio(
         api_key, artist_name, [bio_label, bio_cancellable](std::string bio) {
@@ -5184,7 +5241,9 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
   related_list->append(*related_loading_placeholder);
 
   auto related_cancellable = Gio::Cancellable::create();
-  dialog->signal_hide().connect([related_cancellable] { related_cancellable->cancel(); });
+  g_signal_connect_data(dialog, "closed", G_CALLBACK(OnDialogClosed),
+                         new std::function<void()>([related_cancellable] { related_cancellable->cancel(); }),
+                         DeleteVoidCallback, static_cast<GConnectFlags>(0));
   ArtistInfoFetcher::Instance().RequestRelatedArtists(
       artist_name, [this, dialog, related_list, related_cancellable](std::vector<RelatedArtist> related) {
         if (related_cancellable->is_cancelled())
@@ -5219,7 +5278,7 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
           search_button->set_tooltip_text("In der Bibliothek suchen");
           std::string name = related_artist.name;
           search_button->signal_clicked().connect([this, dialog, name] {
-            dialog->close();
+            adw_dialog_close(dialog);
             ShowLibrarySearchDialog(name, "A:ALBUMARTIST");
           });
           row_box->append(*search_button);
@@ -5227,15 +5286,9 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
         }
       });
 
-  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
-  close_button->set_halign(Gtk::Align::END);
-  close_button->set_margin_top(6);
-  close_button->signal_clicked().connect([dialog] { dialog->close(); });
-  content->append(*close_button);
-
-  dialog->set_child(*content);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
-  dialog->present();
+  adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar_view), GTK_WIDGET(content->gobj()));
+  adw_dialog_set_child(dialog, toolbar_view);
+  adw_dialog_present(dialog, GTK_WIDGET(gobj()));
 }
 
 namespace

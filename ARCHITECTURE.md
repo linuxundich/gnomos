@@ -1914,3 +1914,31 @@ per-room-household SOAP refresh into *each* of those would be wasteful
 and could visibly fight an in-progress drag; the slider's own directly-
 user-driven value makes that race far narrower in practice than the
 single discrete mute click's was.
+
+### Two small HIG fixes, kept from a larger reverted pass
+
+A much larger GNOME-HIG/libadwaita pass was requested, implemented,
+verified live, and then explicitly reverted in full (`git restore`, never
+committed) — the rest traded a genuine amount of convenience (turning
+several one-click, frequently-used actions like "Räume gruppieren" into
+two clicks) for reduced visual clutter, and that tradeoff wasn't wanted.
+Two pieces from it were pure fixes/modernization with no such tradeoff,
+so they were reapplied on their own:
+
+- **Nav sidebar**: "Bibliothek" appeared twice — a clickable top-level
+  row, immediately followed by an unclickable section header repeating
+  the same word for the library's own sub-categories. Fixed by leaving
+  that section untitled; the row above it already gives the context.
+- **Artist info dialog and Track details dialog**: both were plain
+  `new Gtk::Window()` instances; converted to real `AdwDialog`s (built
+  from the raw C API + `AdwToolbarView` for the header bar, same
+  "Adwaita via the C API, `Glib::wrap()` only to get a packable
+  `Gtk::Widget*`" convention this file already uses everywhere else). The
+  dialog's own header-bar close button replaces what used to be a
+  separate bottom "Schließen" button in both. Track details also gained
+  an `AdwClamp` (caps the readable width if the dialog is resized much
+  wider than its persisted default) and `.flat` on every action button in
+  its icon row — previously the one inconsistent icon row in the whole
+  codebase that hadn't gotten that treatment. Pure modernization, no
+  behavior change — verified live against a real playing track and a
+  real artist lookup.
