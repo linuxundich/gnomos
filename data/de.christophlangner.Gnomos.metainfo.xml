@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.20.0" date="2026-09-24">
+      <description>
+        <p>Adds a compact "Mini-Player" window with cover art, transport
+        controls and a seek bar, reachable from the primary menu. It
+        substitutes for the full window rather than coexisting with it.</p>
+      </description>
+    </release>
     <release version="0.19.1" date="2026-09-24">
       <description>
         <p>Fixes "Bibliothek" appearing twice in the section sidebar, and

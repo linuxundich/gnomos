@@ -8,6 +8,16 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.20.0] - 2026-09-24
+
+### Added
+- A compact "Mini-Player…" window, reachable from the primary menu:
+  cover art, title/artist, seek bar, and previous/play-pause/next
+  controls in a small standalone window. Opening it hides the full
+  window (they substitute for each other rather than coexisting), and
+  closing it brings the full window back. Not "always on top" — GTK4
+  and Wayland give an ordinary window no way to request that.
+
 ## [0.19.1] - 2026-09-24
 
 ### Fixed
