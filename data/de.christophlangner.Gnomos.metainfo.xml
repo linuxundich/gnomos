@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.19.1" date="2026-09-24">
+      <description>
+        <p>Fixes "Bibliothek" appearing twice in the section sidebar, and
+        modernizes the artist info and track details dialogs to real
+        AdwDialogs with a consistent header close button.</p>
+      </description>
+    </release>
     <release version="0.19.0" date="2026-09-22">
       <description>
         <p>The Quick Settings zone volume slider's expand arrow now reaches

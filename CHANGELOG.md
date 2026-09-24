@@ -8,6 +8,19 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.19.1] - 2026-09-24
+
+### Fixed
+- The section sidebar showed "Bibliothek" twice in a row — once as the
+  clickable top-level item, once as an unclickable section header
+  directly beneath it for the library's own sub-categories.
+
+### Changed
+- The artist info and track details dialogs are now real `AdwDialog`s
+  instead of plain windows, with the dialog's own header-bar close
+  button replacing a separate bottom "Schließen" button in both, and
+  the track details dialog's action icons consistently `.flat`-styled.
+
 ## [0.19.0] - 2026-09-22
 
 ### Added
