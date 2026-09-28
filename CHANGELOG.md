@@ -8,6 +8,20 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.20.1] - 2026-09-28
+
+### Fixed
+- Local library and favorites album covers could silently fall back to
+  the generic icon: their art URLs were resolved against the currently
+  selected room's device instead of the device that actually served
+  the library listing, which differ in a multi-device household.
+
+### Added
+- "Bibliothek aktualisieren" in the primary menu, triggering the same
+  music library rescan the official Sonos app's own "Update Music
+  Library" uses — the fix for a device's browse index and its own art
+  cache having drifted out of sync (e.g. after a NAS share reconnects).
+
 ## [0.20.0] - 2026-09-24
 
 ### Added

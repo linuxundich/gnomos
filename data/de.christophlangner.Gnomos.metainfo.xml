@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.20.1" date="2026-09-28">
+      <description>
+        <p>Fixes local library and favorites album covers silently falling
+        back to the generic icon in a multi-device household, and adds
+        "Bibliothek aktualisieren" to trigger a music library rescan.</p>
+      </description>
+    </release>
     <release version="0.20.0" date="2026-09-24">
       <description>
         <p>Adds a compact "Mini-Player" window with cover art, transport
