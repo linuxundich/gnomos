@@ -710,6 +710,14 @@ GnomosWindow::GnomosWindow()
       SetSidebarItemAction(item, [this, page_name] {
         library_stack_.clear();
         library_stack_.push_back({"", "Bibliothek"});
+        // Cleared and retitled synchronously, before switching the page
+        // into view — BrowseLibraryAsync() below is a real network round
+        // trip, and library_view_ otherwise keeps showing whatever level
+        // it last held (e.g. a deeply browsed album's own tracks) for
+        // that entire round trip once the page is already visible,
+        // flashing stale content. Confirmed live.
+        library_view_.Clear();
+        library_view_.SetLevelTitle("Bibliothek");
         backend_->BrowseLibraryAsync("");
         adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str());
       });
@@ -1099,6 +1107,18 @@ void GnomosWindow::RebuildLibraryNavEntries()
       library_stack_.clear();
       library_stack_.push_back({"", "Bibliothek"});
       library_stack_.push_back({object_id, title.empty() ? "—" : title});
+      // Cleared and retitled synchronously, before switching the page
+      // into view — see the plain "Bibliothek" row's own action above for
+      // why: BrowseLibraryAsync() below is a real network round trip, and
+      // library_view_ otherwise keeps showing whatever it last held (e.g.
+      // the root category list itself, still populated from the startup
+      // fetch that built this very sidebar) for that whole round trip
+      // once the page is already visible, flashing stale content.
+      // Confirmed live: clicking "Interpreten" as the very first library
+      // navigation of a session briefly showed the root "Bibliothek"
+      // list, not the artist grid.
+      library_view_.Clear();
+      library_view_.SetLevelTitle(title.empty() ? "—" : title);
       backend_->BrowseLibraryAsync(object_id);
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), "library");
     });
@@ -2875,6 +2895,15 @@ void GnomosWindow::OnLibraryEntryActivated(unsigned index)
   else if (entry.is_container)
   {
     library_stack_.push_back({entry.object_id, entry.title.empty() ? "—" : entry.title});
+    // Cleared and retitled synchronously, before the (async, real
+    // network round-trip) browse — same fix and reasoning as the nav
+    // sidebar's own library shortcuts: library_view_ otherwise keeps
+    // showing this level's *previous* content (e.g. the root category
+    // list while "Alben" itself is still loading) for the whole round
+    // trip, flashing stale content. Confirmed live for this same
+    // in-view navigation, not just the sidebar shortcuts.
+    library_view_.Clear();
+    library_view_.SetLevelTitle(library_stack_.back().second);
     backend_->BrowseLibraryAsync(entry.object_id);
   }
   else
@@ -2888,6 +2917,11 @@ void GnomosWindow::OnLibraryBackRequested()
   if (library_stack_.size() <= 1)
     return;
   library_stack_.pop_back();
+  // See OnLibraryEntryActivated()'s identical fix and comment — going
+  // back is exactly the same "genuinely different level, async browse"
+  // case, just in the other direction.
+  library_view_.Clear();
+  library_view_.SetLevelTitle(library_stack_.back().second);
   backend_->BrowseLibraryAsync(library_stack_.back().first);
 }
 
