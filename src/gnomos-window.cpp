@@ -179,6 +179,10 @@ GnomosWindow::GnomosWindow()
   add_action("scenes", sigc::mem_fun(*this, &GnomosWindow::ShowScenesDialog));
   add_action("import-m3u-playlist", sigc::mem_fun(*this, &GnomosWindow::ImportM3uPlaylist));
   add_action("mini-player", sigc::mem_fun(*this, &GnomosWindow::ShowMiniPlayerWindow));
+  add_action("refresh-library-index", [this] {
+    backend_->RefreshLibraryIndexAsync();
+    ShowToast("Bibliothek wird aktualisiert…");
+  });
   // The window's own close button just hides it when run_in_background_ is
   // on (see OnCloseRequest()) — this is the one reachable way to actually
   // terminate Gnomos in that case.
@@ -190,6 +194,7 @@ GnomosWindow::GnomosWindow()
   primary_menu_->append("Radiosender-Favoriten exportieren…", "win.export-radio-favorites");
   primary_menu_->append("Radiosender-Favoriten importieren…", "win.import-radio-favorites");
   primary_menu_->append("M3U/PLS-Playlist importieren…", "win.import-m3u-playlist");
+  primary_menu_->append("Bibliothek aktualisieren", "win.refresh-library-index");
   primary_menu_->append("Mini-Player…", "win.mini-player");
   primary_menu_->append("Einstellungen", "win.settings");
   primary_menu_->append("Tastenkürzel", "win.shortcuts");

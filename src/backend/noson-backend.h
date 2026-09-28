@@ -308,6 +308,19 @@ public:
   // ContentDirectory (works for both the root category ids themselves,
   // e.g. "A:ALBUM", and any deeper objectID a returned LibraryEntry carries).
   void BrowseLibraryAsync(const std::string& object_id);
+  // Same ContentDirectory::RefreshShareIndex() SOAP action the official
+  // Sonos app's own "Bibliothek aktualisieren" button calls — asks the
+  // household to rescan its configured music shares (NAS/USB). Purely a
+  // trigger: the rescan itself runs on the device in the background, so
+  // this returning doesn't mean the library is already up to date, only
+  // that the request was accepted. Cheap and safe to call speculatively
+  // — confirmed live as the fix for a real symptom: the local library's
+  // Browse() responses can keep listing tracks whose upnp:albumArtURI
+  // the device's own getaa endpoint now 404s on (e.g. after the NAS
+  // share reconnected and the browse index came back before the art
+  // cache did) — RefreshShareIndex() is the same mechanism the official
+  // app uses to resolve exactly that drift.
+  void RefreshLibraryIndexAsync();
   std::vector<LibraryEntry> GetLibraryEntries() const;
   void PlayLibraryItem(unsigned index);
   // Same append-without-interrupting semantics as AddFavoriteToQueue().
@@ -596,7 +609,17 @@ private:
   // GetRenderingProperty() are locked in-memory reads, not network calls).
   void RefreshNowPlayingLocked();
   void RefreshVolumeLocked();
+  // Resolves against player_'s own host/port — correct for a
+  // upnp:albumArtURI that came from player_ itself (NowPlaying, the
+  // queue), since a device only ever returns paths relative to itself.
   std::string ResolveArtUri(const std::string& uri) const;
+  // Same, but resolved against an explicitly given device instead of
+  // player_ — for a upnp:albumArtURI that came from a *different*
+  // device's ContentDirectory response (e.g. system_'s, for library
+  // browsing and favorites, which stay on the originally discovered
+  // device regardless of which room is currently selected). See the
+  // call sites' own comments for why this distinction matters.
+  std::string ResolveArtUri(const std::string& uri, const std::string& host, unsigned port) const;
 
   // The actual (non-debounced) work SetVolume()/SetRoomVolume() defer to
   // — see those two and their shared debounce members below.

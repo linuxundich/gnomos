@@ -1837,7 +1837,16 @@ void NosonBackend::RefreshFavoritesAsync()
       FavoriteItem fi;
       fi.title = favorite->GetValue("dc:title");
       fi.subtitle = favorite->GetValue("r:description");
-      fi.art_uri = ResolveArtUri(favorite->GetValue("upnp:albumArtURI"));
+      // Resolved against system_, not player_ (the default overload) —
+      // favoritesDirectory above is system_'s ContentDirectory (see its
+      // own comment: favorites are served by the originally discovered
+      // device, not whichever room is currently selected), and a
+      // upnp:albumArtURI relative path is only ever valid relative to
+      // whichever device actually returned it. Confirmed live: covers
+      // silently fell back to the generic icon whenever the selected
+      // room differed from the discovery device, since every fetch
+      // against the wrong host just failed.
+      fi.art_uri = ResolveArtUri(favorite->GetValue("upnp:albumArtURI"), system_->GetHost(), system_->GetPort());
       fi.index = idx++;
       items.push_back(std::move(fi));
       raw.push_back(favorite);
@@ -2433,7 +2442,12 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       // way.
       if (!entry.is_container || item->subType() == NSROOT::DigitalItem::SubType_album)
         entry.subtitle = ArtistSubtitle(item);
-      entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
+      // Resolved against system_, not player_ (the default overload) —
+      // see RefreshFavoritesAsync()'s identical fix and comment:
+      // libraryDirectory above is system_'s ContentDirectory, and a
+      // relative upnp:albumArtURI is only valid relative to whichever
+      // device actually returned it.
+      entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"), system_->GetHost(), system_->GetPort());
       if (object_id == "R:0/0")
       {
         // Also the identifying key GnomosWindow needs for a station's
@@ -2467,6 +2481,19 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       library_raw_ = std::move(raw);
     }
     library_dispatcher_.emit();
+  });
+}
+
+void NosonBackend::RefreshLibraryIndexAsync()
+{
+  tasks_.Push([this] {
+    NSROOT::ContentDirectory libraryDirectory(system_->GetHost(), system_->GetPort());
+    if (!libraryDirectory.RefreshShareIndex())
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      pending_error_ = "Bibliothek konnte nicht aktualisiert werden.";
+      error_dispatcher_.emit();
+    }
   });
 }
 
@@ -2627,7 +2654,9 @@ void NosonBackend::SearchLocalLibraryAsync(const std::string& object_id, const s
       // See BrowseLibraryAsync()'s identical check.
       if (!entry.is_container || item->subType() == NSROOT::DigitalItem::SubType_album)
         entry.subtitle = ArtistSubtitle(item);
-      entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
+      // See BrowseLibraryAsync()'s identical fix — libraryDirectory here
+      // is also system_'s ContentDirectory.
+      entry.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"), system_->GetHost(), system_->GetPort());
       entry.icon_name = IconNameForSubType(item->subType());
       if (!ContainsCaseInsensitive(entry.title, term_lower) && !ContainsCaseInsensitive(entry.subtitle, term_lower))
         continue;
@@ -3991,11 +4020,16 @@ void NosonBackend::UpdateAlarmSchedule(const std::string& alarm_id, const std::s
 
 std::string NosonBackend::ResolveArtUri(const std::string& uri) const
 {
-  if (uri.empty() || uri.compare(0, 4, "http") == 0)
-    return uri;
   if (!player_)
     return uri;
-  std::string base = "http://" + player_->GetHost() + ":" + std::to_string(player_->GetPort());
+  return ResolveArtUri(uri, player_->GetHost(), player_->GetPort());
+}
+
+std::string NosonBackend::ResolveArtUri(const std::string& uri, const std::string& host, unsigned port) const
+{
+  if (uri.empty() || uri.compare(0, 4, "http") == 0)
+    return uri;
+  std::string base = "http://" + host + ":" + std::to_string(port);
   if (uri.front() != '/')
     base += "/";
   return base + uri;
