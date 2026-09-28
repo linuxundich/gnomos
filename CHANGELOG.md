@@ -8,6 +8,15 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.20.2] - 2026-09-28
+
+### Fixed
+- Navigating the local library (via the sidebar shortcuts, an in-view
+  category row, or the back button) could briefly flash the previous
+  level's content before the new one loaded — the view switched before
+  the async browse response arrived. Now cleared and retitled
+  synchronously first.
+
 ## [0.20.1] - 2026-09-28
 
 ### Fixed

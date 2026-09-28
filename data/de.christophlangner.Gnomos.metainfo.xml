@@ -15,6 +15,13 @@
   <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.20.2" date="2026-09-28">
+      <description>
+        <p>Fixes the local library briefly flashing the previous level's
+        content when navigating via the sidebar, an in-view category row,
+        or the back button.</p>
+      </description>
+    </release>
     <release version="0.20.1" date="2026-09-28">
       <description>
         <p>Fixes local library and favorites album covers silently falling

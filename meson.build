@@ -1,7 +1,7 @@
 project(
   'gnomos',
   ['c', 'cpp'],
-  version: '0.20.1',
+  version: '0.20.2',
   license: 'GPL-3.0-or-later',
   default_options: [
     'cpp_std=c++17',
