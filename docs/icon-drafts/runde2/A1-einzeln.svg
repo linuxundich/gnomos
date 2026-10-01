@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Ein Lautsprecher, die Funkwellen steigen direkt aus ihm auf -->
+  <rect x="28" y="46" width="72" height="72" rx="16" fill="#3d3846"/>
+  <rect x="28" y="42" width="72" height="72" rx="16" fill="#5e5c64"/>
+  <circle cx="64" cy="59" r="7" fill="#241f31"/>
+  <circle cx="64" cy="59" r="3" fill="#9a9996"/>
+  <circle cx="64" cy="90" r="20" fill="#241f31"/>
+  <circle cx="64" cy="90" r="14" fill="#77767b"/>
+  <circle cx="64" cy="90" r="6" fill="#c0bfbc"/>
+  <g fill="none" stroke="#3584e4" stroke-width="5" stroke-linecap="round">
+    <path d="M 58.34 30.34 A 8 8 0 0 1 69.66 30.34"/>
+    <path d="M 51.98 23.98 A 17 17 0 0 1 76.02 23.98"/>
+    <path d="M 45.62 17.62 A 26 26 0 0 1 82.38 17.62"/>
+  </g>
+  <circle cx="64" cy="36" r="3.5" fill="#3584e4"/>
+</svg>

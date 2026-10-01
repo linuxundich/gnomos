@@ -20,8 +20,8 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 // client). This extension is the other half: it proxies that interface
 // and renders it as a QuickSlider, the same widget class GNOME Shell's own
 // output/input volume rows use.
-const BUS_NAME = 'de.christophlangner.Gnomos.Zone';
-const OBJECT_PATH = '/de/christophlangner/Gnomos/Zone';
+const BUS_NAME = 'de.linuxundich.Gnomos.Zone';
+const OBJECT_PATH = '/de/linuxundich/Gnomos/Zone';
 
 // Mirrors zone-volume-service.cpp's own introspection XML exactly — kept
 // as a small local copy rather than fetched at runtime, since a mismatch
@@ -29,7 +29,7 @@ const OBJECT_PATH = '/de/christophlangner/Gnomos/Zone';
 // validate against the service's actual introspection unless asked).
 const INTERFACE_XML = `
 <node>
-  <interface name="de.christophlangner.Gnomos.Zone">
+  <interface name="de.linuxundich.Gnomos.Zone">
     <method name="SetVolume">
       <arg direction="in" name="Volume" type="d"/>
     </method>

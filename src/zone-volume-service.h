@@ -11,7 +11,7 @@
 namespace gnomos
 {
 
-// Exposes a small custom interface (de.christophlangner.Gnomos.Zone) on its
+// Exposes a small custom interface (de.linuxundich.Gnomos.Zone) on its
 // own session-bus name, purely so a companion GNOME Shell extension can add
 // the currently selected Sonos zone's volume as its own slider inside
 // GNOME's system volume Quick Settings panel. MPRIS's own read-write

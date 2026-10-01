@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Zwei Lautsprecher als Gruppe: der helle steht hinter dem dunklen -->
+  <rect x="60" y="56" width="50" height="60" rx="12" fill="#9a9996"/>
+  <rect x="60" y="52" width="50" height="60" rx="12" fill="#f6f5f4"/>
+  <circle cx="93" cy="84" r="10" fill="#c0bfbc"/>
+  <circle cx="93" cy="84" r="4" fill="#9a9996"/>
+  <rect x="18" y="40" width="58" height="76" rx="13" fill="#3d3846"/>
+  <rect x="18" y="36" width="58" height="76" rx="13" fill="#5e5c64"/>
+  <circle cx="47" cy="54" r="7" fill="#241f31"/>
+  <circle cx="47" cy="54" r="3" fill="#9a9996"/>
+  <circle cx="47" cy="86" r="19" fill="#241f31"/>
+  <circle cx="47" cy="86" r="13" fill="#77767b"/>
+  <circle cx="47" cy="86" r="5" fill="#c0bfbc"/>
+  <g fill="none" stroke="#3584e4" stroke-width="5" stroke-linecap="round">
+    <path d="M 88.05 39.05 A 7 7 0 0 1 97.95 39.05"/>
+    <path d="M 83.10 34.10 A 14 14 0 0 1 102.90 34.10"/>
+    <path d="M 78.15 29.15 A 21 21 0 0 1 107.85 29.15"/>
+  </g>
+  <circle cx="93" cy="44" r="3.5" fill="#3584e4"/>
+</svg>

@@ -409,6 +409,12 @@ initial fetch and any later change (a service gets linked/unlinked).
 
 ### Application icon
 
+> Superseded on 2026-10-01: the icon was redrawn after the GNOME HIG (a
+> speaker on a round "sound plate", plus a symbolic icon and PNGs), see
+> `docs/icon.md` and `build-aux/icons/generate_icons.py`. The Flatpak
+> `post-install` no longer rasterizes or removes the SVG, since the PNGs are
+> installed by meson now. The section below describes the earlier icon.
+
 Replaced the placeholder icon (a plain blue circle-in-a-square) with a
 proper one, combining three references the user pointed at directly:
 
@@ -433,7 +439,7 @@ proper one, combining three references the user pointed at directly:
   finalizing — the arcs blur together below that, same trade-off
   Decibels' own multi-bar equalizer glyph makes at small sizes.
 
-The new SVG replaces `data/icons/hicolor/scalable/apps/de.christophlangner.Gnomos.svg`
+The new SVG replaces `data/icons/hicolor/scalable/apps/de.linuxundich.Gnomos.svg`
 directly — everywhere it's referenced (the `.desktop` file's `Icon=`,
 `AdwAboutDialog`'s `adw_about_dialog_set_application_icon(APPLICATION_ID)`)
 already resolved it purely by icon name, so no other code needed to change
@@ -1644,8 +1650,8 @@ need to speak MPRIS at all.
 
 - **`src/zone-volume-service.{h,cpp}`** (new, mirrors `MprisService`'s own
   `Gio::DBus::own_name()` + `register_object()` pattern almost exactly):
-  owns its own session-bus name, `de.christophlangner.Gnomos.Zone`, at
-  `/de/christophlangner/Gnomos/Zone`. `Volume`/`Muted`/`ZoneName` are
+  owns its own session-bus name, `de.linuxundich.Gnomos.Zone`, at
+  `/de/linuxundich/Gnomos/Zone`. `Volume`/`Muted`/`ZoneName` are
   read-only *properties* (so a `GDBusProxy` on the extension side gets them
   for free via the standard `GetAll`/`PropertiesChanged` machinery, no
   custom polling), but read-write via explicit `SetVolume(d)`/`SetMuted(b)`
@@ -1661,13 +1667,13 @@ need to speak MPRIS at all.
   same lock every other getter already uses) — `Zones()` returns every
   zone in the household, not "the one currently selected", so nothing
   already public could answer that.
-- **`gnome-shell-extension/gnomos-volume@christophlangner.de/`** (new,
+- **`gnome-shell-extension/gnomos-volume@linuxundich.de/`** (new,
   separate from the main meson build entirely — a GNOME Shell extension is
   installed per-user, not compiled or packaged alongside the app itself):
   a `QuickSettings.QuickSlider` subclass, following the pattern documented
   at gjs.guide's own Quick Settings guide (`QuickSlider` + `SystemIndicator`
   + `addExternalIndicator()`, stable API since GNOME Shell 45). Proxies
-  `de.christophlangner.Gnomos.Zone` via `Gio.DBusProxy.makeProxyWrapper()`
+  `de.linuxundich.Gnomos.Zone` via `Gio.DBusProxy.makeProxyWrapper()`
   against a local copy of the exact same introspection XML
   `zone-volume-service.cpp` registers server-side. `Gio.bus_watch_name()`
   adds/removes the whole indicator as Gnomos itself starts and stops —
@@ -1682,9 +1688,9 @@ need to speak MPRIS at all.
   own mute button icon already established, and its icon is clickable
   (`iconReactive` + `icon-clicked` → `SetMuted()`) to toggle mute, mirroring
   the stock output-volume row's own icon-click-to-mute behavior.
-- **Flatpak permissions**: `build-aux/flatpak/de.christophlangner.Gnomos.json`
+- **Flatpak permissions**: `build-aux/flatpak/de.linuxundich.Gnomos.json`
   needed a second `--own-name=` entry
-  (`de.christophlangner.Gnomos.Zone`, alongside the existing
+  (`de.linuxundich.Gnomos.Zone`, alongside the existing
   `org.mpris.MediaPlayer2.gnomos`) — confirmed live that the app actually
   runs sandboxed in this environment (its D-Bus names show up owned via
   `xdg-dbus-proxy` in `busctl --user list`), so without this the new

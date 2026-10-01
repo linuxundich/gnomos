@@ -1,5 +1,5 @@
 {
-  "uuid": "gnomos-volume@christophlangner.de",
+  "uuid": "gnomos-volume@linuxundich.de",
   "name": "Gnomos Zone Volume",
   "description": "Adds the Sonos zone volume currently controlled by Gnomos as its own slider in the system volume Quick Settings menu.",
   "shell-version": ["45", "46", "47", "48", "49", "50"],

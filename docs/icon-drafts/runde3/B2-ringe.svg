@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Schallringe breiten sich von der Membran über die ganze Front aus -->
+  <defs><clipPath id="face"><rect x="24" y="30" width="80" height="84" rx="16"/></clipPath></defs>
+  <rect x="24" y="34" width="80" height="84" rx="16" fill="#3d3846"/>
+  <rect x="24" y="30" width="80" height="84" rx="16" fill="#5e5c64"/>
+  <g fill="none" clip-path="url(#face)">
+    <circle cx="64" cy="74" r="28" stroke="#62a0ea" stroke-width="4"/>
+    <circle cx="64" cy="74" r="38" stroke="#3584e4" stroke-width="3"/>
+    <circle cx="64" cy="74" r="48" stroke="#1c71d8" stroke-width="2"/>
+  </g>
+  <circle cx="64" cy="74" r="20" fill="#241f31"/>
+  <circle cx="64" cy="74" r="14" fill="#77767b"/>
+  <circle cx="64" cy="74" r="6" fill="#c0bfbc"/>
+</svg>

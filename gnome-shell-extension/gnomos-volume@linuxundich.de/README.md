@@ -6,7 +6,7 @@ slider in the system volume Quick Settings menu — alongside the regular
 output/input volume rows.
 
 It talks to Gnomos over a small custom D-Bus interface
-(`de.christophlangner.Gnomos.Zone`, see `src/zone-volume-service.cpp` in the
+(`de.linuxundich.Gnomos.Zone`, see `src/zone-volume-service.cpp` in the
 main repo) rather than MPRIS: GNOME Shell's Quick Settings sliders only ever
 come from real PulseAudio/PipeWire stream volumes, so MPRIS's own `Volume`
 property (which Gnomos also exposes, for other MPRIS clients) can't drive
@@ -18,8 +18,8 @@ mixer only exists while it has an active audio stream.
 
 ## Requirements
 
-Gnomos itself needs `--own-name=de.christophlangner.Gnomos.Zone` in its
-Flatpak permissions (already in `build-aux/flatpak/de.christophlangner.Gnomos.json`)
+Gnomos itself needs `--own-name=de.linuxundich.Gnomos.Zone` in its
+Flatpak permissions (already in `build-aux/flatpak/de.linuxundich.Gnomos.json`)
 to be allowed to claim that bus name from inside the sandbox. A native,
 non-Flatpak build needs no extra permission at all.
 
@@ -27,8 +27,8 @@ non-Flatpak build needs no extra permission at all.
 
 ```sh
 mkdir -p ~/.local/share/gnome-shell/extensions
-ln -s "$(pwd)" ~/.local/share/gnome-shell/extensions/gnomos-volume@christophlangner.de
-gnome-extensions enable gnomos-volume@christophlangner.de
+ln -s "$(pwd)" ~/.local/share/gnome-shell/extensions/gnomos-volume@linuxundich.de
+gnome-extensions enable gnomos-volume@linuxundich.de
 ```
 
 Then log out and back in (or, on X11 only, `Alt`+`F2` → `r` → `Enter` to

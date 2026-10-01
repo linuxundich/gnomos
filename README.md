@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="data/icons/hicolor/128x128/apps/de.linuxundich.Gnomos.png" alt="Gnomos icon" width="128" height="128">
+</p>
+
 # Gnomos
 
 Gnomos is a GTK4/libadwaita application for controlling Sonos speakers from
@@ -37,6 +41,23 @@ it, just the bundle file) — check the Releases page for newer versions.
 See [Building](#building) below to build from source instead, including
 the companion GNOME Shell extension, which isn't part of the Flatpak
 bundle and is always a separate, manual install either way.
+
+### Upgrading from 0.20.x or earlier
+
+Version 0.21.0 changed the application ID from `de.christophlangner.Gnomos`
+to `de.linuxundich.Gnomos`, so the new bundle installs as a separate app
+next to the old one rather than updating it. To keep your linked services,
+scenes and settings, quit the old Gnomos and copy its data over before the
+first start of the new one, then remove the old app:
+
+```sh
+cp -a ~/.var/app/de.christophlangner.Gnomos ~/.var/app/de.linuxundich.Gnomos
+flatpak uninstall --user de.christophlangner.Gnomos
+```
+
+The Shell extension was renamed as well, to `gnomos-volume@linuxundich.de`:
+remove the old `gnomos-volume@christophlangner.de` and install the new one
+as described in its [README](gnome-shell-extension/gnomos-volume@linuxundich.de/README.md).
 
 ## About
 
@@ -118,7 +139,7 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   widget and the lock screen all work with Gnomos like any other player,
   including setting shuffle/repeat from there
 - An optional companion GNOME Shell extension
-  (`gnome-shell-extension/gnomos-volume@christophlangner.de`, installed
+  (`gnome-shell-extension/gnomos-volume@linuxundich.de`, installed
   separately) that adds the current zone's volume as its own slider in the
   system volume Quick Settings menu, with an expandable list reaching
   every other room too — an independent volume slider and click-to-mute
@@ -181,15 +202,15 @@ build and install it yourself instead:
 
 ```sh
 cd build-aux/flatpak
-flatpak-builder --user --install --force-clean --repo=.flatpak-repo .flatpak-build de.christophlangner.Gnomos.json
+flatpak-builder --user --install --force-clean --repo=.flatpak-repo .flatpak-build de.linuxundich.Gnomos.json
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the manifest's version
 pins.
 
 The companion GNOME Shell extension
-(`gnome-shell-extension/gnomos-volume@christophlangner.de/`) is a separate,
-optional install — see its own [README](gnome-shell-extension/gnomos-volume@christophlangner.de/README.md)
+(`gnome-shell-extension/gnomos-volume@linuxundich.de/`) is a separate,
+optional install — see its own [README](gnome-shell-extension/gnomos-volume@linuxundich.de/README.md)
 for how to add it.
 
 ## Status

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>de.christophlangner.Gnomos</id>
+  <id>de.linuxundich.Gnomos</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>Gnomos</name>
@@ -12,9 +12,24 @@
       ZP100, ZP120, CR100) that Sonos's own current apps no longer support.
     </p>
   </description>
-  <launchable type="desktop-id">de.christophlangner.Gnomos.desktop</launchable>
+  <launchable type="desktop-id">de.linuxundich.Gnomos.desktop</launchable>
+  <url type="homepage">https://github.com/linuxundich/gnomos</url>
+  <developer id="de.linuxundich">
+    <name>Christoph Langner</name>
+  </developer>
+  <replaces>
+    <id>de.christophlangner.Gnomos</id>
+  </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.21.0" date="2026-10-01">
+      <description>
+        <p>New application icon following the GNOME guidelines, with a
+        symbolic variant. The application ID changed to
+        de.linuxundich.Gnomos; existing Flatpak users need to copy their
+        data over once (see the README).</p>
+      </description>
+    </release>
     <release version="0.20.2" date="2026-09-28">
       <description>
         <p>Fixes the local library briefly flashing the previous level's

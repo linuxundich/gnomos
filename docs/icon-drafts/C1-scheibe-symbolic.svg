@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <mask id="m"><rect width="16" height="16" fill="#fff"/><rect x="3.5" y="0" width="9" height="14" rx="2.5" fill="#000"/></mask>
+  <ellipse cx="8" cy="12.5" rx="7.5" ry="3" fill="#2e3436" mask="url(#m)"/>
+  <mask id="n"><rect width="16" height="16" fill="#fff"/><circle cx="8" cy="8" r="2" fill="#000"/></mask>
+  <rect x="4.5" y="1" width="7" height="12" rx="1.5" fill="#2e3436" mask="url(#n)"/>
+</svg>

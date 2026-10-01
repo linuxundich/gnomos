@@ -14,13 +14,13 @@ namespace gnomos
 namespace
 {
 
-const char* const kBusName = "de.christophlangner.Gnomos.Zone";
-const char* const kObjectPath = "/de/christophlangner/Gnomos/Zone";
-const char* const kInterfaceName = "de.christophlangner.Gnomos.Zone";
+const char* const kBusName = "de.linuxundich.Gnomos.Zone";
+const char* const kObjectPath = "/de/linuxundich/Gnomos/Zone";
+const char* const kInterfaceName = "de.linuxundich.Gnomos.Zone";
 
 const char* const kIntrospectionXml = R"XML(
 <node>
-  <interface name="de.christophlangner.Gnomos.Zone">
+  <interface name="de.linuxundich.Gnomos.Zone">
     <method name="SetVolume">
       <arg direction="in" name="Volume" type="d"/>
     </method>
