@@ -861,7 +861,7 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Erscheinungsbild ---
   GtkWidget* appearance_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(appearance_group), _("Appearance"));
+  // Untitled: the page itself is already called "Appearance".
 
   // AdwToggleGroup, not AdwComboRow — a 3-way segmented control shows all
   // the choices at once, matching what GNOME Settings' own Appearance

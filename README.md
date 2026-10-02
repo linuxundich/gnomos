@@ -13,16 +13,43 @@ ZP100, ZP120, CR100) that Sonos's own current apps have dropped support for.
 ## Screenshots
 
 <p align="center">
-  <img src="screenshots/gnomos-favourites.png" alt="Favorites list, with the section sidebar and bottom Now Playing bar" width="49%">
-  <img src="screenshots/gnomos-albums.png" alt="Cover-art grid view of a linked service's Albums listing" width="49%">
+  <img src="screenshots/gnomos-now-playing.png" alt="The Now Playing view: a large cover on a blurred background in the cover's colors, playback controls and the upcoming queue" width="100%">
 </p>
 
-Left: the Favorites tab, with the section sidebar (queue, favorites,
-alarms, history, library) and the library's own root categories listed as
-sub-items underneath "Bibliothek", plus the bottom Now Playing bar. Right:
-the cover-art grid view for a linked third-party service's Albums listing
-(here, bonob) — the same list/grid toggle is available for the local
-library's own Albums and Artists.
+The Now Playing view slides up from the player bar: a large cover on a
+blurred background in the cover's own colors, the controls, quick links to
+the artist and album, and the upcoming queue — or time-synced lyrics, if
+you turn on LRCLIB lyrics.
+
+<p align="center">
+  <img src="screenshots/gnomos-queue.png" alt="The queue with the section sidebar and the player bar" width="49%">
+  <img src="screenshots/gnomos-albums.png" alt="The local library's albums as a cover grid" width="49%">
+</p>
+
+Left: the queue, with the section sidebar, a "playing" indicator on the
+current track and the player bar. Right: the local library's albums as a
+cover grid — 1060 albums, shown instantly.
+
+<p align="center">
+  <img src="screenshots/gnomos-rooms.png" alt="The room picker with the rooms' current playback" width="49%">
+  <img src="screenshots/gnomos-preferences.png" alt="The two-column preferences with a sidebar of categories" width="49%">
+</p>
+
+Left: the room picker shows what's playing where and plays or pauses any
+room directly. Right: the preferences, with a sidebar of categories and a
+search that finds them by what's inside.
+
+<p align="center">
+  <img src="screenshots/gnomos-dark-record-player.png" alt="Dark mode with the optional record player look" width="66%">
+  <img src="screenshots/gnomos-mini-player.png" alt="The poster-style mini player" width="31%">
+</p>
+
+Left: dark mode, with the optional record player look — the cover turns
+into a record that spins while the music plays. Right: the mini player,
+a small poster whose controls fade in on hover.
+
+The album covers in the screenshots come from the author's own music
+library and belong to their respective artists and labels.
 
 ## Download
 

@@ -8,6 +8,14 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [Unreleased]
+
+### Changed
+- New README screenshots: Now Playing, queue, album grid, room picker,
+  preferences, dark mode with the record player, mini player.
+- The first group on the Appearance preferences page no longer repeats
+  the page title.
+
 ## [0.28.1] - 2026-10-02
 
 ### Fixed
