@@ -32,6 +32,7 @@ PlayerBar::PlayerBar()
   // the content area above it; the separator is what actually reads as
   // "docked to the bottom edge".
   add_css_class("view");
+  add_css_class("player-bar");
   set_hexpand(true);
   set_vexpand(false);
   append(*Gtk::make_managed<Gtk::Separator>());
@@ -55,6 +56,7 @@ PlayerBar::PlayerBar()
   position_scale_.set_range(0, 1);
   position_scale_.set_draw_value(false);
   position_scale_.set_hexpand(true);
+  position_scale_.add_css_class("position-scale");
   gtk_accessible_update_property(GTK_ACCESSIBLE(position_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL,
                                  "Wiedergabeposition", -1);
   position_scale_.set_valign(Gtk::Align::CENTER);
@@ -145,7 +147,7 @@ PlayerBar::PlayerBar()
   art_button_.add_css_class("circular");
   art_button_.set_valign(Gtk::Align::CENTER);
   art_button_.set_halign(Gtk::Align::CENTER);
-  art_button_.set_tooltip_text("Titel-Details");
+  SetButtonLabel(art_button_, "Wiedergabe-Ansicht öffnen");
   art_button_.signal_clicked().connect([this] { signal_art_clicked_.emit(); });
   info_box->append(art_button_);
 
@@ -214,6 +216,7 @@ PlayerBar::PlayerBar()
   play_pause_button_.set_icon_name(PlayPauseIconForState(TransportState::Stopped));
   play_pause_button_.add_css_class("circular");
   play_pause_button_.add_css_class("suggested-action");
+  play_pause_button_.add_css_class("play-button");
   play_pause_button_.set_size_request(44, 44);
   play_pause_button_.set_valign(Gtk::Align::CENTER);
   SetButtonLabel(play_pause_button_, PlayPauseLabelForState(TransportState::Stopped));

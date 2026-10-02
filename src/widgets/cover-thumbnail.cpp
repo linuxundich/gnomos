@@ -128,6 +128,11 @@ Glib::RefPtr<Gdk::Texture> GeneratedCover(const std::string& seed_text, int size
 
 }  // namespace
 
+Glib::RefPtr<Gdk::Texture> GeneratedCoverTexture(const std::string& seed_text, int size)
+{
+  return GeneratedCover(seed_text, size);
+}
+
 CoverThumbnail::CoverThumbnail(int pixel_size) : pixel_size_(pixel_size)
 {
   add_css_class("card");

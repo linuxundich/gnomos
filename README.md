@@ -92,9 +92,14 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   sources that don't support them (radio, line-in)
 - Zone grouping and ungrouping (including a one-click "disband group"),
   with a per-room volume slider
-- A bottom Now Playing bar with cover art, a wide seek bar, and track
-  details (with quick links to search the library for the current artist
-  or album)
+- A bottom Now Playing bar with cover art and a wide seek bar, tinted in
+  the colors of the current cover
+- A Now Playing view that slides up from the bar (click it, or Ctrl+I): a
+  large cover on a blurred, cover-colored background, the controls, quick
+  links to search the library for the artist or album, the upcoming queue,
+  and lyrics from LRCLIB (opt-in) — time-synced where LRCLIB has them, with
+  the current line highlighted and clickable lines to jump there. An
+  optional record-player look turns the cover into a spinning record
 - Queue management: reordering, removing tracks, saving as a Sonos playlist
 - Favorites, with search, "add to favorites" from anywhere in the library,
   and "play all"/"add all to queue" for the whole list

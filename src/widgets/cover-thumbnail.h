@@ -6,10 +6,15 @@
 
 #include <giomm/cancellable.h>
 #include <glibmm/refptr.h>
+#include <gdkmm/texture.h>
 #include <gtkmm/image.h>
 
 namespace gnomos
 {
+
+// The generated cover CoverThumbnail::SetGeneratedFallback() shows, for
+// other places that draw covers themselves (the Now Playing sheet). Cached.
+Glib::RefPtr<Gdk::Texture> GeneratedCoverTexture(const std::string& seed_text, int size);
 
 // Small async-loading cover art thumbnail for a list row (Queue/Favorites/
 // Library), styled like Euphonica's own row thumbnails

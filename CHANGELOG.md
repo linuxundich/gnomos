@@ -8,6 +8,34 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.23.0] - 2026-10-02
+
+### Added
+- Now Playing view: clicking the player bar (or its cover, or Ctrl+I)
+  slides up a sheet with a large cover, title, the playback controls and
+  volume, and on wide windows a second column with the lyrics and the
+  upcoming queue (click an entry to play it). It replaces the
+  "Titel-Details" dialog, whose actions (copy, search artist/album, about
+  the artist) moved under the title.
+- Colors from the cover: the player bar gets a soft gradient and the play
+  button the cover's main color, adjusted so it stays readable in light
+  and dark mode. The Now Playing view sits on a blurred copy of the cover
+  washed in those colors. Both crossfade on a track change.
+- Time-synced lyrics: when LRCLIB has them, the current line is
+  highlighted and the view follows the song; click a line to jump there.
+  Scrolling yourself pauses the following for a few seconds.
+- "Plattenteller" (off by default): the cover becomes a record with
+  grooves and a label that turns while the music plays.
+- New "Erscheinungsbild" settings for the cover colors, the blurred
+  background and the record player.
+
+### Changed
+- The lyrics lookup only runs while the Now Playing view is open, as it
+  did with the old dialog.
+
+### Removed
+- The "Titel-Details" dialog (see above) and its remembered size.
+
 ## [0.22.0] - 2026-10-02
 
 ### Added

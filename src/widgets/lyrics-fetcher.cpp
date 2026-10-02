@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
+#include <sstream>
 
 #include <glibmm/main.h>
 #include <glibmm/uriutils.h>
@@ -59,17 +61,63 @@ std::string StripTrailingBracketedSuffix(const std::string& s)
   return s;  // unbalanced — leave as-is
 }
 
-// Picks the best "plainLyrics" from an /api/search response body. LRCLIB's
-// search (unlike its exact-match /api/get) tolerates a duration that
-// doesn't line up perfectly with what Sonos reports, at the cost of
-// sometimes returning entries for a different recording of the same song —
-// prefer one whose artistName actually contains the artist we asked for
-// (LRCLIB sometimes doubles it, e.g. "The Beatles - The Beatles",
-// confirmed live — hence substring rather than exact match), falling back
-// to the first non-instrumental result with lyrics at all. Returns an
-// empty string if the response can't be parsed, carries no results, or
-// every result is instrumental/lyrics-less.
-std::string ExtractBestLyrics(const std::string& body, const std::string& artist_name)
+// Parses LRC text ("[01:23.45] line") into (ms, line) pairs. Lines
+// without a timestamp (metadata tags like "[ar:...]", blank lines) are
+// skipped; a line with several timestamps (a repeated chorus written once)
+// is added once per timestamp, then everything is sorted by time.
+std::vector<std::pair<unsigned, std::string>> ParseLrc(const std::string& lrc)
+{
+  std::vector<std::pair<unsigned, std::string>> lines;
+  std::istringstream stream(lrc);
+  std::string raw;
+  while (std::getline(stream, raw))
+  {
+    std::vector<unsigned> stamps;
+    size_t pos = 0;
+    while (pos < raw.size() && raw[pos] == '[')
+    {
+      size_t close = raw.find(']', pos);
+      if (close == std::string::npos)
+        break;
+      unsigned minutes = 0, seconds = 0, fraction = 0;
+      int fraction_digits = 0;
+      std::string tag = raw.substr(pos + 1, close - pos - 1);
+      if (std::sscanf(tag.c_str(), "%u:%u.%n", &minutes, &seconds, &fraction_digits) >= 2)
+      {
+        size_t dot = tag.find('.');
+        std::string frac = dot == std::string::npos ? "" : tag.substr(dot + 1);
+        fraction = frac.empty() ? 0 : static_cast<unsigned>(std::stoul(frac));
+        unsigned ms = frac.size() == 1 ? fraction * 100 : frac.size() == 2 ? fraction * 10 : fraction;
+        stamps.push_back((minutes * 60 + seconds) * 1000 + ms);
+      }
+      pos = close + 1;
+    }
+    if (stamps.empty())
+      continue;
+    std::string text = raw.substr(pos);
+    while (!text.empty() && (text.front() == ' ' || text.front() == '\t'))
+      text.erase(text.begin());
+    while (!text.empty() && (text.back() == '\r' || text.back() == ' '))
+      text.pop_back();
+    for (unsigned stamp : stamps)
+      lines.emplace_back(stamp, text);
+  }
+  std::stable_sort(lines.begin(), lines.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+  return lines;
+}
+
+// Picks the best entry from an /api/search response body. LRCLIB's search
+// (unlike its exact-match /api/get) tolerates a duration that doesn't line
+// up perfectly with what Sonos reports, at the cost of sometimes returning
+// entries for a different recording of the same song — prefer one whose
+// artistName actually contains the artist we asked for (LRCLIB sometimes
+// doubles it, e.g. "The Beatles - The Beatles", confirmed live — hence
+// substring rather than exact match), falling back to the first
+// non-instrumental result with lyrics at all. Among equally good matches,
+// one with synced lyrics wins. Returns an empty Lyrics if the response
+// can't be parsed, carries no results, or every result is
+// instrumental/lyrics-less.
+Lyrics ExtractBestLyrics(const std::string& body, const std::string& artist_name)
 {
   JsonParser* parser = json_parser_new();
   GError* error = nullptr;
@@ -78,18 +126,23 @@ std::string ExtractBestLyrics(const std::string& body, const std::string& artist
     if (error)
       g_error_free(error);
     g_object_unref(parser);
-    return "";
+    return {};
   }
 
+  auto string_member = [](JsonObject* entry, const char* name) -> const char* {
+    if (!json_object_has_member(entry, name))
+      return nullptr;
+    JsonNode* node = json_object_get_member(entry, name);
+    return JSON_NODE_HOLDS_VALUE(node) ? json_object_get_string_member(entry, name) : nullptr;
+  };
+
   JsonNode* root = json_parser_get_root(parser);
-  std::string result;
+  JsonObject* best = nullptr;
+  int best_score = -1;
   if (root && JSON_NODE_HOLDS_ARRAY(root))
   {
     JsonArray* data = json_node_get_array(root);
     std::string wanted_lower = ToLower(artist_name);
-
-    const char* first_match = nullptr;
-
     guint length = json_array_get_length(data);
     for (guint i = 0; i < length; ++i)
     {
@@ -98,25 +151,39 @@ std::string ExtractBestLyrics(const std::string& body, const std::string& artist
         continue;
       bool instrumental =
           json_object_has_member(entry, "instrumental") && json_object_get_boolean_member(entry, "instrumental");
-      const char* lyrics =
-          json_object_has_member(entry, "plainLyrics") ? json_object_get_string_member(entry, "plainLyrics") : nullptr;
-      if (instrumental || !lyrics || !*lyrics)
+      const char* plain = string_member(entry, "plainLyrics");
+      const char* synced = string_member(entry, "syncedLyrics");
+      if (instrumental || ((!plain || !*plain) && (!synced || !*synced)))
         continue;
 
-      if (!first_match)
-        first_match = lyrics;
-
-      const char* entry_artist =
-          json_object_has_member(entry, "artistName") ? json_object_get_string_member(entry, "artistName") : "";
-      if (!wanted_lower.empty() && ToLower(entry_artist).find(wanted_lower) != std::string::npos)
+      const char* entry_artist = string_member(entry, "artistName");
+      bool artist_matches = !wanted_lower.empty() && entry_artist &&
+                            ToLower(entry_artist).find(wanted_lower) != std::string::npos;
+      int score = (artist_matches ? 2 : 0) + (synced && *synced ? 1 : 0);
+      if (score > best_score)
       {
-        result = lyrics;
-        break;
+        best = entry;
+        best_score = score;
       }
     }
+  }
 
-    if (result.empty() && first_match)
-      result = first_match;
+  Lyrics result;
+  if (best)
+  {
+    const char* plain = string_member(best, "plainLyrics");
+    const char* synced = string_member(best, "syncedLyrics");
+    if (synced && *synced)
+      result.synced = ParseLrc(synced);
+    if (plain && *plain)
+    {
+      result.plain = plain;
+    }
+    else
+    {
+      for (const auto& [ms, line] : result.synced)
+        result.plain += line + "\n";
+    }
   }
 
   g_object_unref(parser);
@@ -131,12 +198,12 @@ LyricsFetcher& LyricsFetcher::Instance()
 }
 
 void LyricsFetcher::RequestLyrics(const std::string& artist, const std::string& title, const std::string& album,
-                                   std::function<void(std::string)> callback,
+                                   std::function<void(Lyrics)> callback,
                                    const Glib::RefPtr<Gio::Cancellable>& cancellable)
 {
   if (title.empty())
   {
-    callback("");
+    callback({});
     return;
   }
 
@@ -174,7 +241,7 @@ void LyricsFetcher::RequestLyrics(const std::string& artist, const std::string& 
 
 void LyricsFetcher::RequestLyricsAttempt(const std::string& artist,
                                           std::vector<std::pair<std::string, std::string>> attempts, size_t index,
-                                          const std::string& cache_key, std::function<void(std::string)> callback,
+                                          const std::string& cache_key, std::function<void(Lyrics)> callback,
                                           const Glib::RefPtr<Gio::Cancellable>& cancellable)
 {
   const std::string& title = attempts[index].first;
@@ -189,7 +256,7 @@ void LyricsFetcher::RequestLyricsAttempt(const std::string& artist,
   HttpFetch(
       url,
       [this, artist, attempts, index, cache_key, callback, cancellable](std::string body) mutable {
-        std::string lyrics = ExtractBestLyrics(body, artist);
+        Lyrics lyrics = ExtractBestLyrics(body, artist);
         if (lyrics.empty() && index + 1 < attempts.size())
         {
           RequestLyricsAttempt(artist, std::move(attempts), index + 1, cache_key, std::move(callback), cancellable);

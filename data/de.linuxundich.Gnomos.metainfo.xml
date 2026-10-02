@@ -22,6 +22,15 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.23.0" date="2026-10-02">
+      <description>
+        <p>A Now Playing view slides up from the player bar: a large cover
+        on a blurred background in the cover's colors, the controls, the
+        upcoming queue and lyrics, time-synced where available. The player
+        bar takes on the cover's colors too, and an optional record player
+        look turns the cover into a spinning record.</p>
+      </description>
+    </release>
     <release version="0.22.0" date="2026-10-02">
       <description>
         <p>Runs on the GNOME 51 platform. Large library grids appear

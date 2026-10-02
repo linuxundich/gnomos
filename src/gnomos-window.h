@@ -9,6 +9,7 @@
 #include <sigc++/connection.h>
 #include <giomm/menu.h>
 #include <gtkmm/applicationwindow.h>
+#include <gtkmm/cssprovider.h>
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
 #include <gtkmm/eventcontrollerkey.h>
@@ -31,6 +32,7 @@
 #include "widgets/favorites-view.h"
 #include "widgets/history-view.h"
 #include "widgets/library-view.h"
+#include "widgets/now-playing-view.h"
 #include "widgets/player-bar.h"
 #include "widgets/queue-view.h"
 #include "zone-volume-service.h"
@@ -129,7 +131,7 @@ private:
   void ShowScenesDialog();
   // Bio (Last.fm, opt-in via the same api_key configured for Last.fm
   // scrobbling) + related artists (Deezer, no key needed) for one artist —
-  // reached from ShowTrackInfoDialog()'s own "Über den Interpreten"
+  // reached from the Now Playing sheet's "Über den Interpreten"
   // button. See ArtistInfoFetcher's own header comment.
   void ShowArtistInfoDialog(const std::string& artist_name);
   void ShowSaveSceneDialog();
@@ -167,7 +169,19 @@ private:
   // dialogs.
   void ShowConfirmDialog(const std::string& heading, const std::string& body, const std::string& confirm_label,
                           std::function<void()> on_confirmed);
-  void ShowTrackInfoDialog();
+  // Opens/closes the Now Playing sheet (the player bar's AdwBottomSheet).
+  void SetNowPlayingOpen(bool open);
+  // Looks up lyrics for the current track, if enabled and the sheet is
+  // open — see lyrics_track_key_.
+  void RequestLyricsForCurrentTrack();
+  // Tints the player bar (and the sheet's play button) in the cover's
+  // colors via cover_css_ — or removes the tint for an invalid palette or
+  // with the setting off.
+  void ApplyCoverTint(const CoverPalette& palette);
+  // [appearance] booleans in state.ini — cover_tint_, cover_blur_,
+  // vinyl_mode_.
+  void LoadAppearanceSettings();
+  void SaveAppearanceSetting(const char* key, bool value);
   // prefill is pre-filled into the search entry (e.g. from the "Interpret
   // suchen" button in the Track-Details dialog) but not auto-submitted —
   // the dialog is shown either way, so the user can confirm or adjust the
@@ -255,10 +269,6 @@ private:
   // [player] load_lyrics in state.ini — see load_lyrics_'s own comment.
   void LoadLyricsSetting();
   void SetLoadLyrics(bool enabled);
-  // [track_info_dialog] width/height in state.ini — see
-  // track_info_dialog_width_'s own comment.
-  void LoadTrackInfoDialogSize();
-  void SaveTrackInfoDialogSize(int width, int height);
   // [scrobbling] listenbrainz_token in state.ini — see
   // listenbrainz_token_'s own comment.
   void LoadListenBrainzToken();
@@ -467,6 +477,11 @@ private:
   Gtk::Label zones_placeholder_;
 
   PlayerBar player_bar_;
+  // The sheet PlayerBar opens into (AdwBottomSheet, bottom_sheet_).
+  NowPlayingView now_playing_view_;
+  GtkWidget* bottom_sheet_ = nullptr;
+  // Cover-derived colors for the player bar — see ApplyCoverTint().
+  Glib::RefPtr<Gtk::CssProvider> cover_css_;
   QueueView queue_view_;
   FavoritesView favorites_view_;
   AlarmsView alarms_view_;
@@ -488,8 +503,8 @@ private:
   // mpris_ below.
   std::unique_ptr<RadioContentFilter> radio_history_filter_;
   // Same reasoning as radio_history_filter_ (its own instance, not shared
-  // — see RadioContentFilter's own comment), but for ShowTrackInfoDialog()'s
-  // lyrics lookup: fed on every OnNowPlayingChanged() tick (not just while
+  // — see RadioContentFilter's own comment), but for the Now Playing
+  // sheet's lyrics lookup: fed on every OnNowPlayingChanged() tick (not just while
   // the dialog happens to be open) so its sticky effective_content_ already
   // holds the last real song by the time a dialog opens, even if that
   // exact moment lands on an ad break — see OnNowPlayingChanged()'s own
@@ -546,17 +561,16 @@ private:
   // current track's artist/title/album to LRCLIB's public API (see
   // LyricsFetcher). Persisted to state.ini's [player] group.
   bool load_lyrics_ = false;
-  // ShowTrackInfoDialog()'s own remembered size — 0 means "never saved
-  // yet," in which case that method falls back to a one-time default (420
-  // wide, this window's own current height) instead of letting the
-  // dialog's natural/content-driven size decide, which made it wildly
-  // inconsistent between separate opens: short before Songtexte finished
-  // loading, then very tall on a later open once LyricsFetcher's cache
-  // made the full lyrics available immediately during layout. Updated on
-  // every close, in state.ini's own [track_info_dialog] group, so it
-  // tracks whatever the user last resized it to.
-  int track_info_dialog_width_ = 0;
-  int track_info_dialog_height_ = 0;
+  // Now Playing appearance, all on by default except the record player
+  // look — see LoadAppearanceSettings().
+  bool cover_tint_ = true;
+  bool cover_blur_ = true;
+  bool vinyl_mode_ = false;
+  // artist|title|album of the track whose lyrics the sheet shows (or is
+  // loading) — a repeated OnNowPlayingChanged() for the same track doesn't
+  // look them up again.
+  std::string lyrics_track_key_;
+  Glib::RefPtr<Gio::Cancellable> lyrics_cancellable_;
   // Empty means scrobbling is off — the token itself gates the feature,
   // no separate on/off switch needed (there's nothing useful this could do
   // without one anyway). Every enabled scrobble sends the current track's

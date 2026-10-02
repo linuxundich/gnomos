@@ -47,3 +47,75 @@ gridview.library-grid > child:hover .cover-thumbnail {
     transition: none;
   }
 }
+
+/* Player bar: the cover-derived tint (see GnomosWindow::ApplyCoverTint())
+ * fades in rather than snapping. */
+.player-bar {
+  transition: background-image 600ms ease;
+}
+
+.play-button {
+  transition: background-color 500ms ease, color 500ms ease;
+}
+
+/* Now Playing sheet */
+.now-playing .now-playing-title {
+  font-weight: 800;
+}
+
+.now-playing .large-play-button {
+  min-width: 64px;
+  min-height: 64px;
+  -gtk-icon-size: 24px;
+}
+
+.now-playing .large-transport {
+  min-width: 44px;
+  min-height: 44px;
+  -gtk-icon-size: 20px;
+}
+
+.now-playing .lyrics-scroller {
+  background: none;
+}
+
+.lyrics {
+  padding: 120px 6px;
+}
+
+.lyrics-line {
+  font-size: 1.45em;
+  font-weight: 800;
+  padding: 6px 0;
+  opacity: 0.35;
+  transition: opacity 300ms ease, color 300ms ease;
+}
+
+.lyrics-line.past {
+  opacity: 0.5;
+}
+
+.lyrics-line.current {
+  opacity: 1;
+}
+
+.lyrics-line:hover {
+  opacity: 0.8;
+}
+
+.lyrics-plain {
+  font-size: 1.1em;
+  line-height: 1.5;
+}
+
+.now-playing .up-next {
+  background: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-bar,
+  .play-button,
+  .lyrics-line {
+    transition: none;
+  }
+}

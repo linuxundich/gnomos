@@ -197,7 +197,8 @@ GnomosWindow::GnomosWindow()
     if (adw_overlay_split_view_get_collapsed(ADW_OVERLAY_SPLIT_VIEW(split_view_)))
       sidebar_toggle_button_.set_active(!sidebar_toggle_button_.get_active());
   });
-  add_action("toggle-now-playing", sigc::mem_fun(*this, &GnomosWindow::ShowTrackInfoDialog));
+  add_action("toggle-now-playing",
+             [this] { SetNowPlayingOpen(!adw_bottom_sheet_get_open(ADW_BOTTOM_SHEET(bottom_sheet_))); });
   add_action("volume-up", [this] { StepVolume(+5); });
   add_action("volume-down", [this] { StepVolume(-5); });
   add_action("seek-forward", [this] { SeekRelative(+10); });
@@ -870,13 +871,40 @@ GnomosWindow::GnomosWindow()
   player_bar_.signal_shuffle_clicked().connect([this] { backend_->ToggleShuffle(); });
   player_bar_.signal_repeat_clicked().connect([this] { backend_->ToggleRepeat(); });
   player_bar_.signal_add_to_favorites_clicked().connect([this] { backend_->AddCurrentTrackToFavorites(); });
-  player_bar_.signal_art_clicked().connect(sigc::mem_fun(*this, &GnomosWindow::ShowTrackInfoDialog));
+  player_bar_.signal_art_clicked().connect([this] { SetNowPlayingOpen(true); });
   player_bar_.signal_previous().connect([this] { backend_->Previous(); });
   player_bar_.signal_volume_changed().connect(
       [this](double value) { backend_->SetVolume(static_cast<uint8_t>(value)); });
   player_bar_.signal_mute_toggled().connect([this](bool muted) { backend_->SetMuted(muted); });
   player_bar_.signal_seek_requested().connect([this](unsigned seconds) { backend_->SeekAsync(seconds); });
   player_bar_.signal_art_ready().connect(sigc::mem_fun(*this, &GnomosWindow::OnNotificationArtReady));
+
+  now_playing_view_.signal_play_pause().connect(sigc::mem_fun(*this, &GnomosWindow::TogglePlayPause));
+  now_playing_view_.signal_next().connect([this] { backend_->Next(); });
+  now_playing_view_.signal_previous().connect([this] { backend_->Previous(); });
+  now_playing_view_.signal_shuffle_clicked().connect([this] { backend_->ToggleShuffle(); });
+  now_playing_view_.signal_repeat_clicked().connect([this] { backend_->ToggleRepeat(); });
+  now_playing_view_.signal_seek_requested().connect([this](unsigned seconds) { backend_->SeekAsync(seconds); });
+  now_playing_view_.signal_volume_changed().connect(
+      [this](double value) { backend_->SetVolume(static_cast<uint8_t>(value)); });
+  now_playing_view_.signal_mute_toggled().connect([this](bool muted) { backend_->SetMuted(muted); });
+  now_playing_view_.signal_close_requested().connect([this] { SetNowPlayingOpen(false); });
+  now_playing_view_.signal_queue_item_activated().connect([this](unsigned index) { backend_->PlayQueueItem(index); });
+  now_playing_view_.signal_search_artist().connect([this](std::string artist) {
+    SetNowPlayingOpen(false);
+    ShowLibrarySearchDialog(artist, "A:ALBUMARTIST");
+  });
+  now_playing_view_.signal_search_album().connect([this](std::string album) {
+    SetNowPlayingOpen(false);
+    ShowLibrarySearchDialog(album, "A:ALBUM");
+  });
+  now_playing_view_.signal_artist_info().connect([this](std::string artist) { ShowArtistInfoDialog(artist); });
+  now_playing_view_.signal_palette_changed().connect(sigc::mem_fun(*this, &GnomosWindow::ApplyCoverTint));
+  // The tinted button's lightness depends on light/dark — recompute.
+  g_signal_connect_swapped(adw_style_manager_get_default(), "notify::dark", G_CALLBACK(+[](GnomosWindow* self) {
+                             self->ApplyCoverTint(self->now_playing_view_.palette());
+                           }),
+                           this);
 
   queue_view_.signal_item_activated().connect([this](unsigned index) { backend_->PlayQueueItem(index); });
   queue_view_.signal_item_remove_requested().connect([this](unsigned index) { backend_->RemoveQueueItem(index); });
@@ -952,15 +980,28 @@ GnomosWindow::GnomosWindow()
   // bar far more usable width than a ~300px-wide side column ever could).
   // vexpand on breakpoint_bin only, not player_bar_, is what keeps the
   // bar pinned to its natural height instead of being stretched.
-  auto* root_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
+  //
+  // The bar is an AdwBottomSheet's bottom bar: clicking it (anywhere but
+  // on one of its own controls) or its cover slides up the Now Playing
+  // sheet, which takes the bar's place until it's closed again.
+  bottom_sheet_ = adw_bottom_sheet_new();
   Gtk::Widget* wrapped_breakpoint_bin = Glib::wrap(breakpoint_bin);
   wrapped_breakpoint_bin->set_vexpand(true);
-  root_box->append(*wrapped_breakpoint_bin);
-  root_box->append(player_bar_);
+  adw_bottom_sheet_set_content(ADW_BOTTOM_SHEET(bottom_sheet_), breakpoint_bin);
+  adw_bottom_sheet_set_bottom_bar(ADW_BOTTOM_SHEET(bottom_sheet_), GTK_WIDGET(player_bar_.gobj()));
+  adw_bottom_sheet_set_sheet(ADW_BOTTOM_SHEET(bottom_sheet_), GTK_WIDGET(now_playing_view_.gobj()));
+  adw_bottom_sheet_set_show_drag_handle(ADW_BOTTOM_SHEET(bottom_sheet_), TRUE);
+  adw_bottom_sheet_set_modal(ADW_BOTTOM_SHEET(bottom_sheet_), TRUE);
+  // The lyrics lookup only runs while the sheet is open (it sends the
+  // track to LRCLIB) — catch up on opening.
+  g_signal_connect_swapped(bottom_sheet_, "notify::open", G_CALLBACK(+[](GnomosWindow* self) {
+                             self->RequestLyricsForCurrentTrack();
+                           }),
+                           this);
 
   // --- Toast overlay wraps everything, for error feedback ---
   toast_overlay_ = adw_toast_overlay_new();
-  adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), GTK_WIDGET(root_box->gobj()));
+  adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), bottom_sheet_);
   set_child(*Glib::wrap(toast_overlay_));
 
   // --- Backend wiring ---
@@ -1004,7 +1045,7 @@ GnomosWindow::GnomosWindow()
   LoadLibraryViewPreference();
   LoadArtistImagesSetting();
   LoadLyricsSetting();
-  LoadTrackInfoDialogSize();
+  LoadAppearanceSettings();
   LoadListenBrainzToken();
   LoadLastFmSettings();
   LoadScenes();
@@ -1169,11 +1210,47 @@ void GnomosWindow::UpdateRoomButtonLabel()
     if (zone.group_id == selected_group_id_)
     {
       adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), zone.display_name.c_str());
+      now_playing_view_.SetRoomName(zone.display_name);
       return;
     }
   }
   adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), "Kein Raum");
+  now_playing_view_.SetRoomName("");
 }
+
+namespace
+{
+// A radio-like NowPlaying::artist holds the station's own raw rotating
+// "now playing" content, not a real artist name — see
+// RadioContentFilter's own header comment: when it's an actual song
+// (rather than ad/ident filler), it follows a "<title> / <artist>"
+// convention, confirmed live (e.g. "Ho hey / The Lumineers" for SWR3).
+// Splits on the first " / " and fills title/artist from it; returns false
+// — nothing usable — for ad text or any station that doesn't follow this
+// convention at all, so a lyrics lookup simply isn't attempted rather than
+// searching on raw filler text.
+bool ParseRadioSongContent(const std::string& content, std::string& title, std::string& artist)
+{
+  size_t sep = content.find(" / ");
+  if (sep == std::string::npos)
+    return false;
+  title = content.substr(0, sep);
+  artist = content.substr(sep + 3);
+  return !title.empty() && !artist.empty();
+}
+
+// AdwDialog's "closed" signal — (AdwDialog*, gpointer), unlike every other
+// signal trampoline above this point in the file, which are all
+// "notify::property" (GObject*, GParamSpec*, gpointer). DeleteVoidCallback
+// (defined near ShowSettingsDialog, in the same translation-unit-wide
+// anonymous namespace) already matches std::function<void()>'s own
+// cleanup, so only the actual invoking trampoline is new here. Shared by
+// this dialog and ShowArtistInfoDialog() further down.
+extern "C" void OnDialogClosed(AdwDialog*, gpointer user_data)
+{
+  (*static_cast<std::function<void()>*>(user_data))();
+}
+}  // namespace
 
 namespace
 {
@@ -1592,6 +1669,7 @@ void GnomosWindow::OnNowPlayingChanged()
 {
   NowPlaying np = backend_->GetNowPlaying();
   player_bar_.Update(np);
+  now_playing_view_.Update(np);
   if (mini_player_window_)
     mini_player_window_->Update(np);
   // Skipped while TransportState::Transitioning — np.playing_from_queue is
@@ -1612,10 +1690,11 @@ void GnomosWindow::OnNowPlayingChanged()
   MaybeScheduleScrobble(np);
   CheckAlarmAndTransportStatus(np);
   // Keeps radio_lyrics_filter_'s sticky effective_content_ current even
-  // while ShowTrackInfoDialog() isn't open — see that member's own
+  // while the Now Playing sheet is closed — see that member's own
   // comment. Side effect only; nothing here reads the return value.
   if (np.duration == 0 && !np.stream_uri.empty())
     radio_lyrics_filter_->Filter(np.stream_uri, np.artist);
+  RequestLyricsForCurrentTrack();
 }
 
 void GnomosWindow::OnPositionChanged()
@@ -1623,6 +1702,7 @@ void GnomosWindow::OnPositionChanged()
   unsigned position = backend_->GetPosition();
   unsigned duration = backend_->GetNowPlaying().duration;
   player_bar_.UpdatePosition(position, duration);
+  now_playing_view_.UpdatePosition(position, duration);
   if (mini_player_window_)
     mini_player_window_->UpdatePosition(position, duration);
 }
@@ -1638,12 +1718,15 @@ bool GnomosWindow::OnPositionTimerTick()
 void GnomosWindow::OnVolumeChanged()
 {
   player_bar_.UpdateVolume(backend_->GetVolume());
+  now_playing_view_.UpdateVolume(backend_->GetVolume());
 }
 
 void GnomosWindow::OnQueueChanged()
 {
-  queue_view_.SetItems(backend_->GetQueue());
+  std::vector<QueueItem> queue = backend_->GetQueue();
+  queue_view_.SetItems(queue);
   queue_view_.SetCurrentIndex(current_queue_index_);
+  now_playing_view_.SetUpNext(queue, current_queue_index_);
   UpdateNextTrackHint();
 }
 
@@ -2167,28 +2250,33 @@ void GnomosWindow::SetLoadLyrics(bool enabled)
   }
 }
 
-void GnomosWindow::LoadTrackInfoDialogSize()
+void GnomosWindow::LoadAppearanceSettings()
 {
   auto keyfile = Glib::KeyFile::create();
   try
   {
-    if (!keyfile->load_from_file(StateFilePath()))
-      return;
-    track_info_dialog_width_ = keyfile->get_integer("track_info_dialog", "width");
-    track_info_dialog_height_ = keyfile->get_integer("track_info_dialog", "height");
+    if (keyfile->load_from_file(StateFilePath()))
+    {
+      auto read = [&](const char* key, bool& target) {
+        if (keyfile->has_key("appearance", key))
+          target = keyfile->get_boolean("appearance", key);
+      };
+      read("cover_tint", cover_tint_);
+      read("cover_blur", cover_blur_);
+      read("vinyl_mode", vinyl_mode_);
+    }
   }
   catch (const Glib::Error&)
   {
-    // fine — never saved yet; ShowTrackInfoDialog() falls back to its own
-    // one-time default (0 stays 0)
+    // fine — nothing saved yet, the defaults stay
   }
+  now_playing_view_.SetTintEnabled(cover_tint_);
+  now_playing_view_.SetBlurEnabled(cover_blur_);
+  now_playing_view_.SetVinylEnabled(vinyl_mode_);
 }
 
-void GnomosWindow::SaveTrackInfoDialogSize(int width, int height)
+void GnomosWindow::SaveAppearanceSetting(const char* key, bool value)
 {
-  track_info_dialog_width_ = width;
-  track_info_dialog_height_ = height;
-
   const std::string dir = Glib::build_filename(Glib::get_user_config_dir(), "gnomos");
   g_mkdir_with_parents(dir.c_str(), 0700);
   auto keyfile = Glib::KeyFile::create();
@@ -2200,16 +2288,118 @@ void GnomosWindow::SaveTrackInfoDialogSize(int width, int height)
   {
     // fine — first launch, nothing to preserve
   }
-  keyfile->set_integer("track_info_dialog", "width", width);
-  keyfile->set_integer("track_info_dialog", "height", height);
+  keyfile->set_boolean("appearance", key, value);
   try
   {
     keyfile->save_to_file(StateFilePath());
   }
   catch (const Glib::Error&)
   {
-    // non-fatal — just means the size won't be remembered next launch
+    // non-fatal — just means the setting won't be remembered next launch
   }
+}
+
+void GnomosWindow::SetNowPlayingOpen(bool open)
+{
+  adw_bottom_sheet_set_open(ADW_BOTTOM_SHEET(bottom_sheet_), open);
+}
+
+void GnomosWindow::ApplyCoverTint(const CoverPalette& palette)
+{
+  if (!cover_css_)
+  {
+    cover_css_ = Gtk::CssProvider::create();
+    // One above the app's own style.css, so these rules win over its
+    // defaults for the same selectors.
+    Gtk::StyleContext::add_provider_for_display(get_display(), cover_css_, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+  }
+  bool tint = cover_tint_ && palette.valid;
+  if (!tint)
+  {
+    cover_css_->load_from_string("");
+    player_bar_.remove_css_class("cover-tinted");
+    now_playing_view_.remove_css_class("cover-tinted");
+    return;
+  }
+
+  // The button color has to read on both the light and the dark window
+  // background, hence the clamped lightness; its icon is black or white,
+  // whichever contrasts more.
+  bool dark = adw_style_manager_get_dark(adw_style_manager_get_default());
+  Gdk::RGBA button = ClampLightness(palette.base, dark ? 0.45 : 0.32, dark ? 0.62 : 0.50);
+  std::string button_hex = ToCssHex(button);
+  std::string button_fg = PrefersLightText(button) ? "#ffffff" : "#000000";
+  std::string base_hex = ToCssHex(palette.base);
+  std::string second_hex = ToCssHex(palette.second);
+  std::string css =
+      ".player-bar.cover-tinted { background-image: linear-gradient(100deg, alpha(" + base_hex + ", " +
+      (dark ? "0.30" : "0.22") + "), alpha(" + second_hex + ", " + (dark ? "0.18" : "0.12") +
+      ") 55%, transparent 90%); }\n"
+      ".cover-tinted .play-button { background-color: " + button_hex + "; color: " + button_fg + "; }\n"
+      ".cover-tinted .play-button:hover { background-color: mix(" + button_hex + ", " + button_fg +
+      ", 0.1); }\n"
+      ".cover-tinted scale.position-scale > trough > highlight, .now-playing.cover-tinted scale > trough > highlight "
+      "{ background-color: " + button_hex + "; }\n"
+      ".cover-tinted .lyrics-line.current { color: mix(" + button_hex + ", currentColor, 0.35); }\n";
+  cover_css_->load_from_string(css);
+  player_bar_.add_css_class("cover-tinted");
+  now_playing_view_.add_css_class("cover-tinted");
+}
+
+void GnomosWindow::RequestLyricsForCurrentTrack()
+{
+  now_playing_view_.SetLyricsAvailable(load_lyrics_);
+  if (!load_lyrics_ || !adw_bottom_sheet_get_open(ADW_BOTTOM_SHEET(bottom_sheet_)))
+    return;
+  NowPlaying np = backend_->GetNowPlaying();
+  if (!np.valid)
+    return;
+
+  // For a radio-like source (duration == 0, stream_uri populated — see
+  // NowPlaying::stream_uri's own comment), np.title is the *station* name
+  // and np.artist its raw rotating content, which flips between the
+  // actual song and interstitial ad/ident text. radio_lyrics_filter_
+  // (continuously fed from OnNowPlayingChanged()) gives back the last
+  // genuinely accepted song content instead, sticky through ad breaks —
+  // see its own comment. That content follows the "<title> / <artist>"
+  // convention and is reparsed accordingly (ParseRadioSongContent()).
+  std::string lyrics_title = np.title;
+  std::string lyrics_artist = np.artist;
+  bool is_radio = np.duration == 0 && !np.stream_uri.empty();
+  if (is_radio)
+  {
+    std::string accepted_content = radio_lyrics_filter_->Filter(np.stream_uri, np.artist);
+    if (accepted_content.empty() || !ParseRadioSongContent(accepted_content, lyrics_title, lyrics_artist))
+      lyrics_title.clear();
+  }
+  // np.album is the station's own metadata for radio, not a real album —
+  // never a useful hint for the query.
+  std::string album = is_radio ? "" : np.album;
+  std::string key = lyrics_artist + '\x1f' + lyrics_title + '\x1f' + album;
+  if (key == lyrics_track_key_)
+    return;
+  lyrics_track_key_ = key;
+
+  if (lyrics_cancellable_)
+    lyrics_cancellable_->cancel();
+  if (lyrics_title.empty())
+  {
+    now_playing_view_.SetLyrics({});
+    return;
+  }
+  now_playing_view_.SetLyricsLoading();
+  lyrics_cancellable_ = Gio::Cancellable::create();
+  auto cancellable = lyrics_cancellable_;
+  LyricsFetcher::Instance().RequestLyrics(
+      lyrics_artist, lyrics_title, album,
+      [this, cancellable](Lyrics lyrics) {
+        // HttpFetch() resolves a cancelled request with an empty result
+        // rather than dropping it — a newer track has taken over then.
+        if (cancellable->is_cancelled())
+          return;
+        now_playing_view_.SetLyrics(lyrics);
+      },
+      cancellable);
 }
 
 void GnomosWindow::LoadListenBrainzToken()
@@ -3915,6 +4105,38 @@ void GnomosWindow::ShowSettingsDialog()
   gtk_widget_set_valign(scheme_toggle_group, GTK_ALIGN_CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(scheme_row), scheme_toggle_group);
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), scheme_row);
+
+  // Now Playing look — see ApplyCoverTint() and NowPlayingView.
+  auto add_appearance_switch = [&](const char* title, const char* subtitle, bool active,
+                                   std::function<void(bool)> on_change) {
+    GtkWidget* row = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), title);
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(row), subtitle);
+    adw_switch_row_set_active(ADW_SWITCH_ROW(row), active);
+    g_signal_connect_data(row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
+                           new std::function<void(bool)>(std::move(on_change)), DeleteBoolCallback,
+                           static_cast<GConnectFlags>(0));
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), row);
+  };
+  add_appearance_switch("Farben aus dem Cover", "Färbt Player-Leiste und Wiedergabe-Ansicht passend zum Album",
+                        cover_tint_, [this](bool active) {
+                          cover_tint_ = active;
+                          SaveAppearanceSetting("cover_tint", active);
+                          now_playing_view_.SetTintEnabled(active);
+                          ApplyCoverTint(now_playing_view_.palette());
+                        });
+  add_appearance_switch("Unscharfer Hintergrund", "Das Cover als weicher Hintergrund der Wiedergabe-Ansicht",
+                        cover_blur_, [this](bool active) {
+                          cover_blur_ = active;
+                          SaveAppearanceSetting("cover_blur", active);
+                          now_playing_view_.SetBlurEnabled(active);
+                        });
+  add_appearance_switch("Plattenteller", "Zeigt das Cover als Schallplatte, die sich während der Wiedergabe dreht",
+                        vinyl_mode_, [this](bool active) {
+                          vinyl_mode_ = active;
+                          SaveAppearanceSetting("vinyl_mode", active);
+                          now_playing_view_.SetVinylEnabled(active);
+                        });
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(appearance_group));
 
   // --- Benachrichtigungen ---
@@ -3939,14 +4161,19 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lyrics_row), "Songtexte laden");
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(lyrics_row),
-      "Fragt in den Titel-Details den Songtext des aktuellen Titels bei der öffentlichen LRCLIB-API "
+      "Fragt in der Wiedergabe-Ansicht den Songtext des aktuellen Titels bei der öffentlichen LRCLIB-API "
       "(lrclib.net) ab — das ist eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff. Dabei "
       "werden Titel, Interpret und Album an LRCLIB übertragen. LRCLIBs Songtexte stammen aus "
       "Community-Beiträgen ohne Rechte-Garantie (siehe Link unten).");
   adw_switch_row_set_active(ADW_SWITCH_ROW(lyrics_row), load_lyrics_);
   g_signal_connect_data(
       lyrics_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
-      new std::function<void(bool)>([this](bool active) { SetLoadLyrics(active); }), DeleteBoolCallback,
+      new std::function<void(bool)>([this](bool active) {
+        SetLoadLyrics(active);
+        lyrics_track_key_.clear();
+        RequestLyricsForCurrentTrack();
+      }),
+      DeleteBoolCallback,
       static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(lyrics_group), lyrics_row);
 
@@ -4983,347 +5210,6 @@ void GnomosWindow::ShowSaveSceneDialog()
   entry->grab_focus();
 }
 
-namespace
-{
-// A radio-like NowPlaying::artist holds the station's own raw rotating
-// "now playing" content, not a real artist name — see
-// RadioContentFilter's own header comment: when it's an actual song
-// (rather than ad/ident filler), it follows a "<title> / <artist>"
-// convention, confirmed live (e.g. "Ho hey / The Lumineers" for SWR3).
-// Splits on the first " / " and fills title/artist from it; returns false
-// — nothing usable — for ad text or any station that doesn't follow this
-// convention at all, so a lyrics lookup simply isn't attempted rather than
-// searching on raw filler text.
-bool ParseRadioSongContent(const std::string& content, std::string& title, std::string& artist)
-{
-  size_t sep = content.find(" / ");
-  if (sep == std::string::npos)
-    return false;
-  title = content.substr(0, sep);
-  artist = content.substr(sep + 3);
-  return !title.empty() && !artist.empty();
-}
-
-// AdwDialog's "closed" signal — (AdwDialog*, gpointer), unlike every other
-// signal trampoline above this point in the file, which are all
-// "notify::property" (GObject*, GParamSpec*, gpointer). DeleteVoidCallback
-// (defined near ShowSettingsDialog, in the same translation-unit-wide
-// anonymous namespace) already matches std::function<void()>'s own
-// cleanup, so only the actual invoking trampoline is new here. Shared by
-// this dialog and ShowArtistInfoDialog() further down.
-extern "C" void OnDialogClosed(AdwDialog*, gpointer user_data)
-{
-  (*static_cast<std::function<void()>*>(user_data))();
-}
-}  // namespace
-
-void GnomosWindow::ShowTrackInfoDialog()
-{
-  NowPlaying np = backend_->GetNowPlaying();
-  if (!np.valid)
-    return;
-
-  // AdwDialog (not a plain Gtk::Window): its own header bar supplies the
-  // standard close ("X") action, so — unlike the old plain-window version
-  // — no separate bottom "Schließen" button is needed at all.
-  AdwDialog* dialog = adw_dialog_new();
-  adw_dialog_set_title(dialog, "Titel-Details");
-
-  GtkWidget* header_bar = adw_header_bar_new();
-  adw_header_bar_set_title_widget(ADW_HEADER_BAR(header_bar), adw_window_title_new("Titel-Details", nullptr));
-
-  GtkWidget* toolbar_view = adw_toolbar_view_new();
-  adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view), header_bar);
-
-  // Uses the size the user last left this dialog at (see
-  // track_info_dialog_width_/_height_'s own comment for why this replaced
-  // a natural/content-driven size) — falls back to a one-time default (420
-  // wide — with Songtexte enabled, anything narrower wrapped even a modest
-  // lyrics line every few words) the very first time, before anything's
-  // ever been saved.
-  //
-  // Either way, height is capped below this window's own current height —
-  // confirmed live, matching it exactly (the original version of this
-  // fallback) left the dialog looking flush with the app window's own top
-  // and bottom edges, no visible framing at all. A saved height smaller
-  // than the cap (the user's own deliberate choice) is left alone; only a
-  // saved height that's grown to meet or exceed the app window's own
-  // height — including every very first open, before this cap existed —
-  // gets pulled back under it.
-  int app_width = 0, app_height = 0;
-  get_default_size(app_width, app_height);
-  constexpr int kHeightInset = 64;
-  int max_height = app_height > kHeightInset ? app_height - kHeightInset : app_height;
-  if (track_info_dialog_width_ > 0 && track_info_dialog_height_ > 0)
-  {
-    adw_dialog_set_content_width(dialog, track_info_dialog_width_);
-    adw_dialog_set_content_height(dialog, std::min(track_info_dialog_height_, max_height));
-  }
-  else
-  {
-    adw_dialog_set_content_width(dialog, 420);
-    if (max_height > 0)
-      adw_dialog_set_content_height(dialog, max_height);
-  }
-
-  auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
-  content->set_margin_top(18);
-  content->set_margin_bottom(18);
-  content->set_margin_start(18);
-  content->set_margin_end(18);
-
-  // Caps the readable line width once the dialog is resized much wider
-  // than its 420px default (tracked/persisted above) — cover art and text
-  // stay centered and reasonably sized instead of stretching edge to
-  // edge; the lyrics scroller (added to content further down) benefits
-  // from this the most, since unclamped it would otherwise span the full
-  // dialog width at any saved size.
-  GtkWidget* clamp = adw_clamp_new();
-  adw_clamp_set_maximum_size(ADW_CLAMP(clamp), 440);
-
-  auto* art = Gtk::make_managed<Gtk::Image>();
-  art->set_from_icon_name("audio-x-generic-symbolic");
-  art->set_pixel_size(256);
-  art->add_css_class("card");
-  art->set_halign(Gtk::Align::CENTER);
-  content->append(*art);
-
-  auto* title = Gtk::make_managed<Gtk::Label>(np.title.empty() ? "Unbekannter Titel" : np.title);
-  title->set_wrap(true);
-  title->add_css_class("title-2");
-  content->append(*title);
-
-  if (!np.artist.empty())
-  {
-    auto* artist = Gtk::make_managed<Gtk::Label>(np.artist);
-    artist->set_wrap(true);
-    artist->add_css_class("dimmed");
-    content->append(*artist);
-  }
-
-  if (!np.album.empty())
-  {
-    auto* album = Gtk::make_managed<Gtk::Label>(np.album);
-    album->set_wrap(true);
-    album->add_css_class("dimmed");
-    album->add_css_class("caption");
-    content->append(*album);
-  }
-
-  // Same ArtCache-first lookup PlayerBar::LoadArt() does — a cache hit
-  // (the common case: CoverThumbnail has near-certainly already fetched
-  // this same uri for a library tile or the player bar itself) resolves
-  // synchronously, no network round trip at all. On a genuine miss, this
-  // goes through HttpFetch() rather than Gio::File — unlike Gio::File,
-  // that doesn't depend on a GVfs http backend being available (confirmed
-  // broken/absent in the Flatpak sandbox, see HttpFetch()'s own
-  // introduction; the previous Gio::File-based version of this code
-  // silently failed here for exactly that reason, even outside Flatpak,
-  // any time the cache didn't already happen to be warm).
-  if (!np.art_uri.empty())
-  {
-    if (auto cached = ArtCache::Instance().Get(np.art_uri))
-    {
-      art->set(cached);
-    }
-    else
-    {
-      // Cancelled on close so a slow response arriving after the dialog is
-      // already gone can't touch a freed widget — HttpFetch() resolves a
-      // cancelled fetch with an empty body rather than throwing, so this
-      // needs an explicit is_cancelled() check, same reasoning as the
-      // lyrics fetch below.
-      auto cancellable = Gio::Cancellable::create();
-      g_signal_connect_data(dialog, "closed", G_CALLBACK(OnDialogClosed),
-                             new std::function<void()>([cancellable] { cancellable->cancel(); }), DeleteVoidCallback,
-                             static_cast<GConnectFlags>(0));
-      std::string art_uri = np.art_uri;
-      HttpFetch(
-          art_uri,
-          [art, art_uri, cancellable](std::string body) {
-            if (cancellable->is_cancelled() || body.empty())
-              return;
-            if (auto texture = ArtCache::Instance().Put(art_uri, Glib::Bytes::create(body.data(), body.size())))
-              art->set(texture);
-          },
-          cancellable);
-    }
-  }
-
-  // Songtexte — opt-in via Settings (see load_lyrics_'s own comment), off
-  // by default; nothing shown at all when disabled, not even a "wird
-  // geladen"-placeholder, since the feature should be entirely invisible
-  // unless the user turned it on.
-  //
-  // For a radio-like source (duration == 0, stream_uri populated — see
-  // NowPlaying::stream_uri's own comment), np.title is the *station* name
-  // and np.artist is its raw rotating content, which flips between the
-  // actual song and interstitial ad/ident text — using np.artist directly
-  // would as often as not send an ad slogan to LRCLIB instead of a song.
-  // radio_lyrics_filter_ (continuously fed from OnNowPlayingChanged(), same
-  // spam filtering MPRIS/History already apply) gives back the last
-  // genuinely accepted song content instead, sticky through ad breaks and
-  // repeats — see its own comment. That content, once obtained, still
-  // follows the "<title> / <artist>" convention, so it's reparsed the same
-  // way (see ParseRadioSongContent()). lyrics_title stays empty (skipping
-  // the section below entirely) if nothing has been accepted for this
-  // station yet, the station opted out of this filtering entirely, or the
-  // content doesn't follow that convention.
-  std::string lyrics_title = np.title;
-  std::string lyrics_artist = np.artist;
-  bool is_radio = np.duration == 0 && !np.stream_uri.empty();
-  if (is_radio)
-  {
-    std::string accepted_content = radio_lyrics_filter_->Filter(np.stream_uri, np.artist);
-    if (accepted_content.empty() || !ParseRadioSongContent(accepted_content, lyrics_title, lyrics_artist))
-      lyrics_title.clear();
-  }
-
-  if (load_lyrics_ && !lyrics_title.empty())
-  {
-    content->append(*Gtk::make_managed<Gtk::Separator>(Gtk::Orientation::HORIZONTAL));
-
-    auto* lyrics_label = Gtk::make_managed<Gtk::Label>("Songtext wird geladen …");
-    lyrics_label->set_wrap(true);
-    lyrics_label->set_selectable(true);
-    // A selectable Label is keyboard-focusable, and GTK auto-focuses the
-    // first focusable widget when a window is presented — confirmed live,
-    // that made the *entire* lyrics text look auto-highlighted the moment
-    // this dialog opened. Selection by mouse (click-drag, to copy) still
-    // works fine either way; this only opts it out of *keyboard* focus/tab
-    // order, which nothing here actually needs.
-    lyrics_label->set_can_focus(false);
-    lyrics_label->set_justify(Gtk::Justification::LEFT);
-    lyrics_label->set_halign(Gtk::Align::START);
-    lyrics_label->set_valign(Gtk::Align::START);
-    lyrics_label->add_css_class("caption");
-
-    auto* lyrics_scroller = Gtk::make_managed<Gtk::ScrolledWindow>();
-    lyrics_scroller->set_child(*lyrics_label);
-    lyrics_scroller->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
-    lyrics_scroller->set_propagate_natural_height(true);
-    // Raised from the original 280 — most tracks' full lyrics need several
-    // screens' worth of scrolling either way, but 280 only showed a handful
-    // of lines at once even on a tall display; 480 shows meaningfully more
-    // without the dialog itself dominating the whole screen.
-    lyrics_scroller->set_max_content_height(480);
-    // Claims any leftover height once this dialog's own size started
-    // tracking this window's height (see track_info_dialog_width_'s own
-    // comment) rather than shrinking to fit — without an expanding child
-    // somewhere, that leftover space landed wherever Gtk::Box's own
-    // layout happened to put it, leaving content's fixed top/bottom
-    // margins looking disproportionately thin. Also means more available
-    // height genuinely shows more lyrics, not just a bigger blank gap.
-    lyrics_scroller->set_vexpand(true);
-    content->append(*lyrics_scroller);
-
-    // Unlike the art load above, HttpFetch() (which LyricsFetcher sits on
-    // top of) resolves a cancelled request with an empty-body callback
-    // rather than throwing — so, unlike `art`, `lyrics_label` needs an
-    // explicit is_cancelled() check before this touches it, in case the
-    // response arrives after dialog (and so lyrics_label) is already gone.
-    auto lyrics_cancellable = Gio::Cancellable::create();
-    g_signal_connect_data(dialog, "closed", G_CALLBACK(OnDialogClosed),
-                           new std::function<void()>([lyrics_cancellable] { lyrics_cancellable->cancel(); }),
-                           DeleteVoidCallback, static_cast<GConnectFlags>(0));
-    // np.album is the station's own metadata for radio, not a real album
-    // (and often empty) — never a useful hint for the query, unlike a
-    // genuine album name from the queue/library.
-    LyricsFetcher::Instance().RequestLyrics(
-        lyrics_artist, lyrics_title, is_radio ? "" : np.album,
-        [lyrics_label, lyrics_cancellable](std::string lyrics) {
-          if (lyrics_cancellable->is_cancelled())
-            return;
-          lyrics_label->set_text(lyrics.empty() ? "Kein Songtext gefunden." : lyrics);
-        },
-        lyrics_cancellable);
-  }
-  else
-  {
-    // No lyrics section this time (disabled, or nothing matched) — same
-    // reasoning as lyrics_scroller's own set_vexpand(true) above: without
-    // something here claiming leftover height, it landed wherever Box's
-    // own layout happened to put it instead of leaving content's margins
-    // looking consistent regardless of how tall this dialog ends up.
-    auto* spacer = Gtk::make_managed<Gtk::Box>();
-    spacer->set_vexpand(true);
-    content->append(*spacer);
-  }
-
-  // .flat throughout, same convention every other icon-only button row in
-  // this codebase already follows — this row was previously the one
-  // inconsistent exception (confirmed by grep: every other button_box in
-  // this file already adds "flat" to each of its buttons).
-  auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  button_box->set_halign(Gtk::Align::END);
-  button_box->set_margin_top(6);
-
-  std::string clipboard_text = np.title;
-  if (!np.artist.empty())
-    clipboard_text += " — " + np.artist;
-  if (!np.album.empty())
-    clipboard_text += " — " + np.album;
-  auto* copy_button = Gtk::make_managed<Gtk::Button>();
-  copy_button->set_icon_name("edit-copy-symbolic");
-  copy_button->add_css_class("flat");
-  copy_button->set_tooltip_text("Titel-Infos kopieren");
-  copy_button->signal_clicked().connect([this, clipboard_text] { get_clipboard()->set_text(clipboard_text); });
-  button_box->append(*copy_button);
-
-  if (!np.artist.empty())
-  {
-    auto* search_artist_button = Gtk::make_managed<Gtk::Button>();
-    search_artist_button->set_icon_name("system-search-symbolic");
-    search_artist_button->add_css_class("flat");
-    search_artist_button->set_tooltip_text("Interpret in der Bibliothek suchen");
-    std::string artist = np.artist;
-    search_artist_button->signal_clicked().connect([this, dialog, artist] {
-      adw_dialog_close(dialog);
-      ShowLibrarySearchDialog(artist, "A:ALBUMARTIST");
-    });
-    button_box->append(*search_artist_button);
-
-    auto* artist_info_button = Gtk::make_managed<Gtk::Button>();
-    artist_info_button->set_icon_name("avatar-default-symbolic");
-    artist_info_button->add_css_class("flat");
-    artist_info_button->set_tooltip_text("Über den Interpreten");
-    artist_info_button->signal_clicked().connect([this, dialog, artist] {
-      adw_dialog_close(dialog);
-      ShowArtistInfoDialog(artist);
-    });
-    button_box->append(*artist_info_button);
-  }
-
-  if (!np.album.empty())
-  {
-    auto* search_album_button = Gtk::make_managed<Gtk::Button>();
-    search_album_button->set_icon_name("media-optical-cd-audio-symbolic");
-    search_album_button->add_css_class("flat");
-    search_album_button->set_tooltip_text("Album in der Bibliothek suchen");
-    std::string album = np.album;
-    search_album_button->signal_clicked().connect([this, dialog, album] {
-      adw_dialog_close(dialog);
-      ShowLibrarySearchDialog(album, "A:ALBUM");
-    });
-    button_box->append(*search_album_button);
-  }
-
-  content->append(*button_box);
-
-  adw_clamp_set_child(ADW_CLAMP(clamp), GTK_WIDGET(content->gobj()));
-  adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar_view), clamp);
-  adw_dialog_set_child(dialog, toolbar_view);
-  g_signal_connect_data(
-      dialog, "closed", G_CALLBACK(OnDialogClosed),
-      new std::function<void()>([this, dialog] {
-        int width = adw_dialog_get_content_width(dialog);
-        int height = adw_dialog_get_content_height(dialog);
-        if (width > 0 && height > 0)
-          SaveTrackInfoDialogSize(width, height);
-      }),
-      DeleteVoidCallback, static_cast<GConnectFlags>(0));
-  adw_dialog_present(dialog, GTK_WIDGET(gobj()));
-}
 
 void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
 {

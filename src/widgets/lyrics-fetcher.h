@@ -12,7 +12,17 @@
 namespace gnomos
 {
 
-// Best-effort plain-lyrics lookup against LRCLIB's public API
+// One lookup result. `synced` is LRCLIB's "syncedLyrics" parsed into
+// (milliseconds, line) pairs, in order — empty when LRCLIB only has plain
+// text for the track. `plain` is always filled when anything was found.
+struct Lyrics
+{
+  std::string plain;
+  std::vector<std::pair<unsigned, std::string>> synced;
+  bool empty() const { return plain.empty() && synced.empty(); }
+};
+
+// Best-effort lyrics lookup (plain and, where available, time-synced) against LRCLIB's public API
 // (https://lrclib.net/api/search) — opt-in (see GnomosWindow's own
 // "Songtexte laden" setting), since like ArtistImageFetcher's Deezer
 // lookups, every request sends the current track's artist/title/album to a
@@ -39,7 +49,7 @@ public:
   // HttpFetch() so a dialog closed before the response arrives can drop
   // the result — see HttpFetch()'s own comment.
   void RequestLyrics(const std::string& artist, const std::string& title, const std::string& album,
-                      std::function<void(std::string)> callback,
+                      std::function<void(Lyrics)> callback,
                       const Glib::RefPtr<Gio::Cancellable>& cancellable = {});
 
 private:
@@ -53,12 +63,12 @@ private:
   // which attempt actually found the match.
   void RequestLyricsAttempt(const std::string& artist,
                              std::vector<std::pair<std::string, std::string>> attempts, size_t index,
-                             const std::string& cache_key, std::function<void(std::string)> callback,
+                             const std::string& cache_key, std::function<void(Lyrics)> callback,
                              const Glib::RefPtr<Gio::Cancellable>& cancellable);
 
   // Empty string is itself a valid, cached "looked up, nothing found"
   // result — same convention as ArtistImageFetcher::cache_.
-  std::unordered_map<std::string, std::string> cache_;
+  std::unordered_map<std::string, Lyrics> cache_;
 };
 
 }  // namespace gnomos

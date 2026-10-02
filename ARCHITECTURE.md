@@ -2084,3 +2084,50 @@ clicks.** The header bar keeps every button it has.
   Cached per name and size. Used for albums and playlists in the library
   and for every favorite/queue/history entry; artists and categories keep
   their symbolic icons.
+
+### 0.23: the Now Playing sheet
+
+- **`AdwBottomSheet`** is now the window's root (inside the toast overlay):
+  content = the breakpoint bin with sidebar and pages, bottom bar =
+  `PlayerBar`, sheet = `NowPlayingView`. A click on the bar outside its
+  controls opens the sheet (AdwBottomSheet's own behavior), as do the
+  cover button and `win.toggle-now-playing` (Ctrl+I). `NowPlayingView`
+  overrides `measure_vfunc()` to report a huge natural height — the sheet
+  gets its child's natural height, capped by the window, so this makes it
+  a near-full-window view instead of one hugging its content.
+- **`NowPlayingView`** (`widgets/now-playing-view.{h,cpp}`) is a pure view
+  like `PlayerBar`: `Update()`/`UpdatePosition()`/`UpdateVolume()`/
+  `SetUpNext()`/`SetLyrics…()` in, signals out. It loads its own art
+  (ArtCache raw bytes → two decodes on ArtDecodePool: 720 px for the cover,
+  64 px for the backdrop and the palette) and emits
+  `signal_palette_changed()`. Two custom-drawn widgets live in the same
+  file:
+  - `CoverBackdrop`: blurred cover (`gtk_snapshot_push_blur`), two radial
+    gradients in the palette's colors, a veil in the window color for
+    legibility; crossfades layers with an `AdwTimedAnimation`.
+  - `CoverArt`: rounded cover with an outset shadow; in record mode the
+    corner radius animates to a circle, Cairo draws grooves, a sheen and
+    the label, and a tick callback rotates it (60°/s) only while playing
+    and only if `gtk-enable-animations` is on.
+- **Cover palette** (`widgets/cover-palette.{h,cpp}`): 3-bit-per-channel
+  buckets over a sample grid; base = frequent × saturated, second = the
+  most frequent clearly different hue, glow = brightest saturated.
+  `GnomosWindow::ApplyCoverTint()` turns it into CSS in a second provider
+  (APPLICATION+1): a gradient on `.player-bar.cover-tinted` and the play
+  button's color with clamped lightness (different ranges for light and
+  dark) and black/white icon by WCAG contrast. Recomputed on
+  `AdwStyleManager::notify::dark`.
+- **Lyrics.** `LyricsFetcher` now returns a `Lyrics` struct with LRCLIB's
+  `syncedLyrics` parsed from LRC (`ParseLrc()`), preferring a synced match
+  among equally good ones. The window requests them in
+  `RequestLyricsForCurrentTrack()` (only with the opt-in on and the sheet
+  open; keyed by artist/title/album so repeated now-playing events don't
+  refetch; radio goes through `radio_lyrics_filter_` exactly like the old
+  dialog did). The view interpolates the position between the backend's
+  once-a-second updates (monotonic time since the last report) on a 4 Hz
+  timer, highlights the current line via CSS classes and scrolls it to
+  ~40 % of the height with an `AdwTimedAnimation`, unless the user
+  scrolled within the last 4 s.
+- **Removed**: `ShowTrackInfoDialog()` and its `[track_info_dialog]`
+  size persistence. New `[appearance]` keys: `cover_tint`, `cover_blur`,
+  `vinyl_mode`.
