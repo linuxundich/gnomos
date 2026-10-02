@@ -22,6 +22,12 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.28.0" date="2026-10-02">
+      <description>
+        <p>Dialogs open inside the main window again. Synced lyrics follow
+        the music smoothly, without the highlighted line jumping back.</p>
+      </description>
+    </release>
     <release version="0.27.0" date="2026-10-02">
       <description>
         <p>Preferences in two columns, with a sidebar of categories and a

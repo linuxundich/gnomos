@@ -114,7 +114,7 @@ void GnomosApplication::on_activate()
     // Top-level application windows are not owned by a container, so they
     // are not Gtk::make_managed(); this app has exactly one, and it is
     // freed when it's closed.
-    window_ = new GnomosWindow();
+    window_ = new GnomosWindow(*this);
     add_window(*window_);
   }
   window_->present();

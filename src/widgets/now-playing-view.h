@@ -214,8 +214,21 @@ private:
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   CoverPalette palette_;
   Glib::RefPtr<Gdk::Texture> cover_texture_;
-  unsigned position_seconds_ = 0;
-  gint64 position_time_ = 0;  // monotonic time position_seconds_ was reported
+  // Playback clock for the synced lyrics — see UpdatePosition(). The
+  // position is clock_base_ seconds at monotonic time clock_time_,
+  // advancing at clock_rate_ while playing.
+  double ClockNow() const;
+  void ResetClock(double seconds);
+  double clock_base_ = 0.0;
+  gint64 clock_time_ = 0;
+  double clock_rate_ = 1.0;
+  bool clock_running_ = false;
+  unsigned last_reported_position_ = G_MAXUINT;
+  // Highest clock value the lyrics have shown; the highlight only moves
+  // backwards on a real jump back (a seek), never on clock jitter.
+  double lyrics_shown_at_ = 0.0;
+  // Set by ResetClock(): the next tick may move the highlight anywhere.
+  bool lyrics_clock_reset_ = true;
   bool user_seeking_ = false;
   bool suppress_position_signal_ = false;
   bool suppress_volume_signal_ = false;

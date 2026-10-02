@@ -52,6 +52,9 @@ SettingsDialog::SettingsDialog()
   search_entry_.set_margin_end(8);
   search_entry_.set_margin_bottom(6);
   search_entry_.signal_search_changed().connect(sigc::mem_fun(*this, &SettingsDialog::OnSearchChanged));
+  // Type to search: typing anywhere in the dialog (outside a text field)
+  // goes to the search field, like in GNOME Settings.
+  search_entry_.set_key_capture_widget(*Glib::wrap(GTK_WIDGET(dialog_)));
 
   GtkWidget* sidebar_toolbar = adw_toolbar_view_new();
   GtkWidget* sidebar_header = adw_header_bar_new();

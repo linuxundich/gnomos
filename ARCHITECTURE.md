@@ -58,8 +58,10 @@ GTK). The approach used here is to construct Adwaita widgets via their C
 API (`adw_header_bar_new()`, `adw_toast_overlay_new()`, `adw_alert_dialog_new()`,
 ...) and use `Glib::wrap()` only to get a `Gtk::Widget*` handle for packing
 into gtkmm containers; Adwaita-specific behavior is driven through the raw
-`ADW_*(...)` pointers kept as members on `GnomosWindow`. `AdwApplicationWindow`
-itself is intentionally skipped in favor of a plain `Gtk::ApplicationWindow`
+`ADW_*(...)` pointers kept as members on `GnomosWindow`. (Since 0.28 the
+window itself *is* an `AdwApplicationWindow` — see "0.28" below; the text
+that follows describes the earlier choice.) `AdwApplicationWindow`
+itself was intentionally skipped in favor of a plain `Gtk::ApplicationWindow`
 — `adw_init()` installs Adwaita's styling globally regardless of the
 window's concrete type, and a window built entirely through gtkmm's own
 API is less likely to have gotten something subtly wrong than one reached
@@ -2254,7 +2256,32 @@ session (`settings_category_`) and reopened, which also makes
 `RefreshOpenSettingsDialog()` (close + reopen after Last.fm sign-in)
 land on the same page.
 
-Since `GnomosWindow` is a plain `Gtk::ApplicationWindow` (no
-`AdwApplicationWindow`, see above), every `AdwDialog` here comes up as its
-own window rather than inside the main one; the dialog's breakpoint
-follows that window's size.
+Until 0.28 `GnomosWindow` was a plain `Gtk::ApplicationWindow`, so every
+`AdwDialog` came up as its own window and this dialog's breakpoint
+followed that window instead of the main one — fixed in 0.28.
+
+### 0.28: AdwApplicationWindow, a steady lyrics clock
+
+- **The window is an `AdwApplicationWindow` now.** gtkmm has no Adw
+  classes, but `Gtk::ApplicationWindow` has a protected constructor that
+  wraps an existing `GtkApplicationWindow*` — and an
+  `AdwApplicationWindow` is one. `GnomosWindow(Gtk::Application&)` passes
+  `adw_application_window_new(app)` to it. Nothing in `GnomosWindow`
+  overrides a gtkmm vfunc (everything is signal-connected), so the
+  missing C++-derived GType doesn't matter. Content goes through
+  `adw_application_window_set_content()` — an `AdwToolbarView` with the
+  header bar on top — since `set_titlebar()`/`set_child()` aren't allowed
+  there. With an Adw window as root, `AdwDialog`s are hosted inside it
+  (sheets on narrow sizes) instead of falling back to separate windows.
+- **Lyrics clock** (`NowPlayingView::UpdatePosition()`/`ClockNow()`): the
+  position is `clock_base_ + elapsed × clock_rate_`. A report (whole
+  seconds, so taken as `s + 0.5`) more than 2 s off resets the clock;
+  otherwise it only sets the rate to `1 + drift/2`, clamped to 0.8–1.25,
+  so the clock converges without ever running backwards. Reports that
+  repeat the previous value are ignored — measured live, the device's
+  `RelTime` only advanced every second poll, and steering by the stale
+  repeat swung the rate between 0.8 and 1.2. The lyrics highlight
+  additionally never moves to an earlier line unless the clock was reset.
+  Before/after, live: drift ±0.8 s → ±0.01 s; in a simulation with
+  whole-second reports and random latency, 5 backward line moves in three
+  minutes → 0.

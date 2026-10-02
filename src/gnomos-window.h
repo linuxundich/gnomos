@@ -46,7 +46,7 @@ namespace gnomos
 class GnomosWindow : public Gtk::ApplicationWindow
 {
 public:
-  GnomosWindow();
+  explicit GnomosWindow(Gtk::Application& app);
   // library_nav_section_/services_nav_section_ need their extra reference
   // released — see their own comment.
   ~GnomosWindow() override;

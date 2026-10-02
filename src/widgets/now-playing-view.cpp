@@ -680,7 +680,17 @@ void NowPlayingView::measure_vfunc(Gtk::Orientation orientation, int for_size, i
 void NowPlayingView::Update(const NowPlaying& now_playing)
 {
   bool track_changed = now_playing.title != now_playing_.title || now_playing.artist != now_playing_.artist;
+  bool was_playing = now_playing_.state == TransportState::Playing;
   now_playing_ = now_playing;
+  // Pause freezes the clock where it is, resuming runs it on from there.
+  bool playing_now = now_playing.valid && now_playing.state == TransportState::Playing;
+  if (playing_now != was_playing && !track_changed)
+  {
+    clock_base_ = ClockNow();
+    clock_time_ = g_get_monotonic_time();
+    clock_rate_ = 1.0;
+    clock_running_ = playing_now;
+  }
   if (!now_playing.valid)
   {
     title_label_.set_text(_("Nothing Playing"));
@@ -723,8 +733,8 @@ void NowPlayingView::Update(const NowPlaying& now_playing)
   }
   if (track_changed)
   {
-    position_seconds_ = 0;
-    position_time_ = g_get_monotonic_time();
+    ResetClock(0);
+    clock_running_ = playing;
   }
 
   LoadArt(now_playing.art_uri);
@@ -732,8 +742,45 @@ void NowPlayingView::Update(const NowPlaying& now_playing)
 
 void NowPlayingView::UpdatePosition(unsigned position_seconds, unsigned duration_seconds)
 {
-  position_seconds_ = position_seconds;
-  position_time_ = g_get_monotonic_time();
+  // Sonos reports the position in whole seconds ("RelTime"), polled once a
+  // second, so a report is up to a second behind the real position (the
+  // cut-off fraction) plus the poll's own round trip. Following each
+  // report literally made the clock — and the highlighted lyric line —
+  // fall back and catch up again every few seconds. Instead the clock
+  // keeps running and only steers: a report ahead of it speeds it up a
+  // little, one behind slows it down, so it never runs backwards. Only a
+  // real jump (seek, skip within the track) of more than two seconds
+  // resets it outright.
+  double reported = position_seconds + 0.5;
+  bool playing = now_playing_.valid && now_playing_.state == TransportState::Playing;
+  if (!playing)
+  {
+    ResetClock(position_seconds);
+    clock_running_ = false;
+  }
+  else if (position_seconds == last_reported_position_ && clock_running_)
+  {
+    // Measured live: every other report repeats the previous value (the
+    // device's RelTime only advanced every two polls), so it carries no
+    // news — steering by it pulled the clock back and forth.
+  }
+  else
+  {
+    double estimate = ClockNow();
+    double drift = reported - estimate;
+    if (!clock_running_ || std::fabs(drift) > 2.0)
+    {
+      ResetClock(reported);
+    }
+    else
+    {
+      clock_base_ = estimate;
+      clock_time_ = g_get_monotonic_time();
+      clock_rate_ = std::clamp(1.0 + drift * 0.5, 0.8, 1.25);
+    }
+    clock_running_ = true;
+  }
+  last_reported_position_ = position_seconds;
   if (duration_seconds == 0 || user_seeking_)
     return;
   elapsed_label_.set_text(FormatTime(position_seconds));
@@ -872,6 +919,7 @@ void NowPlayingView::SetLyrics(const Lyrics& lyrics)
     lyric_lines_.emplace_back(ms, label);
   }
   user_scrolled_at_ = 0;
+  lyrics_clock_reset_ = true;
   lyrics_scroller_.get_vadjustment()->set_value(0);
 }
 
@@ -879,8 +927,14 @@ bool NowPlayingView::OnLyricsTick()
 {
   if (current_lyric_ == -2 || lyric_lines_.empty() || !now_playing_.valid)
     return true;
-  gint64 elapsed_us = now_playing_.state == TransportState::Playing ? g_get_monotonic_time() - position_time_ : 0;
-  gint64 position_ms = static_cast<gint64>(position_seconds_) * 1000 + elapsed_us / 1000;
+  double position = ClockNow();
+  // A clock that went back by more than two seconds was reset by a seek —
+  // only then may the highlight move up again.
+  bool jumped_back = lyrics_clock_reset_ || position < lyrics_shown_at_ - 2.0;
+  lyrics_clock_reset_ = false;
+  if (jumped_back || position > lyrics_shown_at_)
+    lyrics_shown_at_ = position;
+  gint64 position_ms = static_cast<gint64>(lyrics_shown_at_ * 1000);
   int index = -1;
   for (size_t i = 0; i < lyric_lines_.size(); ++i)
   {
@@ -889,9 +943,24 @@ bool NowPlayingView::OnLyricsTick()
     else
       break;
   }
-  if (index != current_lyric_)
+  if (index != current_lyric_ && (index > current_lyric_ || jumped_back))
     HighlightLyricLine(index, true);
   return true;
+}
+
+double NowPlayingView::ClockNow() const
+{
+  if (!clock_running_ || clock_time_ == 0)
+    return clock_base_;
+  return clock_base_ + (g_get_monotonic_time() - clock_time_) / 1e6 * clock_rate_;
+}
+
+void NowPlayingView::ResetClock(double seconds)
+{
+  clock_base_ = seconds;
+  clock_time_ = g_get_monotonic_time();
+  clock_rate_ = 1.0;
+  lyrics_clock_reset_ = true;
 }
 
 void NowPlayingView::HighlightLyricLine(int index, bool animate)

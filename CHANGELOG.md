@@ -8,6 +8,24 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.28.0] - 2026-10-02
+
+### Changed
+- Dialogs open inside the main window again instead of as windows of
+  their own, and adapt to its size: the main window is a real
+  libadwaita application window now.
+- Type to search in the preferences: typing anywhere in the dialog goes
+  to its search field.
+
+### Fixed
+- Synced lyrics no longer jump back a line and forward again. Sonos
+  reports the position only in whole seconds, and every other report
+  repeats the previous one; following each report literally made the
+  clock fall back. It now runs on smoothly, steers gently toward the
+  reports, ignores repeats, and only resets on a real jump such as a
+  seek. Measured live: deviation from the reports within ±0.01 s, no
+  backward line changes.
+
 ## [0.27.0] - 2026-10-02
 
 ### Changed

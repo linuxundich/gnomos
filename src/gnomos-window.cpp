@@ -76,7 +76,13 @@
 namespace gnomos
 {
 
-GnomosWindow::GnomosWindow()
+// The C++ object wraps an AdwApplicationWindow created by libadwaita —
+// gtkmm has no Adw:: classes (see ARCHITECTURE.md), but an
+// AdwApplicationWindow *is* a GtkApplicationWindow, so the protected
+// "wrap this instance" constructor accepts it. It's what makes every
+// AdwDialog open inside this window instead of as a window of its own.
+GnomosWindow::GnomosWindow(Gtk::Application& app)
+: Gtk::ApplicationWindow(GTK_APPLICATION_WINDOW(adw_application_window_new(app.gobj())))
 {
   set_title("Gnomos");
   // Section sidebar + page content; player_bar_ is a fixed-height bottom
@@ -600,7 +606,6 @@ GnomosWindow::GnomosWindow()
   sound_popover_.signal_show().connect([this] { backend_->RefreshSoundSettingsAsync(); });
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(sound_button_.gobj()));
 
-  set_titlebar(*Glib::wrap(header_bar_));
 
   // --- Room/zone list — now room_popover_'s content instead of a
   // permanent sidebar (see room_button_'s own comment). Sized like a
@@ -993,7 +998,13 @@ GnomosWindow::GnomosWindow()
   // --- Toast overlay wraps everything, for error feedback ---
   toast_overlay_ = adw_toast_overlay_new();
   adw_toast_overlay_set_child(ADW_TOAST_OVERLAY(toast_overlay_), bottom_sheet_);
-  set_child(*Glib::wrap(toast_overlay_));
+  // AdwApplicationWindow takes a single content widget (no set_titlebar()/
+  // set_child()); the header bar sits on top of everything via a toolbar
+  // view.
+  GtkWidget* toolbar_view = adw_toolbar_view_new();
+  adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view), header_bar_);
+  adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar_view), toast_overlay_);
+  adw_application_window_set_content(ADW_APPLICATION_WINDOW(gobj()), toolbar_view);
 
   // --- Backend wiring ---
   backend_ = std::make_unique<NosonBackend>();
