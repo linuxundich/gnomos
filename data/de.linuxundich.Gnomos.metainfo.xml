@@ -22,6 +22,12 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.28.1" date="2026-10-02">
+      <description>
+        <p>The end of the sidebar and of every page no longer hides behind
+        the player bar on smaller windows.</p>
+      </description>
+    </release>
     <release version="0.28.0" date="2026-10-02">
       <description>
         <p>Dialogs open inside the main window again. Synced lyrics follow

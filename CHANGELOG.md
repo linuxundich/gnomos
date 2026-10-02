@@ -8,6 +8,13 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.28.1] - 2026-10-02
+
+### Fixed
+- On smaller windows the end of the sidebar (e.g. linked services and
+  "Dienst verknüpfen…") and of every page sat behind the player bar and
+  couldn't be scrolled into view. The content now ends above the bar.
+
 ## [0.28.0] - 2026-10-02
 
 ### Changed

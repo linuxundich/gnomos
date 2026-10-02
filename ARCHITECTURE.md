@@ -2285,3 +2285,12 @@ followed that window instead of the main one — fixed in 0.28.
   Before/after, live: drift ±0.8 s → ±0.01 s; in a simulation with
   whole-second reports and random latency, 5 backward line moves in three
   minutes → 0.
+
+### 0.28.1: content ends above the player bar
+
+`AdwBottomSheet` draws its bottom bar *over* the content. Since 0.23 the
+last sidebar items and list rows could therefore end up behind the player
+bar with no way to scroll them clear. The content (the breakpoint bin)
+now gets a bottom margin equal to the sheet's `bottom-bar-height`,
+updated on `notify::bottom-bar-height` — the property libadwaita provides
+for exactly this.

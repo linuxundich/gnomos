@@ -984,6 +984,15 @@ GnomosWindow::GnomosWindow(Gtk::Application& app)
   Gtk::Widget* wrapped_breakpoint_bin = Glib::wrap(breakpoint_bin);
   wrapped_breakpoint_bin->set_vexpand(true);
   adw_bottom_sheet_set_content(ADW_BOTTOM_SHEET(bottom_sheet_), breakpoint_bin);
+  // The bottom bar is drawn *over* the content, not below it — without
+  // this, the end of the sidebar and of every page scrolled behind the
+  // player bar on smaller windows (reported live: "Bonob" and "Dienst
+  // verknüpfen" unreachable). bottom-bar-height exists for exactly this.
+  g_signal_connect(bottom_sheet_, "notify::bottom-bar-height", G_CALLBACK(+[](GObject* sheet, GParamSpec*, gpointer content) {
+                     gtk_widget_set_margin_bottom(GTK_WIDGET(content),
+                                                  adw_bottom_sheet_get_bottom_bar_height(ADW_BOTTOM_SHEET(sheet)));
+                   }),
+                   breakpoint_bin);
   adw_bottom_sheet_set_bottom_bar(ADW_BOTTOM_SHEET(bottom_sheet_), GTK_WIDGET(player_bar_.gobj()));
   adw_bottom_sheet_set_sheet(ADW_BOTTOM_SHEET(bottom_sheet_), GTK_WIDGET(now_playing_view_.gobj()));
   adw_bottom_sheet_set_show_drag_handle(ADW_BOTTOM_SHEET(bottom_sheet_), TRUE);
