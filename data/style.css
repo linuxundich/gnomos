@@ -232,3 +232,8 @@ listview.library-list > row:last-child {
   border-bottom-left-radius: 12px;
   border-bottom-right-radius: 12px;
 }
+
+/* A row being dragged (rooms popover, queue): its snapshot on a card. */
+.drag-row {
+  padding: 2px 6px;
+}

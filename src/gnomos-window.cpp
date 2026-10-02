@@ -71,6 +71,7 @@
 #include "widgets/lastfm-scrobbler.h"
 #include "widgets/listenbrainz-scrobbler.h"
 #include "widgets/lyrics-fetcher.h"
+#include "widgets/playback-ui.h"
 #include "widgets/radio-browser-service.h"
 
 namespace gnomos
@@ -1354,6 +1355,7 @@ void GnomosWindow::OnZonesChanged()
           return Gdk::ContentProvider::create(value);
         },
         false);
+    SetRowDragIcon(drag_source, *row_box);
     row_box->add_controller(drag_source);
 
     std::string drop_coordinator_uuid = zone.coordinator_uuid;

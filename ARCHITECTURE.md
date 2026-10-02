@@ -2304,3 +2304,15 @@ in the window's copy of the entries only, so the backend's indices are
 untouched. `LibraryView`'s `WantsGeneratedCover()` now also covers plain
 tracks (no specific icon); their seed is the subtitle (artist/album), so
 one album's tracks share a color while the full track list still varies.
+
+### 0.28.3: User-Agent, lyrics cache, drag icons
+
+`HttpFetch()`'s shared `SoupSession` sends `Gnomos/<version> (repo URL)` as
+User-Agent — LRCLIB answers requests without one with an occasional 503.
+`LyricsFetcher` treats an empty body (failed or cancelled request) as "no
+answer" and doesn't cache it, so a later request asks again.
+`NowPlayingView::HighlightLyricLine(-1)` scrolls back to the top instead
+of returning early. `SetRowDragIcon()` (playback-ui) gives the rooms
+popover and the queue a snapshot of the dragged row on a card as drag
+icon, hotspot at the pointer — GTK's default icon for a string payload is
+the raw text, i.e. the Sonos group id.

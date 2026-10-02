@@ -7,6 +7,7 @@
 
 #include <string>
 
+#include <gtkmm/dragsource.h>
 #include <gtkmm/widget.h>
 
 #include "../backend/noson-types.h"
@@ -44,5 +45,10 @@ private:
 // Tooltip plus accessible label in one call — an icon-only button has no
 // text a screen reader could announce otherwise.
 void SetButtonLabel(Gtk::Widget& widget, const std::string& label);
+
+// Drags the row itself: a snapshot of `row` on a card, held where the
+// pointer grabbed it — instead of GTK's default icon, which for a string
+// payload is the raw text (a Sonos group id, for the rooms popover).
+void SetRowDragIcon(const Glib::RefPtr<Gtk::DragSource>& source, Gtk::Widget& row);
 
 }  // namespace gnomos

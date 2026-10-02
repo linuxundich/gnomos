@@ -2,6 +2,7 @@
 
 #include "queue-view.h"
 #include "../i18n.h"
+#include "playback-ui.h"
 
 #include <algorithm>
 #include <string>
@@ -179,6 +180,7 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
           return Gdk::ContentProvider::create(value);
         },
         false);
+    SetRowDragIcon(drag_source, *row_box);
     row_box->add_controller(drag_source);
 
     auto drop_target = Gtk::DropTarget::create(Glib::Value<int>::value_type(), Gdk::DragAction::MOVE);

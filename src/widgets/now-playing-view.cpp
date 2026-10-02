@@ -976,18 +976,24 @@ void NowPlayingView::HighlightLyricLine(int index, bool animate)
       label->add_css_class("past");
   }
   current_lyric_ = index;
-  if (index < 0 || !get_mapped())
+  if (!get_mapped())
     return;
   // Respect a recent manual scroll — see the vadjustment handler.
   if (user_scrolled_at_ != 0 && g_get_monotonic_time() - user_scrolled_at_ < 4 * G_USEC_PER_SEC)
     return;
 
-  Gtk::Label* label = lyric_lines_[index].second;
-  auto bounds = label->compute_bounds(lyrics_box_);
-  if (!bounds)
-    return;
+  // Before the first line (the track restarted, or a seek back into the
+  // intro) the view returns to the top instead of staying where the last
+  // play left it.
   auto adjustment = lyrics_scroller_.get_vadjustment();
-  double target = bounds->get_y() + bounds->get_height() / 2 - lyrics_scroller_.get_height() * 0.4;
+  double target = adjustment->get_lower();
+  if (index >= 0)
+  {
+    auto bounds = lyric_lines_[index].second->compute_bounds(lyrics_box_);
+    if (!bounds)
+      return;
+    target = bounds->get_y() + bounds->get_height() / 2 - lyrics_scroller_.get_height() * 0.4;
+  }
   target = std::clamp(target, adjustment->get_lower(), adjustment->get_upper() - adjustment->get_page_size());
   double from = adjustment->get_value();
   if (!animate || !AnimationsEnabled())

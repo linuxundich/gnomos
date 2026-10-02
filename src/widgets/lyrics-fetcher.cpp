@@ -256,6 +256,14 @@ void LyricsFetcher::RequestLyricsAttempt(const std::string& artist,
   HttpFetch(
       url,
       [this, artist, attempts, index, cache_key, callback, cancellable](std::string body) mutable {
+        // No body at all is a failed or cancelled request, not an answer:
+        // give up on this lookup without caching it, so the next try (the
+        // track coming back, the view reopening) asks LRCLIB again.
+        if (body.empty())
+        {
+          callback({});
+          return;
+        }
         Lyrics lyrics = ExtractBestLyrics(body, artist);
         if (lyrics.empty() && index + 1 < attempts.size())
         {

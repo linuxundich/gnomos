@@ -8,6 +8,19 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.28.3] - 2026-10-02
+
+### Fixed
+- Lyrics sometimes showed "No lyrics found." although LRCLIB has them:
+  Gnomos sent its web requests without a User-Agent, which LRCLIB
+  answers with an occasional 503. Requests now identify as Gnomos, and a
+  failed request is no longer remembered as "no lyrics" for the session.
+- When a track restarts (or you seek back into its intro), the lyrics
+  scroll back to the top instead of staying where the last play left off.
+- Dragging a room in the room picker showed its internal Sonos group id
+  next to the pointer. Room and queue rows now drag as a picture of the
+  row itself, held where you grabbed it.
+
 ## [0.28.2] - 2026-10-02
 
 ### Fixed

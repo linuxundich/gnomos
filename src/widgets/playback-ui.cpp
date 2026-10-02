@@ -92,4 +92,37 @@ void SetButtonLabel(Gtk::Widget& widget, const std::string& label)
   gtk_accessible_update_property(GTK_ACCESSIBLE(widget.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, label.c_str(), -1);
 }
 
+void SetRowDragIcon(const Glib::RefPtr<Gtk::DragSource>& source, Gtk::Widget& row)
+{
+  // Raw pointer: the controller is owned by the row, so the row outlives
+  // every drag the controller starts.
+  Gtk::Widget* widget = &row;
+  source->signal_drag_begin().connect([widget](const Glib::RefPtr<Gdk::Drag>& drag) {
+    GdkPaintable* live = gtk_widget_paintable_new(GTK_WIDGET(widget->gobj()));
+    GdkPaintable* image = gdk_paintable_get_current_image(live);
+    g_object_unref(live);
+    GtkWidget* picture = gtk_picture_new_for_paintable(image);
+    g_object_unref(image);
+    gtk_picture_set_can_shrink(GTK_PICTURE(picture), FALSE);
+    GtkWidget* card = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_add_css_class(card, "card");
+    gtk_widget_add_css_class(card, "drag-row");
+    gtk_box_append(GTK_BOX(card), picture);
+    gtk_drag_icon_set_child(GTK_DRAG_ICON(gtk_drag_icon_get_for_drag(drag->gobj())), card);
+
+    // Where the pointer is now, in row coordinates — the gesture's own
+    // point is gone by the time the drag has begun.
+    GtkNative* native = gtk_widget_get_native(GTK_WIDGET(widget->gobj()));
+    double sx = 0, sy = 0, tx = 0, ty = 0;
+    gdk_surface_get_device_position(gtk_native_get_surface(native), gdk_drag_get_device(drag->gobj()), &sx, &sy,
+                                    nullptr);
+    gtk_native_get_surface_transform(native, &tx, &ty);
+    graphene_point_t in_native = GRAPHENE_POINT_INIT(static_cast<float>(sx - tx), static_cast<float>(sy - ty));
+    graphene_point_t in_row;
+    if (!gtk_widget_compute_point(GTK_WIDGET(native), GTK_WIDGET(widget->gobj()), &in_native, &in_row))
+      in_row = GRAPHENE_POINT_INIT(0, 0);
+    gdk_drag_set_hotspot(drag->gobj(), static_cast<int>(in_row.x), static_cast<int>(in_row.y));
+  });
+}
+
 }  // namespace gnomos

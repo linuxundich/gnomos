@@ -7,6 +7,8 @@
 
 #include <libsoup/soup.h>
 
+#include "config.h"
+
 namespace gnomos
 {
 
@@ -49,7 +51,11 @@ void StartNext();
 // themselves already process-wide singletons.
 SoupSession* Session()
 {
-  static SoupSession* session = soup_session_new();
+  // LRCLIB asks clients to identify themselves and answers requests
+  // without a User-Agent with an occasional 503 — which used to surface as
+  // "No lyrics found".
+  static SoupSession* session =
+      soup_session_new_with_options("user-agent", "Gnomos/" PACKAGE_VERSION " (https://github.com/linuxundich/gnomos)", nullptr);
   return session;
 }
 
