@@ -194,17 +194,8 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   list_box_.set_margin_start(12);
   list_box_.set_margin_end(12);
 
-  // row->get_index() would be the row's position among the currently
-  // *displayed* (possibly filter_entry_-narrowed) rows, not its real
-  // position in all_entries_ — wrong the moment a filter is active, since
-  // then they diverge (confirmed live: filtering down to one match and
-  // activating it opened all_entries_[0] instead). BuildList() stashes the
-  // real index as GObject data on each row instead, read back here.
-  list_box_.signal_row_activated().connect([this](Gtk::ListBoxRow* row) {
-    if (row)
-      signal_entry_activated_.emit(
-          static_cast<unsigned>(GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(row->gobj()), "entry-index"))));
-  });
+  // list_box_ only ever shows a placeholder now (empty level, loading);
+  // entries go into list_view_/grid_view_ below.
 
   // Grid mode (Albums/Artists — see the header comment on SetEntries()),
   // styled after Euphonica's own Albums/Artists grid
@@ -215,8 +206,8 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   // a real, keyboard-focusable grid item rather than a Box with a click
   // gesture. GridView also gives every column the same width by itself,
   // which the wrap box needed pixel-measured, pre-truncated labels for.
-  grid_model_ = Gtk::StringList::create();
-  grid_view_.set_model(Gtk::NoSelection::create(grid_model_));
+  entries_model_ = Gtk::StringList::create();
+  grid_view_.set_model(Gtk::NoSelection::create(entries_model_));
   auto factory = Gtk::SignalListItemFactory::create();
   factory->signal_setup().connect(sigc::mem_fun(*this, &LibraryView::SetupGridTile));
   factory->signal_bind().connect(sigc::mem_fun(*this, &LibraryView::BindGridTile));
@@ -226,27 +217,30 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   grid_view_.set_single_click_activate(true);
   grid_view_.add_css_class("library-grid");
   grid_view_.signal_activate().connect([this](guint position) {
-    signal_entry_activated_.emit(static_cast<unsigned>(std::stoul(grid_model_->get_string(position).raw())));
+    signal_entry_activated_.emit(static_cast<unsigned>(std::stoul(entries_model_->get_string(position).raw())));
+  });
+
+  // List mode: a virtualized Gtk::ListView over the same model, for levels
+  // like "Tracks" with thousands of entries. Rows are recycled while
+  // scrolling (SetupListRow()/BindListRow()); a row's real index into
+  // all_entries_ comes from the model, never from its on-screen position,
+  // which shifts as soon as the filter hides entries.
+  auto list_factory = Gtk::SignalListItemFactory::create();
+  list_factory->signal_setup().connect(sigc::mem_fun(*this, &LibraryView::SetupListRow));
+  list_factory->signal_bind().connect(sigc::mem_fun(*this, &LibraryView::BindListRow));
+  list_view_.set_model(Gtk::NoSelection::create(entries_model_));
+  list_view_.set_factory(list_factory);
+  list_view_.set_single_click_activate(true);
+  list_view_.set_show_separators(true);
+  list_view_.add_css_class("library-list");
+  list_view_.signal_activate().connect([this](guint position) {
+    signal_entry_activated_.emit(static_cast<unsigned>(std::stoul(entries_model_->get_string(position).raw())));
   });
 
   scroller_.set_child(list_box_);
   scroller_.set_vexpand(true);
   scroller_.set_hexpand(true);
   append(scroller_);
-
-  // See OnScrollSettled()'s own comment. 150ms after the last scroll event
-  // — long enough that a still-moving scroll (a drag, a momentum fling)
-  // doesn't trigger a bounds check per tick, short enough that a genuine
-  // stop reprioritizes promptly rather than visibly lagging behind.
-  scroller_.get_vadjustment()->signal_value_changed().connect([this] {
-    scroll_settle_connection_.disconnect();
-    scroll_settle_connection_ = Glib::signal_timeout().connect(
-        [this] {
-          OnScrollSettled();
-          return false;  // one-shot
-        },
-        150);
-  });
 }
 
 LibraryView::~LibraryView()
@@ -326,13 +320,19 @@ void LibraryView::ApplyFilter()
   count_label_.set_visible(!indices.empty());
 
   bool grid = grid_available_ && grid_active_;
-  scroller_.set_child(grid ? static_cast<Gtk::Widget&>(grid_view_) : static_cast<Gtk::Widget&>(list_box_));
-  if (grid)
-    BuildGrid(indices);
+  // Reordering only makes sense on the unfiltered list — see SetEntries().
+  list_reorder_active_ = show_reorder_action_ && term.empty();
+  // An empty level shows list_box_, which carries the "nothing found"
+  // placeholder; otherwise one of the two virtualized views.
+  if (indices.empty())
+    scroller_.set_child(list_box_);
   else
-    BuildList(indices, show_favorite_action_, show_delete_action_, show_add_to_playlist_action_,
-              show_reorder_action_ && term.empty(), show_queue_actions_, load_artist_images_,
-              show_radio_settings_action_);
+    scroller_.set_child(grid ? static_cast<Gtk::Widget&>(grid_view_) : static_cast<Gtk::Widget&>(list_view_));
+  std::vector<Glib::ustring> items;
+  items.reserve(indices.size());
+  for (unsigned index : indices)
+    items.push_back(std::to_string(index));
+  entries_model_->splice(0, entries_model_->get_n_items(), items);
 
   // "Play all"/"queue all" only make sense once every entry at the (full,
   // unfiltered) level is a leaf track, and only while no filter is
@@ -345,200 +345,152 @@ void LibraryView::ApplyFilter()
   queue_all_button_.set_visible(all_leaf && term.empty() && show_queue_all_action_);
 }
 
-void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
-                             bool show_add_to_playlist_action, bool show_reorder_action, bool show_queue_actions,
-                             bool load_artist_images, bool show_radio_settings_action)
+namespace
 {
-  for (unsigned index : indices)
-  {
-    const LibraryEntry& entry = all_entries_[index];
-    auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
-    row_box->set_margin_top(6);
-    row_box->set_margin_bottom(6);
-    row_box->set_margin_start(6);
-    row_box->set_margin_end(6);
+// The widgets of one recycled list row, kept on the row's box as GObject
+// data — BindListRow() fills them for whatever entry the row shows now, and
+// the buttons read `index` when clicked.
+struct LibraryListRow
+{
+  unsigned index = 0;
+  CoverThumbnail* thumbnail = nullptr;
+  Gtk::Label* title = nullptr;
+  Gtk::Label* subtitle = nullptr;
+  Gtk::Button* favorite = nullptr;
+  Gtk::Button* remove = nullptr;
+  Gtk::Button* radio_settings = nullptr;
+  Gtk::Button* move_up = nullptr;
+  Gtk::Button* move_down = nullptr;
+  Gtk::Image* chevron = nullptr;
+  Gtk::Button* add_to_queue = nullptr;
+  Gtk::Button* play_next = nullptr;
+  Gtk::Button* play_now = nullptr;
+  Gtk::Button* add_to_playlist = nullptr;
+};
+constexpr const char* kLibraryListRowKey = "gnomos-library-row";
 
-    auto* thumbnail = Gtk::make_managed<CoverThumbnail>();
-    thumbnail->SetFallbackIconName(entry.icon_name);
-    if (WantsGeneratedCover(entry))
-      thumbnail->SetGeneratedFallback(entry.title);
-    // "avatar-default-symbolic" is exactly the icon IconNameForSubType()
-    // (noson-backend.cpp) assigns for an artist (DigitalItem::SubType_person)
-    // — the one entry type with no real art of its own to fall back to.
-    if (load_artist_images && entry.icon_name == "avatar-default-symbolic" && entry.art_uri.empty())
-      thumbnail->LoadArtistImage(entry.title);
-    else
-      thumbnail->SetArtUri(entry.art_uri);
-    row_box->append(*thumbnail);
-    thumbnails_.push_back(thumbnail);
+Gtk::Button* MakeRowButton(Gtk::Box& row, const char* icon, const char* tooltip)
+{
+  auto* button = Gtk::make_managed<Gtk::Button>();
+  button->set_icon_name(icon);
+  button->add_css_class("flat");
+  button->set_valign(Gtk::Align::CENTER);
+  button->set_tooltip_text(tooltip);
+  row.append(*button);
+  return button;
+}
+}  // namespace
 
-    auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
-    labels->set_hexpand(true);
-    labels->set_valign(Gtk::Align::CENTER);
-    auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? _("Untitled") : entry.title);
-    title->set_halign(Gtk::Align::START);
-    title->set_ellipsize(Pango::EllipsizeMode::END);
-    labels->append(*title);
-    if (!entry.subtitle.empty())
-    {
-      auto* subtitle = Gtk::make_managed<Gtk::Label>(entry.subtitle);
-      subtitle->set_halign(Gtk::Align::START);
-      subtitle->set_ellipsize(Pango::EllipsizeMode::END);
-      subtitle->add_css_class("dimmed");
-      subtitle->add_css_class("caption");
-      labels->append(*subtitle);
-    }
-    row_box->append(*labels);
+void LibraryView::SetupListRow(const Glib::RefPtr<Gtk::ListItem>& item)
+{
+  auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
+  row_box->set_margin_top(6);
+  row_box->set_margin_bottom(6);
+  row_box->set_margin_start(6);
+  row_box->set_margin_end(6);
+  auto* row = new LibraryListRow;
+  g_object_set_data_full(G_OBJECT(row_box->gobj()), kLibraryListRowKey, row,
+                         [](gpointer data) { delete static_cast<LibraryListRow*>(data); });
 
-    // Both a container (a whole album/playlist/artist) and a leaf track can
-    // be favorited in Sonos, unlike add-to-queue/play-next which only make
-    // sense for a leaf — so this button sits outside the container/leaf
-    // split below, common to both branches.
-    if (show_favorite_action)
-    {
-      auto* favorite_button = Gtk::make_managed<Gtk::Button>();
-      favorite_button->set_icon_name("non-starred-symbolic");
-      favorite_button->add_css_class("flat");
-      favorite_button->set_valign(Gtk::Align::CENTER);
-      favorite_button->set_tooltip_text(_("Add to Favorites"));
-      favorite_button->signal_clicked().connect([this, index] { signal_add_to_favorites_requested_.emit(index); });
-      row_box->append(*favorite_button);
-    }
+  row->thumbnail = Gtk::make_managed<CoverThumbnail>();
+  row_box->append(*row->thumbnail);
 
-    // Only ever true while browsing "SQ:" or "R:0/0" — see SetEntries()'s
-    // own comment. Every entry at either level is a container (a saved
-    // playlist or a radio station), so this sits alongside the favorite
-    // button rather than inside the leaf-only branch below.
-    if (show_delete_action)
-    {
-      auto* delete_button = Gtk::make_managed<Gtk::Button>();
-      delete_button->set_icon_name("user-trash-symbolic");
-      delete_button->add_css_class("flat");
-      delete_button->set_valign(Gtk::Align::CENTER);
-      delete_button->set_tooltip_text(_("Delete"));
-      delete_button->signal_clicked().connect([this, index] { signal_delete_requested_.emit(index); });
-      row_box->append(*delete_button);
-    }
+  auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
+  labels->set_hexpand(true);
+  labels->set_valign(Gtk::Align::CENTER);
+  row->title = Gtk::make_managed<Gtk::Label>();
+  row->title->set_halign(Gtk::Align::START);
+  row->title->set_ellipsize(Pango::EllipsizeMode::END);
+  labels->append(*row->title);
+  row->subtitle = Gtk::make_managed<Gtk::Label>();
+  row->subtitle->set_halign(Gtk::Align::START);
+  row->subtitle->set_ellipsize(Pango::EllipsizeMode::END);
+  row->subtitle->add_css_class("dimmed");
+  row->subtitle->add_css_class("caption");
+  labels->append(*row->subtitle);
+  row_box->append(*labels);
 
-    // Only ever true while browsing "R:0/0" — not "SQ:", saved playlists
-    // have no notification-relevant settings. Opens GnomosWindow's
-    // per-station settings dialog (mpris_enabled + regex, see
-    // RadioMprisSettings) — governs both MPRIS reporting and Verlauf
-    // recording for this station now, not just MPRIS.
-    if (show_radio_settings_action)
-    {
-      auto* radio_settings_button = Gtk::make_managed<Gtk::Button>();
-      radio_settings_button->set_icon_name("emblem-system-symbolic");
-      radio_settings_button->add_css_class("flat");
-      radio_settings_button->set_valign(Gtk::Align::CENTER);
-      radio_settings_button->set_tooltip_text(_("Notifications"));
-      radio_settings_button->signal_clicked().connect(
-          [this, index] { signal_radio_settings_requested_.emit(index); });
-      row_box->append(*radio_settings_button);
-    }
+  // Every possible action button exists on every row; BindListRow() shows
+  // the ones that apply to the entry and level — see SetEntries() for
+  // which flag gates which.
+  row->favorite = MakeRowButton(*row_box, "non-starred-symbolic", _("Add to Favorites"));
+  row->favorite->signal_clicked().connect([this, row] { signal_add_to_favorites_requested_.emit(row->index); });
+  row->remove = MakeRowButton(*row_box, "user-trash-symbolic", _("Delete"));
+  row->remove->signal_clicked().connect([this, row] { signal_delete_requested_.emit(row->index); });
+  row->radio_settings = MakeRowButton(*row_box, "emblem-system-symbolic", _("Notifications"));
+  row->radio_settings->signal_clicked().connect([this, row] { signal_radio_settings_requested_.emit(row->index); });
+  row->move_up = MakeRowButton(*row_box, "go-up-symbolic", _("Move Up"));
+  row->move_up->signal_clicked().connect([this, row] { signal_reorder_requested_.emit(row->index, row->index - 1); });
+  row->move_down = MakeRowButton(*row_box, "go-down-symbolic", _("Move Down"));
+  row->move_down->signal_clicked().connect([this, row] { signal_reorder_requested_.emit(row->index, row->index + 1); });
+  row->chevron = Gtk::make_managed<Gtk::Image>();
+  row->chevron->set_from_icon_name("go-next-symbolic");
+  row->chevron->add_css_class("dimmed");
+  row_box->append(*row->chevron);
+  row->add_to_queue = MakeRowButton(*row_box, "list-add-symbolic", _("Add to Queue"));
+  row->add_to_queue->signal_clicked().connect([this, row] { signal_add_to_queue_requested_.emit(row->index); });
+  row->play_next = MakeRowButton(*row_box, "media-skip-forward-symbolic", _("Play Next"));
+  row->play_next->signal_clicked().connect([this, row] { signal_play_next_requested_.emit(row->index); });
+  // See SetEntries() — "play now" emits exactly what activating the row does.
+  row->play_now = MakeRowButton(*row_box, "media-playback-start-symbolic", _("Play Now"));
+  row->play_now->signal_clicked().connect([this, row] { signal_entry_activated_.emit(row->index); });
+  row->add_to_playlist = MakeRowButton(*row_box, "bookmark-new-symbolic", _("Add to Playlist"));
+  row->add_to_playlist->signal_clicked().connect([this, row] { signal_add_to_playlist_requested_.emit(row->index); });
 
-    // Only while viewing a specific saved playlist's own track listing
-    // (and unfiltered — see SetEntries()'s own comment) — indices is then
-    // exactly 0..all_entries_.size()-1 in order, so index doubles as this
-    // row's real position for the edge checks below.
-    if (show_reorder_action)
-    {
-      auto* up_button = Gtk::make_managed<Gtk::Button>();
-      up_button->set_icon_name("go-up-symbolic");
-      up_button->add_css_class("flat");
-      up_button->set_valign(Gtk::Align::CENTER);
-      up_button->set_tooltip_text(_("Move Up"));
-      up_button->set_sensitive(index > 0);
-      up_button->signal_clicked().connect([this, index] { signal_reorder_requested_.emit(index, index - 1); });
-      row_box->append(*up_button);
-
-      auto* down_button = Gtk::make_managed<Gtk::Button>();
-      down_button->set_icon_name("go-down-symbolic");
-      down_button->add_css_class("flat");
-      down_button->set_valign(Gtk::Align::CENTER);
-      down_button->set_tooltip_text(_("Move Down"));
-      down_button->set_sensitive(index + 1 < all_entries_.size());
-      down_button->signal_clicked().connect([this, index] { signal_reorder_requested_.emit(index, index + 1); });
-      row_box->append(*down_button);
-    }
-
-    if (entry.is_container)
-    {
-      auto* chevron = Gtk::make_managed<Gtk::Image>();
-      chevron->set_from_icon_name("go-next-symbolic");
-      chevron->add_css_class("dimmed");
-      row_box->append(*chevron);
-    }
-    else
-    {
-      // See SetEntries()'s own comment — both buttons back onto
-      // AVTransport::AddURIToQueue(), which fails outright for an entry
-      // System::CanQueueItem() reports as not queueable (e.g. a live
-      // radio stream); GnomosWindow turns this off for exactly those
-      // levels rather than showing two buttons guaranteed to error.
-      if (show_queue_actions)
-      {
-        auto* add_button = Gtk::make_managed<Gtk::Button>();
-        add_button->set_icon_name("list-add-symbolic");
-        add_button->add_css_class("flat");
-        add_button->set_valign(Gtk::Align::CENTER);
-        add_button->set_tooltip_text(_("Add to Queue"));
-        add_button->signal_clicked().connect([this, index] { signal_add_to_queue_requested_.emit(index); });
-        row_box->append(*add_button);
-
-        auto* play_next_button = Gtk::make_managed<Gtk::Button>();
-        play_next_button->set_icon_name("media-skip-forward-symbolic");
-        play_next_button->add_css_class("flat");
-        play_next_button->set_valign(Gtk::Align::CENTER);
-        play_next_button->set_tooltip_text(_("Play Next"));
-        play_next_button->signal_clicked().connect([this, index] { signal_play_next_requested_.emit(index); });
-        row_box->append(*play_next_button);
-      }
-      else
-      {
-        // See SetEntries()'s own comment — the entry that would otherwise
-        // get add-to-queue/play-next gets a single, explicit "play now"
-        // instead, emitting exactly what activating the row itself
-        // already would.
-        auto* play_now_button = Gtk::make_managed<Gtk::Button>();
-        play_now_button->set_icon_name("media-playback-start-symbolic");
-        play_now_button->add_css_class("flat");
-        play_now_button->set_valign(Gtk::Align::CENTER);
-        play_now_button->set_tooltip_text(_("Play Now"));
-        play_now_button->signal_clicked().connect([this, index] { signal_entry_activated_.emit(index); });
-        row_box->append(*play_now_button);
-      }
-
-      if (show_add_to_playlist_action)
-      {
-        auto* add_to_playlist_button = Gtk::make_managed<Gtk::Button>();
-        add_to_playlist_button->set_icon_name("bookmark-new-symbolic");
-        add_to_playlist_button->add_css_class("flat");
-        add_to_playlist_button->set_valign(Gtk::Align::CENTER);
-        add_to_playlist_button->set_tooltip_text(_("Add to Playlist"));
-        add_to_playlist_button->signal_clicked().connect(
-            [this, index] { signal_add_to_playlist_requested_.emit(index); });
-        row_box->append(*add_to_playlist_button);
-      }
-    }
-
-    // Explicit Gtk::ListBoxRow (rather than letting list_box_.append() auto-
-    // wrap row_box in an anonymous one) so the real all_entries_ index can
-    // be stashed on it — see signal_row_activated()'s own comment.
-    auto* row = Gtk::make_managed<Gtk::ListBoxRow>();
-    g_object_set_data(G_OBJECT(row->gobj()), "entry-index", GUINT_TO_POINTER(index));
-    row->set_child(*row_box);
-    list_box_.append(*row);
-  }
+  item->set_child(*row_box);
 }
 
-void LibraryView::BuildGrid(const std::vector<unsigned>& indices)
+void LibraryView::BindListRow(const Glib::RefPtr<Gtk::ListItem>& item)
 {
-  std::vector<Glib::ustring> items;
-  items.reserve(indices.size());
-  for (unsigned index : indices)
-    items.push_back(std::to_string(index));
-  grid_model_->splice(0, grid_model_->get_n_items(), items);
+  auto string_object = std::dynamic_pointer_cast<Gtk::StringObject>(item->get_item());
+  auto* row_box = item->get_child();
+  if (!string_object || !row_box)
+    return;
+  unsigned index = static_cast<unsigned>(std::stoul(string_object->get_string().raw()));
+  if (index >= all_entries_.size())
+    return;
+  const LibraryEntry& entry = all_entries_[index];
+  auto* row = static_cast<LibraryListRow*>(g_object_get_data(G_OBJECT(row_box->gobj()), kLibraryListRowKey));
+  row->index = index;
+
+  row->title->set_text(entry.title.empty() ? _("Untitled") : entry.title);
+  row->subtitle->set_text(entry.subtitle);
+  row->subtitle->set_visible(!entry.subtitle.empty());
+
+  row->thumbnail->SetFallbackIconName(entry.icon_name);
+  row->thumbnail->SetGeneratedFallback(WantsGeneratedCover(entry) ? entry.title : "");
+  // "avatar-default-symbolic" is exactly the icon IconNameForSubType()
+  // (noson-backend.cpp) assigns for an artist — the one entry type with no
+  // real art of its own to fall back to. A recycled row may still show the
+  // previous entry's art, so it's reset to the fallback first.
+  if (load_artist_images_ && entry.icon_name == "avatar-default-symbolic" && entry.art_uri.empty())
+  {
+    row->thumbnail->SetArtUri("");
+    row->thumbnail->LoadArtistImage(entry.title);
+  }
+  else
+  {
+    row->thumbnail->SetArtUri(entry.art_uri);
+  }
+
+  bool leaf = !entry.is_container;
+  row->favorite->set_visible(show_favorite_action_);
+  row->remove->set_visible(show_delete_action_);
+  row->radio_settings->set_visible(show_radio_settings_action_);
+  // Only for a saved playlist's own, unfiltered tracks — then the index is
+  // the track's real position, so it doubles for the edge checks.
+  row->move_up->set_visible(list_reorder_active_);
+  row->move_up->set_sensitive(index > 0);
+  row->move_down->set_visible(list_reorder_active_);
+  row->move_down->set_sensitive(index + 1 < all_entries_.size());
+  row->chevron->set_visible(!leaf);
+  // Add-to-queue/play-next back onto AVTransport::AddURIToQueue(), which
+  // fails for anything System::CanQueueItem() rejects (a live radio
+  // stream) — those levels get a single "play now" instead.
+  row->add_to_queue->set_visible(leaf && show_queue_actions_);
+  row->play_next->set_visible(leaf && show_queue_actions_);
+  row->play_now->set_visible(leaf && !show_queue_actions_);
+  row->add_to_playlist->set_visible(leaf && show_add_to_playlist_action_);
 }
 
 void LibraryView::SetupGridTile(const Glib::RefPtr<Gtk::ListItem>& item)
@@ -599,7 +551,7 @@ void LibraryView::BindGridTile(const Glib::RefPtr<Gtk::ListItem>& item)
 
   thumbnail->SetFallbackIconName(entry.icon_name);
   thumbnail->SetGeneratedFallback(WantsGeneratedCover(entry) ? title_text : "");
-  // See BuildList()'s identical check for why "avatar-default-symbolic"
+  // See BindListRow()'s identical check for why "avatar-default-symbolic"
   // specifically is the signal to use here. A recycled tile may still show
   // the previous entry's art, so it's reset to the fallback first.
   if (load_artist_images_ && entry.icon_name == "avatar-default-symbolic" && entry.art_uri.empty())
@@ -630,23 +582,7 @@ void LibraryView::SetAddVisible(bool visible)
 
 void LibraryView::Clear()
 {
-  while (Gtk::Widget* child = list_box_.get_first_child())
-    list_box_.remove(*child);
-  grid_model_->splice(0, grid_model_->get_n_items(), std::vector<Glib::ustring>{});
-  thumbnails_.clear();
-}
-
-void LibraryView::OnScrollSettled()
-{
-  double viewport_height = scroller_.get_height();
-  for (CoverThumbnail* thumbnail : thumbnails_)
-  {
-    auto bounds = thumbnail->compute_bounds(scroller_);
-    // No bounds (unmapped, not yet laid out) is never itself "visible" —
-    // skip rather than treat a missing value as in-viewport.
-    if (bounds && bounds->get_y() + bounds->get_height() >= 0 && bounds->get_y() <= viewport_height)
-      thumbnail->PrioritizeLoad();
-  }
+  entries_model_->splice(0, entries_model_->get_n_items(), std::vector<Glib::ustring>{});
 }
 
 }  // namespace gnomos

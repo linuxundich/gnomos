@@ -210,3 +210,25 @@ window.mini-player {
   background-color: white;
   color: black;
 }
+
+/* Library list (Gtk::ListView in LibraryView): a card like a boxed list. */
+listview.library-list {
+  margin: 6px 12px 12px 12px;
+  border-radius: 12px;
+  background-color: var(--card-bg-color);
+  box-shadow: 0 0 0 1px var(--card-shade-color), 0 1px 3px 1px var(--card-shade-color);
+}
+
+listview.library-list > row {
+  padding: 0 6px;
+}
+
+listview.library-list > row:first-child {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+listview.library-list > row:last-child {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}

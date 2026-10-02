@@ -9,6 +9,7 @@
 #include <gtkmm/label.h>
 #include <gtkmm/listbox.h>
 #include <gtkmm/listitem.h>
+#include <gtkmm/listview.h>
 #include <gtkmm/stringlist.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/searchentry.h>
@@ -197,27 +198,12 @@ private:
   // (same "small enough to just rebuild wholesale" reasoning it already
   // documents), extended for LibraryView's own grid/list duality.
   void ApplyFilter();
-  void BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
-                 bool show_add_to_playlist_action, bool show_reorder_action, bool show_queue_actions,
-                 bool load_artist_images, bool show_radio_settings_action);
-  // Grid mode only fills grid_model_ with the indices to show; the tiles
-  // themselves are created and recycled by grid_view_'s factory
-  // (SetupGridTile()/BindGridTile()) for whatever is on screen.
-  void BuildGrid(const std::vector<unsigned>& indices);
+  // Both views share entries_model_ (indices into all_entries_ as strings)
+  // and build/recycle their rows through these factory callbacks.
+  void SetupListRow(const Glib::RefPtr<Gtk::ListItem>& item);
+  void BindListRow(const Glib::RefPtr<Gtk::ListItem>& item);
   void SetupGridTile(const Glib::RefPtr<Gtk::ListItem>& item);
   void BindGridTile(const Glib::RefPtr<Gtk::ListItem>& item);
-  // Debounced handler for scroller_'s vertical adjustment "value-changed"
-  // signal (see the constructor) — checks which of thumbnails_ are
-  // actually within scroller_'s own viewport right now and bumps just
-  // those to the front of HttpFetch's queue (CoverThumbnail::PrioritizeLoad()).
-  // Needed because BuildList()/BuildGrid() queue every tile's fetch up
-  // front in index order (GTK4's ListBox/FlowBox aren't lazily
-  // virtualizing widgets, so nothing re-triggers a fetch on scroll by
-  // itself) — confirmed live, scrolling from early into the alphabet
-  // (e.g. artists starting with "B") to much later ("K") showed nothing
-  // but placeholders for a long moment, since "K"'s tiles were still deep
-  // in the backlog behind everything queued ahead of them.
-  void OnScrollSettled();
 
   Gtk::Button back_button_;
   Gtk::Label level_title_;
@@ -245,25 +231,16 @@ private:
   // local library's 1060 albums — see ARCHITECTURE.md). The model holds
   // nothing but each shown entry's index into all_entries_, as a string.
   Gtk::GridView grid_view_;
-  Glib::RefPtr<Gtk::StringList> grid_model_;
+  Gtk::ListView list_view_;
+  Glib::RefPtr<Gtk::StringList> entries_model_;
+  // show_reorder_action_ while no filter is active — see ApplyFilter().
+  bool list_reorder_active_ = false;
   // AdwStatusPage, not a plain dim-label Label — the GNOME-native way to
   // show an empty state (icon + title), same reasoning as every other
   // list-backed view widget's own placeholder_.
   GtkWidget* placeholder_ = nullptr;
   // list_box_'s placeholder while ShowLoading() is in effect.
   GtkWidget* loading_placeholder_ = nullptr;
-  // Every CoverThumbnail BuildList()/BuildGrid() created for the current
-  // (unfiltered-position-indexed — irrelevant here, this is only ever
-  // walked for visibility, not indexed into) level, cleared and
-  // repopulated alongside list_box_/flow_box_'s own children in Clear().
-  // Non-owning, like every other Gtk::make_managed() pointer kept around
-  // in this app — see OnScrollSettled()'s own comment for why this exists.
-  std::vector<CoverThumbnail*> thumbnails_;
-  // Re-armed on every scroller_ vadjustment change, fires OnScrollSettled()
-  // once scrolling has actually stopped for a moment — recomputing
-  // visibility for potentially hundreds of tiles on every intermediate
-  // scroll tick would be wasted work no user could perceive anyway.
-  sigc::connection scroll_settle_connection_;
   // The full, unfiltered level, plus the flags it was shown with —
   // ApplyFilter() needs both on every keystroke, without GnomosWindow
   // having to call SetEntries() again just because the filter text changed.

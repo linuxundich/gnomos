@@ -2218,3 +2218,16 @@ extern "C" functions their names must now be unique program-wide.
 - The Flatpak sets `separate-locales: false`: otherwise flatpak-builder
   moves `/app/share/locale` into a `.Locale` extension that
   `flatpak build-bundle` doesn't include.
+
+### Library list mode virtualized
+
+`LibraryView` list mode moved from a `Gtk::ListBox` (one widget tree per
+entry, built on every filter keystroke) to a `Gtk::ListView` on the same
+`entries_model_` the grid uses. `SetupListRow()` builds every possible
+action button once per recycled row and keeps the widgets in a
+`LibraryListRow` struct attached as GObject data; `BindListRow()` sets
+texts, art and which buttons are visible for the entry and the level's
+flags, and stores the entry's index for the buttons' handlers.
+`list_box_` remains only as the holder of the empty/loading placeholders.
+The scroll-settle prioritization (`OnScrollSettled()`) is gone with it:
+both views only ever bind on-screen rows.

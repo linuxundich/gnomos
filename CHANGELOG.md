@@ -8,6 +8,13 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [Unreleased]
+
+### Changed
+- The library's list mode is virtualized too (`GtkListView`), like the
+  grid: levels with thousands of entries, such as all tracks, no longer
+  build a row for every entry up front.
+
 ## [0.26.0] - 2026-10-02
 
 ### Added
