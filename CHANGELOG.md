@@ -8,9 +8,20 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
-## [Unreleased]
+## [0.27.0] - 2026-10-02
 
 ### Changed
+- Preferences in two columns: a sidebar with eight categories on the
+  left — General, Appearance, Library, Radio, Storage, and under
+  "Online Services" Lyrics, Artist Images and Scrobbling — and only the
+  selected category on the right, scrolling by itself. The old dialog
+  stacked up to five groups on one page and grew far too tall; now every
+  category fits without scrolling except Scrobbling, barely. On narrow
+  windows it turns into a category list that opens each page with a back
+  button. The search field filters categories by name and by what's in
+  them ("token" finds Scrobbling, "cache" finds Storage). The three
+  online pages say once, at the top, that they send data to another
+  service.
 - The library's list mode is virtualized too (`GtkListView`), like the
   grid: levels with thousands of entries, such as all tracks, no longer
   build a row for every entry up front.

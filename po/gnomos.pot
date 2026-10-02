@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: gnomos\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 14:09+0200\n"
+"POT-Creation-Date: 2026-10-02 14:41+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,6 +17,14 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#: data/de.linuxundich.Gnomos.desktop.in:2
+msgid "Gnomos"
+msgstr ""
+
+#: data/de.linuxundich.Gnomos.desktop.in:3
+msgid "Control Sonos speakers, including first-generation hardware"
+msgstr ""
 
 #: src/backend/noson-backend.cpp:453
 msgid "The link was activated but couldn't be saved permanently."
@@ -143,7 +151,7 @@ msgstr ""
 msgid "Albums"
 msgstr ""
 
-#: src/backend/noson-backend.cpp:2253 src/gnomos-window-settings.cpp:1173
+#: src/backend/noson-backend.cpp:2253 src/gnomos-window-settings.cpp:1176
 msgid "Genres"
 msgstr ""
 
@@ -319,17 +327,17 @@ msgstr ""
 msgid "Couldn't create the alarm."
 msgstr ""
 
-#: src/global-shortcuts-service.cpp:30 src/gnomos-window-settings.cpp:786
+#: src/global-shortcuts-service.cpp:30 src/gnomos-window-settings.cpp:787
 msgid "Play/Pause"
 msgstr ""
 
-#: src/global-shortcuts-service.cpp:31 src/gnomos-window-settings.cpp:787
+#: src/global-shortcuts-service.cpp:31 src/gnomos-window-settings.cpp:788
 #: src/mini-player-window.cpp:134 src/widgets/now-playing-view.cpp:524
 #: src/widgets/player-bar.cpp:242
 msgid "Next Track"
 msgstr ""
 
-#: src/global-shortcuts-service.cpp:32 src/gnomos-window-settings.cpp:788
+#: src/global-shortcuts-service.cpp:32 src/gnomos-window-settings.cpp:789
 #: src/mini-player-window.cpp:116 src/widgets/now-playing-view.cpp:511
 #: src/widgets/player-bar.cpp:214
 msgid "Previous Track"
@@ -387,11 +395,12 @@ msgstr ""
 msgid "Mini Player…"
 msgstr ""
 
-#: src/gnomos-window.cpp:188 src/gnomos-window-settings.cpp:806
+#: src/gnomos-window.cpp:188 src/gnomos-window-settings.cpp:807
+#: src/widgets/settings-dialog.cpp:33 src/widgets/settings-dialog.cpp:63
 msgid "Preferences"
 msgstr ""
 
-#: src/gnomos-window.cpp:189 src/gnomos-window-settings.cpp:807
+#: src/gnomos-window.cpp:189 src/gnomos-window-settings.cpp:808
 msgid "Keyboard Shortcuts"
 msgstr ""
 
@@ -399,7 +408,7 @@ msgstr ""
 msgid "About Gnomos"
 msgstr ""
 
-#: src/gnomos-window.cpp:191 src/gnomos-window-settings.cpp:809
+#: src/gnomos-window.cpp:191 src/gnomos-window-settings.cpp:810
 msgid "Quit Gnomos"
 msgstr ""
 
@@ -582,12 +591,11 @@ msgstr ""
 #: src/gnomos-window.cpp:681 src/gnomos-window.cpp:720
 #: src/gnomos-window.cpp:728 src/gnomos-window.cpp:765
 #: src/gnomos-window.cpp:810 src/gnomos-window.cpp:811
-#: src/gnomos-window-library.cpp:133 src/gnomos-window-settings.cpp:838
-#: src/gnomos-window-settings.cpp:1107
+#: src/gnomos-window-library.cpp:133 src/gnomos-window-settings.cpp:1236
 msgid "Library"
 msgstr ""
 
-#: src/gnomos-window.cpp:749 src/gnomos-window-settings.cpp:764
+#: src/gnomos-window.cpp:749 src/gnomos-window-settings.cpp:765
 msgid "Services"
 msgstr ""
 
@@ -627,7 +635,7 @@ msgid "Pause"
 msgstr ""
 
 #: src/gnomos-window.cpp:1443 src/gnomos-window-history.cpp:458
-#: src/gnomos-window-library.cpp:435 src/gnomos-window-settings.cpp:785
+#: src/gnomos-window-library.cpp:435 src/gnomos-window-settings.cpp:786
 #: src/widgets/playback-ui.cpp:37
 msgid "Play"
 msgstr ""
@@ -671,7 +679,7 @@ msgstr ""
 #: src/gnomos-window-library.cpp:433 src/gnomos-window-library.cpp:942
 #: src/gnomos-window-library.cpp:1281 src/gnomos-window-library.cpp:1360
 #: src/gnomos-window-library.cpp:1426 src/gnomos-window-rooms.cpp:617
-#: src/gnomos-window-settings.cpp:565
+#: src/gnomos-window-settings.cpp:566
 msgid "Cancel"
 msgstr ""
 
@@ -953,7 +961,7 @@ msgstr ""
 msgid "Delete Playlist?"
 msgstr ""
 
-#: src/gnomos-window-library.cpp:901 src/widgets/library-view.cpp:518
+#: src/gnomos-window-library.cpp:901 src/widgets/library-view.cpp:437
 msgid "Add to Playlist"
 msgstr ""
 
@@ -965,8 +973,8 @@ msgstr ""
 msgid "New Playlist…"
 msgstr ""
 
-#: src/gnomos-window-library.cpp:925 src/widgets/library-view.cpp:378
-#: src/widgets/library-view.cpp:594
+#: src/gnomos-window-library.cpp:925 src/widgets/library-view.cpp:456
+#: src/widgets/library-view.cpp:546
 msgid "Untitled"
 msgstr ""
 
@@ -1040,8 +1048,8 @@ msgstr ""
 msgid "Stream URL"
 msgstr ""
 
-#: src/gnomos-window-library.cpp:1239 src/gnomos-window-settings.cpp:938
-#: src/widgets/library-view.cpp:434
+#: src/gnomos-window-library.cpp:1239 src/gnomos-window-settings.cpp:940
+#: src/widgets/library-view.cpp:420
 msgid "Notifications"
 msgstr ""
 
@@ -1093,7 +1101,7 @@ msgstr ""
 msgid "Code: %s"
 msgstr ""
 
-#: src/gnomos-window-library.cpp:1428 src/gnomos-window-settings.cpp:567
+#: src/gnomos-window-library.cpp:1428 src/gnomos-window-settings.cpp:568
 msgid "Done"
 msgstr ""
 
@@ -1158,7 +1166,7 @@ msgstr ""
 msgid "Time"
 msgstr ""
 
-#: src/gnomos-window-rooms.cpp:500 src/gnomos-window-settings.cpp:793
+#: src/gnomos-window-rooms.cpp:500 src/gnomos-window-settings.cpp:794
 #: src/widgets/now-playing-view.cpp:532 src/widgets/player-bar.cpp:251
 #: src/widgets/player-bar.cpp:348
 msgid "Repeat"
@@ -1246,105 +1254,107 @@ msgstr ""
 msgid "Really delete this alarm?"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:522
+#: src/gnomos-window-settings.cpp:523
 msgid "Enter the API key and shared secret first"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:530
+#: src/gnomos-window-settings.cpp:531
 msgid "Last.fm sign-in failed — check the API key and shared secret"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:540
+#: src/gnomos-window-settings.cpp:541
 msgid "Last.fm Sign-In"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:550
+#: src/gnomos-window-settings.cpp:551
 msgid ""
 "Open the following link in a browser, sign in to Last.fm and allow access. "
 "Then come back here and click “Done”."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:576
+#: src/gnomos-window-settings.cpp:577
 msgid "Sign-in not finished — authorize in the browser and try again"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:580
+#: src/gnomos-window-settings.cpp:581
 msgid "Connected to Last.fm"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:581
+#: src/gnomos-window-settings.cpp:582
 #, c-format
 msgid "Connected to Last.fm as “%s”"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:745
+#: src/gnomos-window-settings.cpp:746
 msgid ""
 "A GTK4/libadwaita client for Sonos speakers, with a special focus on first-"
 "generation devices (ZP80, ZP90, ZP100, ZP120, CR100) that Sonos' own current "
 "apps no longer support."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:759
+#: src/gnomos-window-settings.cpp:760
 msgid "Libraries"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:789
+#: src/gnomos-window-settings.cpp:790
 msgid "Volume Up"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:790
+#: src/gnomos-window-settings.cpp:791
 msgid "Volume Down"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:791 src/widgets/now-playing-view.cpp:540
+#: src/gnomos-window-settings.cpp:792 src/widgets/now-playing-view.cpp:540
 #: src/widgets/now-playing-view.cpp:758 src/widgets/player-bar.cpp:275
 #: src/widgets/player-bar.cpp:486
 msgid "Mute"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:792 src/widgets/now-playing-view.cpp:508
+#: src/gnomos-window-settings.cpp:793 src/widgets/now-playing-view.cpp:508
 #: src/widgets/player-bar.cpp:205
 msgid "Shuffle"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:794
+#: src/gnomos-window-settings.cpp:795
 msgid "Forward 10 Seconds"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:795
+#: src/gnomos-window-settings.cpp:796
 msgid "Back 10 Seconds"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:798
+#: src/gnomos-window-settings.cpp:799
 msgid "View"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:799
+#: src/gnomos-window-settings.cpp:800
 msgid "Show/Hide Now Playing"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:800 src/widgets/queue-view.cpp:41
+#: src/gnomos-window-settings.cpp:801 src/widgets/queue-view.cpp:41
 msgid "Jump to Current Track"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:801
+#: src/gnomos-window-settings.cpp:802
 msgid "Search Library"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:802
+#: src/gnomos-window-settings.cpp:803
 msgid "Show/Hide Sidebar"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:805 src/gnomos-window-settings.cpp:834
+#: src/gnomos-window-settings.cpp:806 src/gnomos-window-settings.cpp:1232
 msgid "General"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:808
+#: src/gnomos-window-settings.cpp:809
 msgid "Close Window"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:842 src/gnomos-window-settings.cpp:1204
-msgid "Radio"
+#: src/gnomos-window-settings.cpp:843
+msgid ""
+"This feature sends data over the internet to another service. Everything "
+"else in Gnomos stays within your Sonos household on the local network."
 msgstr ""
 
 #: src/gnomos-window-settings.cpp:847
@@ -1362,7 +1372,7 @@ msgid ""
 "window. “Quit Gnomos” in the menu quits it completely at any time."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:864
+#: src/gnomos-window-settings.cpp:864 src/gnomos-window-settings.cpp:1234
 msgid "Appearance"
 msgstr ""
 
@@ -1382,43 +1392,48 @@ msgstr ""
 msgid "Dark"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:915
+#: src/gnomos-window-settings.cpp:905
+msgid "Now Playing"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:917
 msgid "Colors from the Cover"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:915
+#: src/gnomos-window-settings.cpp:917
 msgid "Tints the player bar and the Now Playing view to match the album"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:922
+#: src/gnomos-window-settings.cpp:924
 msgid "Blurred Background"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:922
+#: src/gnomos-window-settings.cpp:924
 msgid "The cover as a soft background for the Now Playing view"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:928
+#: src/gnomos-window-settings.cpp:930
 msgid "Record Player"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:928
+#: src/gnomos-window-settings.cpp:930
 msgid "Shows the cover as a record that turns while music plays"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:941
+#: src/gnomos-window-settings.cpp:943
 msgid "Notify on Track Change"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:952 src/widgets/now-playing-view.cpp:569
+#: src/gnomos-window-settings.cpp:954 src/gnomos-window-settings.cpp:1241
+#: src/widgets/now-playing-view.cpp:569
 msgid "Lyrics"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:955
+#: src/gnomos-window-settings.cpp:957
 msgid "Load Lyrics"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:958
+#: src/gnomos-window-settings.cpp:960
 msgid ""
 "Looks up the current track's lyrics from the public LRCLIB API (lrclib.net) "
 "in the Now Playing view — a real request over the internet, not a local "
@@ -1426,99 +1441,101 @@ msgid ""
 "community contributions without any rights guarantee (see the link below)."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:974 src/gnomos-window-settings.cpp:1007
-#: src/gnomos-window-settings.cpp:1139
+#: src/gnomos-window-settings.cpp:976 src/gnomos-window-settings.cpp:1009
+#: src/gnomos-window-settings.cpp:1142
 msgid "Open"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:983
+#: src/gnomos-window-settings.cpp:985 src/gnomos-window-settings.cpp:1244
 msgid "Scrobbling"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:986
+#: src/gnomos-window-settings.cpp:988
 msgid ""
 "Once a track has been listened to, sends artist, title and album to every "
 "service enabled here — a real transfer over the internet, not a local Sonos "
 "query. Radio stations are never sent."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:995
+#: src/gnomos-window-settings.cpp:997
 msgid "ListenBrainz User Token"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1006
+#: src/gnomos-window-settings.cpp:1008
 msgid "Empty = off. Get your token at listenbrainz.org/settings."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1019
+#: src/gnomos-window-settings.cpp:1021
 msgid "Last.fm API Key"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1029
+#: src/gnomos-window-settings.cpp:1031
 msgid "Last.fm Shared Secret"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1042
+#: src/gnomos-window-settings.cpp:1044
 msgid "Not connected — create an account at last.fm/api/account/create"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1043
+#: src/gnomos-window-settings.cpp:1045
 msgid "Connected"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1044
+#: src/gnomos-window-settings.cpp:1046
 #, c-format
 msgid "Connected as “%s”"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1048
+#: src/gnomos-window-settings.cpp:1050
 msgid "Sign In"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1060
+#: src/gnomos-window-settings.cpp:1062
 msgid "Disconnect"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1065
+#: src/gnomos-window-settings.cpp:1067
 msgid "Disconnected from Last.fm"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1075
+#: src/gnomos-window-settings.cpp:1077
 msgid "Cover Art Cache"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1078
+#: src/gnomos-window-settings.cpp:1080
 msgid "Maximum Size"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1083
+#: src/gnomos-window-settings.cpp:1085
 #, c-format
 msgid "%.1f MB used"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1093
+#: src/gnomos-window-settings.cpp:1095
 msgid "Clear Cache Now"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1110
-msgid ""
-"Everything else in Gnomos stays within your Sonos household on the local "
-"network — the feature below is the only exception."
+#: src/gnomos-window-settings.cpp:1109
+msgid "Local Share"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1113
-msgid "Icon Size"
+#: src/gnomos-window-settings.cpp:1111
+msgid "Tiles"
 msgstr ""
 
 #: src/gnomos-window-settings.cpp:1116
+msgid "Icon Size"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1119
 msgid "Size of the icon inside a tile when no cover image is available"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1125
+#: src/gnomos-window-settings.cpp:1128
 msgid "Load Artist Images"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1128
+#: src/gnomos-window-settings.cpp:1131
 msgid ""
 "Looks up a photo from the public Deezer API (api.deezer.com) for artists "
 "without a cover image — a real request over the internet, not a local Sonos "
@@ -1526,60 +1543,108 @@ msgid ""
 "this API apply (see the link below)."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1137
+#: src/gnomos-window-settings.cpp:1140
 msgid "Deezer API and Terms of Use"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1153
+#: src/gnomos-window-settings.cpp:1156
 msgid "Rescan Library"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1156
+#: src/gnomos-window-settings.cpp:1159
 msgid ""
 "Has Sonos rescan the connected local share — after adding new files, for "
 "example"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1163
+#: src/gnomos-window-settings.cpp:1166
 msgid "Library scan started"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1176
+#: src/gnomos-window-settings.cpp:1179
 msgid ""
 "Each character here splits several genres combined in one genre tag in the "
 "library's genre view, e.g. “;” for “Rap; Metal; Hard-Core” — several "
 "characters are possible (e.g. “;/|”)."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1179
+#: src/gnomos-window-settings.cpp:1182
 msgid "Separators"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1189
+#: src/gnomos-window-settings.cpp:1192
 msgid "Use First Genre Only"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1192
+#: src/gnomos-window-settings.cpp:1195
 msgid ""
 "Shows only the genre before the first separator instead of splitting them "
 "all — useful when Sonos itself already cuts off a long combined genre tag, "
 "so later genres arrive incomplete (e.g. “Elec” instead of “Electronic”)"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1207
+#: src/gnomos-window-settings.cpp:1207 src/gnomos-window-settings.cpp:1238
+msgid "Radio"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1210
 msgid ""
 "Applies in addition to a custom pattern, which you can set per station with "
 "its gear icon under “Radio Stations”."
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1210
+#: src/gnomos-window-settings.cpp:1213
 msgid "Detect Ads Automatically"
 msgstr ""
 
-#: src/gnomos-window-settings.cpp:1213
+#: src/gnomos-window-settings.cpp:1216
 msgid ""
 "Treats content with more than two consecutive spaces as ads or filler — "
 "affects notifications (MPRIS) and the history alike."
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1233
+msgid "window background quit notification"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1235
+msgid "color scheme light dark cover colors blur record player icon size tiles"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1236
+msgid "share rescan scan genres separators"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1238
+msgid "ads filter stations"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1239
+msgid "Storage"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1239
+msgid "cache cover size clear"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1240
+msgid "Online Services"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1241
+msgid "lrclib songtext"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1242
+msgid "Artist Images"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1242
+msgid "deezer photo artist"
+msgstr ""
+
+#: src/gnomos-window-settings.cpp:1245
+msgid "listenbrainz last.fm token api key secret sign in"
 msgstr ""
 
 #: src/mini-player-window.cpp:25
@@ -1637,11 +1702,11 @@ msgstr ""
 msgid "No Favorites Found"
 msgstr ""
 
-#: src/widgets/favorites-view.cpp:141 src/widgets/library-view.cpp:485
+#: src/widgets/favorites-view.cpp:141 src/widgets/library-view.cpp:430
 msgid "Add to Queue"
 msgstr ""
 
-#: src/widgets/favorites-view.cpp:150 src/widgets/library-view.cpp:493
+#: src/widgets/favorites-view.cpp:150 src/widgets/library-view.cpp:432
 msgid "Play Next"
 msgstr ""
 
@@ -1694,26 +1759,30 @@ msgstr ""
 msgid "No Entries Found"
 msgstr ""
 
-#: src/widgets/library-view.cpp:324
+#: src/widgets/library-view.cpp:318
 #, c-format
 msgid "%zu entry"
 msgid_plural "%zu entries"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/widgets/library-view.cpp:403 src/widgets/player-bar.cpp:266
+#. Every possible action button exists on every row; BindListRow() shows
+#. the ones that apply to the entry and level — see SetEntries() for
+#. which flag gates which.
+#: src/widgets/library-view.cpp:416 src/widgets/player-bar.cpp:266
 msgid "Add to Favorites"
 msgstr ""
 
-#: src/widgets/library-view.cpp:450
+#: src/widgets/library-view.cpp:422
 msgid "Move Up"
 msgstr ""
 
-#: src/widgets/library-view.cpp:459
+#: src/widgets/library-view.cpp:424
 msgid "Move Down"
 msgstr ""
 
-#: src/widgets/library-view.cpp:507
+#. See SetEntries() — "play now" emits exactly what activating the row does.
+#: src/widgets/library-view.cpp:435
 msgid "Play Now"
 msgstr ""
 
@@ -1822,52 +1891,52 @@ msgstr[1] ""
 msgid "Remove from Queue"
 msgstr ""
 
-#: src/window-helpers.cpp:188
+#: src/widgets/settings-dialog.cpp:44
+msgid "No Matching Setting"
+msgstr ""
+
+#: src/widgets/settings-dialog.cpp:50
+msgid "Search preferences"
+msgstr ""
+
+#: src/window-helpers.cpp:187
 msgid "Sunday"
 msgstr ""
 
-#: src/window-helpers.cpp:188
+#: src/window-helpers.cpp:187
 msgid "Monday"
 msgstr ""
 
-#: src/window-helpers.cpp:188
+#: src/window-helpers.cpp:187
 msgid "Tuesday"
 msgstr ""
 
-#: src/window-helpers.cpp:189
+#: src/window-helpers.cpp:188
 msgid "Wednesday"
 msgstr ""
 
-#: src/window-helpers.cpp:189
+#: src/window-helpers.cpp:188
 msgid "Thursday"
 msgstr ""
 
-#: src/window-helpers.cpp:189
+#: src/window-helpers.cpp:188
 msgid "Friday"
 msgstr ""
 
-#: src/window-helpers.cpp:190
+#: src/window-helpers.cpp:189
 msgid "Saturday"
 msgstr ""
 
-#: src/window-helpers.cpp:229
+#: src/window-helpers.cpp:228
 msgid "Today"
 msgstr ""
 
-#: src/window-helpers.cpp:230
+#: src/window-helpers.cpp:229
 msgid "Tomorrow"
 msgstr ""
 
 #. Translators: day, time ("07:30"), room — e.g. "Tomorrow, 07:30 — Kitchen"
-#: src/window-helpers.cpp:233
+#: src/window-helpers.cpp:232
 #, c-format
 msgid "%s, %s — %s"
-msgstr ""
-
-#: data/de.linuxundich.Gnomos.desktop.in:2
-msgid "Gnomos"
-msgstr ""
-
-#: data/de.linuxundich.Gnomos.desktop.in:3
-msgid "Control Sonos speakers, including first-generation hardware"
 msgstr ""

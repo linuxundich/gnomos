@@ -70,6 +70,7 @@
 #include "widgets/artist-info-fetcher.h"
 #include "widgets/cover-thumbnail.h"
 #include "widgets/dialog-shell.h"
+#include "widgets/settings-dialog.h"
 #include "widgets/http-fetch.h"
 #include "widgets/lastfm-scrobbler.h"
 #include "widgets/listenbrainz-scrobbler.h"
@@ -814,33 +815,32 @@ void GnomosWindow::ShowShortcutsDialog()
 
 void GnomosWindow::ShowSettingsDialog()
 {
-  AdwDialog* dialog = adw_preferences_dialog_new();
-  adw_preferences_dialog_set_search_enabled(ADW_PREFERENCES_DIALOG(dialog), false);
+  // Two columns: a sidebar of categories, the selected one's page on the
+  // right — see SettingsDialog. The rows below are built here because
+  // they're tied to this window's state; SettingsDialog only frames them.
+  auto* dialog = new SettingsDialog();
   open_settings_dialog_ = dialog;
-  g_signal_connect(dialog, "closed", G_CALLBACK(+[](AdwDialog* closed_dialog, gpointer user_data) {
-                     auto* self = static_cast<GnomosWindow*>(user_data);
-                     if (self->open_settings_dialog_ == closed_dialog)
-                       self->open_settings_dialog_ = nullptr;
-                   }),
-                   this);
+  dialog->on_closed = [this, dialog] {
+    if (open_settings_dialog_ == dialog)
+      open_settings_dialog_ = nullptr;
+  };
+  dialog->on_category_changed = [this](const std::string& id) { settings_category_ = id; };
 
-  // Three pages rather than one long one — AdwPreferencesDialog already
-  // renders more than one page as a proper tab/page switcher on its own
-  // (a sidebar on a wide window, a bottom switcher once narrow), no extra
-  // widgetry needed; this had grown to six groups stacked on a single
-  // page, confirmed live as "the settings window is too big now, it's
-  // all just one long column".
-  GtkWidget* general_page = adw_preferences_page_new();
-  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(general_page), _("General"));
-  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(general_page), "applications-system-symbolic");
-
-  GtkWidget* library_page = adw_preferences_page_new();
-  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(library_page), _("Library"));
-  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(library_page), "folder-music-symbolic");
-
-  GtkWidget* radio_page = adw_preferences_page_new();
-  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(radio_page), _("Radio"));
-  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(radio_page), "network-wireless-symbolic");
+  auto new_page = [] { return adw_preferences_page_new(); };
+  GtkWidget* general_page = new_page();
+  GtkWidget* look_page = new_page();
+  GtkWidget* library_page = new_page();
+  GtkWidget* radio_page = new_page();
+  GtkWidget* storage_page = new_page();
+  GtkWidget* lyrics_page = new_page();
+  GtkWidget* artist_images_page = new_page();
+  GtkWidget* scrobbling_page = new_page();
+  // The three pages that send data to someone else's server say so once,
+  // at the top, instead of a variant of that sentence in every group.
+  for (GtkWidget* online_page : {lyrics_page, artist_images_page, scrobbling_page})
+    adw_preferences_page_set_description(
+        ADW_PREFERENCES_PAGE(online_page),
+        _("This feature sends data over the internet to another service. Everything else in Gnomos stays within your Sonos household on the local network."));
 
   // --- Fensterverhalten ---
   GtkWidget* window_behavior_group = adw_preferences_group_new();
@@ -901,6 +901,8 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), scheme_row);
 
   // Now Playing look — see ApplyCoverTint() and NowPlayingView.
+  GtkWidget* now_playing_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(now_playing_group), _("Now Playing"));
   auto add_appearance_switch = [&](const char* title, const char* subtitle, bool active,
                                    std::function<void(bool)> on_change) {
     GtkWidget* row = adw_switch_row_new();
@@ -910,7 +912,7 @@ void GnomosWindow::ShowSettingsDialog()
     g_signal_connect_data(row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
                            new std::function<void(bool)>(std::move(on_change)), DeleteBoolCallback,
                            static_cast<GConnectFlags>(0));
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), row);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(now_playing_group), row);
   };
   add_appearance_switch(_("Colors from the Cover"), _("Tints the player bar and the Now Playing view to match the album"),
                         cover_tint_, [this](bool active) {
@@ -931,7 +933,7 @@ void GnomosWindow::ShowSettingsDialog()
                           SaveAppearanceSetting("vinyl_mode", active);
                           now_playing_view_.SetVinylEnabled(active);
                         });
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(appearance_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(look_page), ADW_PREFERENCES_GROUP(appearance_group));
 
   // --- Benachrichtigungen ---
   GtkWidget* notifications_group = adw_preferences_group_new();
@@ -976,7 +978,7 @@ void GnomosWindow::ShowSettingsDialog()
   adw_action_row_add_suffix(ADW_ACTION_ROW(lrclib_terms_row), GTK_WIDGET(lrclib_link_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(lyrics_group), lrclib_terms_row);
 
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(lyrics_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(lyrics_page), ADW_PREFERENCES_GROUP(lyrics_group));
 
   // --- Scrobbling ---
   GtkWidget* scrobbling_group = adw_preferences_group_new();
@@ -1068,7 +1070,7 @@ void GnomosWindow::ShowSettingsDialog()
   }
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), lastfm_connect_row);
 
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(general_page), ADW_PREFERENCES_GROUP(scrobbling_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(scrobbling_page), ADW_PREFERENCES_GROUP(scrobbling_group));
 
   // --- Cover-Art-Cache ---
   GtkWidget* cache_group = adw_preferences_group_new();
@@ -1100,14 +1102,15 @@ void GnomosWindow::ShowSettingsDialog()
   g_signal_connect_data(clear_row, "activated", G_CALLBACK(OnButtonRowActivated), clear_callback,
                          DeleteVoidCallback, static_cast<GConnectFlags>(0));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(cache_group), clear_row);
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(library_page), ADW_PREFERENCES_GROUP(cache_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(storage_page), ADW_PREFERENCES_GROUP(cache_group));
 
   // --- Bibliothek ---
   GtkWidget* library_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(library_group), _("Library"));
-  adw_preferences_group_set_description(
-      ADW_PREFERENCES_GROUP(library_group),
-      _("Everything else in Gnomos stays within your Sonos household on the local network — the feature below is the only exception."));
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(library_group), _("Local Share"));
+  GtkWidget* tiles_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(tiles_group), _("Tiles"));
+  GtkWidget* deezer_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(deezer_group), "Deezer");
 
   GtkWidget* icon_scale_row = adw_spin_row_new_with_range(20, 100, 5);
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(icon_scale_row), _("Icon Size"));
@@ -1119,7 +1122,7 @@ void GnomosWindow::ShowSettingsDialog()
       icon_scale_row, "notify::value", G_CALLBACK(OnDoubleSpinRowValueChanged),
       new std::function<void(double)>([this](double percent) { SetFallbackIconScale(percent / 100.0); }),
       DeleteDoubleCallback, static_cast<GConnectFlags>(0));
-  adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), icon_scale_row);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(tiles_group), icon_scale_row);
 
   GtkWidget* artist_images_row = adw_switch_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(artist_images_row), _("Load Artist Images"));
@@ -1131,7 +1134,7 @@ void GnomosWindow::ShowSettingsDialog()
       artist_images_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
       new std::function<void(bool)>([this](bool active) { SetLoadArtistImages(active); }), DeleteBoolCallback,
       static_cast<GConnectFlags>(0));
-  adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), artist_images_row);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(deezer_group), artist_images_row);
 
   GtkWidget* deezer_terms_row = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(deezer_terms_row), _("Deezer API and Terms of Use"));
@@ -1139,7 +1142,7 @@ void GnomosWindow::ShowSettingsDialog()
   auto* deezer_link_button = Gtk::make_managed<Gtk::LinkButton>("https://developers.deezer.com/api", _("Open"));
   deezer_link_button->set_valign(Gtk::Align::CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(deezer_terms_row), GTK_WIDGET(deezer_link_button->gobj()));
-  adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), deezer_terms_row);
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(deezer_group), deezer_terms_row);
 
   // AdwButtonRow (used for clear_row above) has no subtitle property at
   // all — G_DECLARE_FINAL_TYPE straight off AdwPreferencesRow, just a
@@ -1219,10 +1222,28 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(radio_group), spam_filter_row);
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(radio_page), ADW_PREFERENCES_GROUP(radio_group));
 
-  adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(general_page));
-  adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(library_page));
-  adw_preferences_dialog_add(ADW_PREFERENCES_DIALOG(dialog), ADW_PREFERENCES_PAGE(radio_page));
-  adw_dialog_present(dialog, GTK_WIDGET(gobj()));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(look_page), ADW_PREFERENCES_GROUP(now_playing_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(look_page), ADW_PREFERENCES_GROUP(tiles_group));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(artist_images_page), ADW_PREFERENCES_GROUP(deezer_group));
+
+  // Keywords (lower case) let the sidebar's search find a category by
+  // what's inside it — "token" finds Scrobbling.
+  dialog->AddSection("");
+  dialog->AddCategory("general", _("General"), "applications-system-symbolic",
+                      _("window background quit notification"), general_page);
+  dialog->AddCategory("appearance", _("Appearance"), "applications-graphics-symbolic",
+                      _("color scheme light dark cover colors blur record player icon size tiles"), look_page);
+  dialog->AddCategory("library", _("Library"), "folder-music-symbolic", _("share rescan scan genres separators"),
+                      library_page);
+  dialog->AddCategory("radio", _("Radio"), "network-wireless-symbolic", _("ads filter stations"), radio_page);
+  dialog->AddCategory("storage", _("Storage"), "drive-harddisk-symbolic", _("cache cover size clear"), storage_page);
+  dialog->AddSection(_("Online Services"));
+  dialog->AddCategory("lyrics", _("Lyrics"), "format-justify-left-symbolic", _("lrclib songtext"), lyrics_page);
+  dialog->AddCategory("artist-images", _("Artist Images"), "avatar-default-symbolic", _("deezer photo artist"),
+                      artist_images_page);
+  dialog->AddCategory("scrobbling", _("Scrobbling"), "emblem-shared-symbolic",
+                      _("listenbrainz last.fm token api key secret sign in"), scrobbling_page);
+  dialog->Present(*this, settings_category_);
 }
 
 void GnomosWindow::RefreshOpenSettingsDialog()
@@ -1239,12 +1260,11 @@ void GnomosWindow::RefreshOpenSettingsDialog()
   Glib::signal_idle().connect_once([this] {
     if (!open_settings_dialog_)
       return;  // closed some other way in the meantime — nothing to do
-    // force_close(), not close(): this should always actually close
-    // (there's no unsaved-changes-style reason AdwPreferencesDialog would
-    // ever refuse here), and its own "closed" handler already clears
-    // open_settings_dialog_ before ShowSettingsDialog() below reassigns
-    // it to the fresh instance.
-    adw_dialog_force_close(open_settings_dialog_);
+    // ForceClose(), not a regular close: this should always actually
+    // close, and the dialog's own "closed" handler already clears
+    // open_settings_dialog_ before ShowSettingsDialog() below reassigns it
+    // to the fresh instance — which opens on the same category.
+    open_settings_dialog_->ForceClose();
     ShowSettingsDialog();
   });
 }

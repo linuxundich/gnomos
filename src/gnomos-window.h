@@ -35,6 +35,7 @@
 #include "widgets/library-view.h"
 #include "widgets/now-playing-view.h"
 #include "widgets/playing-indicator.h"
+#include "widgets/settings-dialog.h"
 #include "widgets/player-bar.h"
 #include "widgets/queue-view.h"
 #include "zone-volume-service.h"
@@ -611,7 +612,9 @@ private:
   // otherwise unmanaged by GnomosWindow (AdwDialog owns its own lifetime,
   // unlike the plain Gtk::Window dialogs elsewhere in this file that need
   // an explicit `delete`).
-  AdwDialog* open_settings_dialog_ = nullptr;
+  SettingsDialog* open_settings_dialog_ = nullptr;
+  // The preferences category last shown, reopened next time (this session).
+  std::string settings_category_;
   // The currently open MiniPlayerWindow from ShowMiniPlayerWindow(), if
   // any — nullptr otherwise. Unlike open_settings_dialog_ above (an
   // AdwDialog, self-owning), this is a plain Gtk::Window and needs the

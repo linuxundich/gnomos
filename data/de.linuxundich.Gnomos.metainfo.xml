@@ -22,6 +22,13 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.27.0" date="2026-10-02">
+      <description>
+        <p>Preferences in two columns, with a sidebar of categories and a
+        search that finds them by their contents. The library's list view
+        handles thousands of entries smoothly.</p>
+      </description>
+    </release>
     <release version="0.26.0" date="2026-10-02">
       <description>
         <p>Gnomos can now be translated. The interface follows the desktop

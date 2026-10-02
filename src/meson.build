@@ -33,6 +33,7 @@ gnomos_sources = files(
   'widgets/playing-indicator.cpp',
   'widgets/now-playing-view.cpp',
   'widgets/player-bar.cpp',
+  'widgets/settings-dialog.cpp',
   'widgets/queue-view.cpp',
   'widgets/radio-browser-service.cpp',
 )

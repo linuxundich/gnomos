@@ -2231,3 +2231,30 @@ flags, and stores the entry's index for the buttons' handlers.
 `list_box_` remains only as the holder of the empty/loading placeholders.
 The scroll-settle prioritization (`OnScrollSettled()`) is gone with it:
 both views only ever bind on-screen rows.
+
+### 0.27: two-column preferences
+
+`SettingsDialog` (`widgets/settings-dialog.{h,cpp}`) is the frame:
+`AdwDialog` (860 × 600) → `AdwNavigationSplitView`; sidebar page =
+`AdwToolbarView` with header bar, a `Gtk::SearchEntry` and an `AdwSidebar`
+(libadwaita 1.9) in sections; content page = `AdwToolbarView` with an
+`AdwViewStack` holding one `AdwPreferencesPage` per category (each scrolls
+on its own). A breakpoint on the dialog (max-width 600 sp) collapses the
+split view and switches the sidebar to `ADW_SIDEBAR_MODE_PAGE`, the
+GNOME-Settings-style list; `activated` navigates to the content page.
+The search is a `GtkCustomFilter` on the sidebar matching the category
+title plus a translatable keyword string per category (German keywords
+also carry the English terms). It replaces `AdwPreferencesDialog`'s own
+row search, which doesn't exist outside that widget.
+
+`GnomosWindow::ShowSettingsDialog()` still builds every row — they're
+bound to window state — but adds them to eight pages and hands those to
+`SettingsDialog::AddCategory()`. The category last shown is kept for the
+session (`settings_category_`) and reopened, which also makes
+`RefreshOpenSettingsDialog()` (close + reopen after Last.fm sign-in)
+land on the same page.
+
+Since `GnomosWindow` is a plain `Gtk::ApplicationWindow` (no
+`AdwApplicationWindow`, see above), every `AdwDialog` here comes up as its
+own window rather than inside the main one; the dialog's breakpoint
+follows that window's size.
