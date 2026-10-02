@@ -22,6 +22,14 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.24.0" date="2026-10-02">
+      <description>
+        <p>Small touches: animated "playing" bars for the current track and
+        playing rooms, a sleep timer ring around the play button, a sunrise
+        greeting for a ringing alarm, and a new poster-style mini player in
+        which the cover fills the window.</p>
+      </description>
+    </release>
     <release version="0.23.0" date="2026-10-02">
       <description>
         <p>A Now Playing view slides up from the player bar: a large cover

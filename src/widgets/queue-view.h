@@ -15,6 +15,7 @@
 
 #include "../backend/noson-types.h"
 #include "cover-thumbnail.h"
+#include "playing-indicator.h"
 
 namespace gnomos
 {
@@ -34,6 +35,8 @@ public:
   // order — GnomosWindow gets the two pieces of state (queue contents,
   // now-playing) from independent, asynchronously-arriving events.
   void SetCurrentIndex(int index);
+  // Whether the current entry's indicator bobs (playing) or rests (paused).
+  void SetPlaying(bool playing);
   void Clear();
   // Same action as jump_to_current_button_'s own click handler — exposed so
   // GnomosWindow's "jump to Now Playing" shortcut can trigger it after
@@ -89,7 +92,8 @@ private:
   // rebuilt there. now_playing_icons_' visibility is only ever toggled by
   // SetCurrentIndex(); select_checks_' by select_mode_button_ (all of
   // them at once) and individually by the user.
-  std::vector<Gtk::Image*> now_playing_icons_;
+  std::vector<PlayingIndicator*> now_playing_icons_;
+  bool playing_ = false;
   std::vector<Gtk::CheckButton*> select_checks_;
   int current_index_ = -1;
   sigc::signal<void(unsigned)> signal_item_activated_;

@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <vector>
 
 #include <adwaita.h>
@@ -33,6 +34,7 @@
 #include "widgets/history-view.h"
 #include "widgets/library-view.h"
 #include "widgets/now-playing-view.h"
+#include "widgets/playing-indicator.h"
 #include "widgets/player-bar.h"
 #include "widgets/queue-view.h"
 #include "zone-volume-service.h"
@@ -310,6 +312,8 @@ private:
   // and the Space shortcut.
   void TogglePlayPause();
   void OnRoomNowPlayingChanged();
+  // Sleep timer ring around the play button — see sleep_deadline_.
+  void UpdateSleepRing();
   void UpdateZoneRowsNowPlaying();
   void StepVolume(int delta);
   void SeekRelative(int seconds);
@@ -479,6 +483,8 @@ private:
   PlayerBar player_bar_;
   // The sheet PlayerBar opens into (AdwBottomSheet, bottom_sheet_).
   NowPlayingView now_playing_view_;
+  // The queue sidebar item's suffix (libadwaita 1.10+ only, else null).
+  PlayingIndicator* queue_nav_indicator_ = nullptr;
   GtkWidget* bottom_sheet_ = nullptr;
   // Cover-derived colors for the player bar — see ApplyCoverTint().
   Glib::RefPtr<Gtk::CssProvider> cover_css_;
@@ -563,6 +569,11 @@ private:
   bool load_lyrics_ = false;
   // Now Playing appearance, all on by default except the record player
   // look — see LoadAppearanceSettings().
+  // Active sleep timer: monotonic deadline (0 = none) and full length in
+  // seconds, for the ring's share. Counted down locally; the device is
+  // asked again once the deadline passes.
+  gint64 sleep_deadline_ = 0;
+  unsigned sleep_total_seconds_ = 0;
   bool cover_tint_ = true;
   bool cover_blur_ = true;
   bool vinyl_mode_ = false;
@@ -667,8 +678,14 @@ private:
     std::string coordinator_uuid;
     Gtk::Label* subtitle = nullptr;
     Gtk::Button* play_pause = nullptr;
+    Gtk::Image* icon = nullptr;
+    PlayingIndicator* indicator = nullptr;
   };
   std::vector<ZoneRowWidgets> zone_rows_;
+  // Members of the selected group as of the last RebuildGroupingPopover(),
+  // to spot the room that just joined (and animate it).
+  std::string grouping_seen_group_id_;
+  std::set<std::string> grouping_seen_members_;
   std::string selected_group_id_;
   // Loaded once at startup from state.ini; consumed (matched against, then
   // cleared regardless of outcome) the first time OnZonesChanged() sees a

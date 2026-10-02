@@ -14,6 +14,7 @@
 #include <sigc++/sigc++.h>
 
 #include "../backend/noson-types.h"
+#include "playback-ui.h"
 
 namespace gnomos
 {
@@ -50,6 +51,9 @@ public:
   void UpdateNextTrack(const std::string& title);
   // Disables controls and shows a neutral state while no zone is selected.
   void SetEnabled(bool enabled);
+  // Sleep timer: remaining share of its total time as a ring around the
+  // play button, or <= 0 for no timer.
+  void SetSleepProgress(double fraction);
 
   sigc::signal<void()>& signal_play_pause() { return signal_play_pause_; }
   sigc::signal<void()>& signal_next() { return signal_next_; }
@@ -138,6 +142,7 @@ private:
   sigc::connection seek_debounce_connection_;
 
   bool suppress_volume_signal_ = false;
+  ProgressRing sleep_ring_;
   bool muted_ = false;
 
   sigc::signal<void()> signal_play_pause_;

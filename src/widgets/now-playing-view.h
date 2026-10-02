@@ -127,6 +127,9 @@ public:
   void SetVinylEnabled(bool enabled);
 
   const CoverPalette& palette() const { return palette_; }
+  // The current cover at full size (or the generated one), for the mini
+  // player.
+  const Glib::RefPtr<Gdk::Texture>& cover_texture() const { return cover_texture_; }
 
   sigc::signal<void()>& signal_play_pause() { return signal_play_pause_; }
   sigc::signal<void()>& signal_next() { return signal_next_; }
@@ -145,6 +148,8 @@ public:
   sigc::signal<void(std::string)>& signal_artist_info() { return signal_artist_info_; }
   // A new cover's colors are known (or invalid: no cover).
   sigc::signal<void(const CoverPalette&)>& signal_palette_changed() { return signal_palette_changed_; }
+  // Fires right after signal_palette_changed(), with the new cover_texture().
+  sigc::signal<void(const Glib::RefPtr<Gdk::Texture>&)>& signal_cover_changed() { return signal_cover_changed_; }
 
 protected:
   void measure_vfunc(Gtk::Orientation orientation, int for_size, int& minimum, int& natural,
@@ -208,6 +213,7 @@ private:
   Glib::RefPtr<Gio::Cancellable> art_cancellable_;
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
   CoverPalette palette_;
+  Glib::RefPtr<Gdk::Texture> cover_texture_;
   unsigned position_seconds_ = 0;
   gint64 position_time_ = 0;  // monotonic time position_seconds_ was reported
   bool user_seeking_ = false;
@@ -231,6 +237,7 @@ private:
   sigc::signal<void(std::string)> signal_search_album_;
   sigc::signal<void(std::string)> signal_artist_info_;
   sigc::signal<void(const CoverPalette&)> signal_palette_changed_;
+  sigc::signal<void(const Glib::RefPtr<Gdk::Texture>&)> signal_cover_changed_;
 };
 
 }  // namespace gnomos

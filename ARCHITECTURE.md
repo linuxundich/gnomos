@@ -2131,3 +2131,35 @@ clicks.** The header bar keeps every button it has.
 - **Removed**: `ShowTrackInfoDialog()` and its `[track_info_dialog]`
   size persistence. New `[appearance]` keys: `cover_tint`, `cover_blur`,
   `vinyl_mode`.
+
+### 0.24: small touches
+
+- **`PlayingIndicator`** (`widgets/playing-indicator.{h,cpp}`): 16 px,
+  three bars from two summed sines each at unrelated frequencies, drawn in
+  the widget's CSS color (`.accent` → `--accent-color`). Ticks only while
+  playing, mapped and `gtk-enable-animations`; otherwise static. The plan
+  had named GTK 4.22's animated symbolic SVG (`GtkSvg`) for this; a drawn
+  widget does the same on the GNOME 50 runtime too and can stop exactly
+  when the room pauses. Placed in `QueueView` (replacing the blue play
+  icon), the room popover rows (in place of the speaker icon while the
+  room plays) and, behind `ADW_CHECK_VERSION(1, 10, 0)`, as the queue
+  sidebar item's suffix (`adw_sidebar_item_set_suffix()`).
+- **Sleep ring.** `ProgressRing` (`playback-ui.h`) sits in an overlay
+  around the player bar's play button. The device reports only the time
+  remaining ("H:MM:SS"); `OnSleepTimerChanged()` turns it into a
+  monotonic deadline, the total comes from the preset just chosen or —
+  for a timer set elsewhere — the first remaining time seen. The 1 s
+  position timer redraws it; at the deadline the device is asked again.
+  `OnPlayerReady()` refreshes the timer so a running one shows up.
+- **Sunrise alarm toast**: `adw_toast_set_custom_title()` with a label
+  styled `.alarm-sunrise` (an oversized gradient whose
+  `background-position` is animated by CSS keyframes), timeout 0.
+- **Grouping popover**: `grouping_seen_members_` remembers the selected
+  group's members at the last rebuild; a member that's new gets
+  `.just-joined` (CSS keyframes: slide in, accent glow).
+- **Mini player** rebuilt as a poster: undecorated window, `Gtk::Picture`
+  (`ContentFit::COVER`) inside a `Gtk::WindowHandle` for dragging,
+  controls and a close button in crossfading revealers driven by an
+  `EventControllerMotion` (always shown while not playing). The cover
+  comes from `NowPlayingView::cover_texture()`/`signal_cover_changed()`,
+  so it's decoded once; its own small CSS provider colors the play button.

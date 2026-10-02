@@ -120,9 +120,9 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
     drag_handle->add_css_class("dimmed");
     row_box->append(*drag_handle);
 
-    auto* now_playing_icon = Gtk::make_managed<Gtk::Image>();
-    now_playing_icon->set_from_icon_name("media-playback-start-symbolic");
+    auto* now_playing_icon = Gtk::make_managed<PlayingIndicator>();
     now_playing_icon->add_css_class("accent");
+    now_playing_icon->SetPlaying(playing_);
     now_playing_icon->set_visible(static_cast<int>(item.index) == current_index_);
     row_box->append(*now_playing_icon);
     now_playing_icons_.push_back(now_playing_icon);
@@ -208,6 +208,13 @@ void QueueView::SetCurrentIndex(int index)
   for (size_t i = 0; i < now_playing_icons_.size(); ++i)
     now_playing_icons_[i]->set_visible(static_cast<int>(i) == index);
   jump_to_current_button_.set_sensitive(index >= 0);
+}
+
+void QueueView::SetPlaying(bool playing)
+{
+  playing_ = playing;
+  for (PlayingIndicator* indicator : now_playing_icons_)
+    indicator->SetPlaying(playing);
 }
 
 void QueueView::ScrollToCurrent()

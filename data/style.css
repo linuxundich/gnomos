@@ -119,3 +119,94 @@ gridview.library-grid > child:hover .cover-thumbnail {
     transition: none;
   }
 }
+
+/* Sleep timer: ring around the play button, and the header button lit up. */
+.sleep-ring {
+  color: var(--accent-color);
+}
+
+.cover-tinted .sleep-ring {
+  color: currentColor;
+}
+
+.sleep-active {
+  color: var(--accent-color);
+}
+
+/* "Playing" bars (PlayingIndicator) */
+.playing-indicator.accent {
+  color: var(--accent-color);
+}
+
+/* Ringing alarm toast (GnomosWindow::CheckAlarmAndTransportStatus()) */
+.alarm-sunrise {
+  padding: 4px 14px;
+  border-radius: 999px;
+  color: white;
+  font-weight: 700;
+  background-image: linear-gradient(90deg, #1a2350, #6b3a78, #d8584e, #f5a63b, #ffd56b);
+  background-size: 300% 100%;
+  background-position: 0% 50%;
+  animation: sunrise 8s ease-in-out infinite alternate;
+}
+
+@keyframes sunrise {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alarm-sunrise {
+    animation: none;
+    background-position: 70% 50%;
+  }
+}
+
+/* Grouping popover: a room that just joined the group. */
+.just-joined {
+  border-radius: 8px;
+  animation: just-joined 900ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes just-joined {
+  from {
+    transform: translateX(-14px);
+    background-color: alpha(var(--accent-bg-color), 0.35);
+  }
+  to {
+    transform: none;
+    background-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .just-joined {
+    animation: none;
+  }
+}
+
+/* Mini player ("poster") */
+window.mini-player {
+  background-color: black;
+  border-radius: 14px;
+}
+
+.mini-player-controls {
+  padding: 48px 14px 12px 14px;
+  color: white;
+  background-image: linear-gradient(to bottom, transparent, alpha(black, 0.55) 40%, alpha(black, 0.8));
+}
+
+.mini-player-controls .mini-player-subtitle,
+.mini-player-controls .numeric {
+  color: alpha(white, 0.75);
+}
+
+.mini-player-controls button.flat {
+  color: white;
+}
+
+.mini-player .play-button {
+  background-color: white;
+  color: black;
+}

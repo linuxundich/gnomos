@@ -1017,9 +1017,11 @@ void NowPlayingView::LoadArt(const std::string& uri)
 void NowPlayingView::OnArtDecoded(const Glib::RefPtr<Gdk::Texture>& texture, const Glib::RefPtr<Gdk::Texture>& small)
 {
   palette_ = ExtractCoverPalette(small);
+  cover_texture_ = texture;
   art_.SetTexture(texture);
   backdrop_.SetCover(small, palette_);
   signal_palette_changed_.emit(palette_);
+  signal_cover_changed_.emit(texture);
 }
 
 }  // namespace gnomos

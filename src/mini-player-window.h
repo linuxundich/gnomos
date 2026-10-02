@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include <gdkmm/texture.h>
 #include <gtkmm/button.h>
+#include <gtkmm/cssprovider.h>
 #include <gtkmm/label.h>
+#include <gtkmm/picture.h>
+#include <gtkmm/revealer.h>
 #include <gtkmm/scale.h>
 #include <gtkmm/widget.h>
 #include <gtkmm/window.h>
@@ -10,15 +14,18 @@
 #include <sigc++/sigc++.h>
 
 #include "backend/noson-types.h"
-#include "widgets/cover-thumbnail.h"
+#include "widgets/cover-palette.h"
 
 namespace gnomos
 {
 
 // A small, standalone secondary window mirroring PlayerBar's core controls
-// (art, title/artist, previous/play-pause/next, seek) in a compact
-// vertical layout, rather than PlayerBar's own wide horizontal bar —
-// precedent: Spotify/Apple Music/VLC's own "mini player" windows.
+// (art, title/artist, previous/play-pause/next, seek) — a "poster": the
+// cover fills the whole (square, resizable) window, and title and
+// controls fade in over a dark gradient at the bottom while the pointer is
+// over it or nothing is playing. No title bar; dragging the cover moves
+// the window, a small button in the corner closes it and brings the main
+// window back. Precedent: Spotify/Apple Music/VLC's own mini players.
 //
 // Deliberately NOT "always on top": GTK4 removed gtk_window_set_keep_above()
 // entirely, and Wayland compositors (this project's actual target
@@ -47,6 +54,9 @@ public:
   // Disables the transport buttons while no zone is selected — same
   // "neutral state" PlayerBar::SetEnabled() gives its own controls.
   void SetEnabled(bool enabled);
+  // The cover comes from NowPlayingView, which has already loaded and
+  // decoded it (and picked its colors, which tint the play button here).
+  void SetCover(const Glib::RefPtr<Gdk::Texture>& texture, const CoverPalette& palette);
 
   sigc::signal<void()>& signal_play_pause() { return signal_play_pause_; }
   sigc::signal<void()>& signal_next() { return signal_next_; }
@@ -58,7 +68,14 @@ public:
   sigc::signal<void(unsigned)>& signal_seek_requested() { return signal_seek_requested_; }
 
 private:
-  CoverThumbnail art_{220};
+  void UpdateControlsVisibility();
+
+  Gtk::Picture art_;
+  Gtk::Revealer controls_revealer_;
+  Gtk::Revealer close_revealer_;
+  bool hovering_ = false;
+  bool playing_ = false;
+  Glib::RefPtr<Gtk::CssProvider> palette_css_;
   Gtk::Label title_label_;
   Gtk::Label subtitle_label_;
   Gtk::Button previous_button_;

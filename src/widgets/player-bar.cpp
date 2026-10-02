@@ -10,6 +10,7 @@
 #include <glibmm/error.h>
 #include <glibmm/main.h>
 #include <gtkmm/centerbox.h>
+#include <gtkmm/overlay.h>
 #include <gtkmm/separator.h>
 #include <pangomm/layout.h>
 
@@ -221,7 +222,16 @@ PlayerBar::PlayerBar()
   play_pause_button_.set_valign(Gtk::Align::CENTER);
   SetButtonLabel(play_pause_button_, PlayPauseLabelForState(TransportState::Stopped));
   play_pause_button_.signal_clicked().connect([this] { signal_play_pause_.emit(); });
-  transport_row->append(play_pause_button_);
+  // The sleep ring sits around the button, 4 px outside its edge.
+  auto* play_overlay = Gtk::make_managed<Gtk::Overlay>();
+  play_overlay->set_child(play_pause_button_);
+  play_pause_button_.set_margin_top(4);
+  play_pause_button_.set_margin_bottom(4);
+  play_pause_button_.set_margin_start(4);
+  play_pause_button_.set_margin_end(4);
+  sleep_ring_.add_css_class("sleep-ring");
+  play_overlay->add_overlay(sleep_ring_);
+  transport_row->append(*play_overlay);
 
   next_button_.set_icon_name("media-skip-forward-symbolic");
   next_button_.add_css_class("flat");
@@ -473,6 +483,11 @@ void PlayerBar::UpdateVolume(const VolumeInfo& volume)
   muted_ = volume.muted;
   mute_button_.set_icon_name(IconForVolume(volume.volume, volume.muted));
   SetButtonLabel(mute_button_, volume.muted ? "Ton einschalten" : "Stummschalten");
+}
+
+void PlayerBar::SetSleepProgress(double fraction)
+{
+  sleep_ring_.SetFraction(fraction);
 }
 
 void PlayerBar::SetEnabled(bool enabled)

@@ -100,6 +100,11 @@ apps, and I wanted a modern client I could keep running on my own hardware.
   and lyrics from LRCLIB (opt-in) — time-synced where LRCLIB has them, with
   the current line highlighted and clickable lines to jump there. An
   optional record-player look turns the cover into a spinning record
+- Little touches: animated "playing" bars for the current track and
+  playing rooms, a sleep timer ring around the play button, a sunrise
+  greeting for a ringing alarm, rooms sliding into a group
+- A poster-style mini player: the cover fills a small square window, the
+  controls fade in on hover
 - Queue management: reordering, removing tracks, saving as a Sonos playlist
 - Favorites, with search, "add to favorites" from anywhere in the library,
   and "play all"/"add all to queue" for the whole list

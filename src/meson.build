@@ -23,6 +23,7 @@ gnomos_sources = files(
   'widgets/listenbrainz-scrobbler.cpp',
   'widgets/lyrics-fetcher.cpp',
   'widgets/playback-ui.cpp',
+  'widgets/playing-indicator.cpp',
   'widgets/now-playing-view.cpp',
   'widgets/player-bar.cpp',
   'widgets/queue-view.cpp',

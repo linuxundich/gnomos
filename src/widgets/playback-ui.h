@@ -25,6 +25,22 @@ const char* PlayPauseLabelForState(TransportState state);
 // roughly a third and two-thirds).
 const char* IconForVolume(unsigned volume, bool muted);
 
+// A thin ring drawn around a round button — the sleep timer's remaining
+// time around the play button. Fraction 1 = full ring, <= 0 = hidden.
+// Drawn in the current text color (style it with CSS).
+class ProgressRing : public Gtk::Widget
+{
+public:
+  ProgressRing();
+  void SetFraction(double fraction);
+
+protected:
+  void snapshot_vfunc(const Glib::RefPtr<Gtk::Snapshot>& snapshot) override;
+
+private:
+  double fraction_ = 0.0;
+};
+
 // Tooltip plus accessible label in one call — an icon-only button has no
 // text a screen reader could announce otherwise.
 void SetButtonLabel(Gtk::Widget& widget, const std::string& label);

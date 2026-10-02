@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <ctime>
 #include <map>
+#include <set>
 #include <sstream>
 #include <tuple>
 
@@ -389,6 +390,9 @@ GnomosWindow::GnomosWindow()
     auto* preset_button = Gtk::make_managed<Gtk::Button>(label);
     preset_button->add_css_class("flat");
     preset_button->signal_clicked().connect([this, minutes] {
+      // The device only ever reports the time remaining; remember the
+      // full length so the ring can show the share that's left.
+      sleep_total_seconds_ = minutes * 60;
       backend_->SetSleepTimer(minutes * 60);
       sleep_timer_popover_.popdown();
     });
@@ -714,6 +718,17 @@ GnomosWindow::GnomosWindow()
     AdwSidebarItem* item = adw_sidebar_item_new(title);
     adw_sidebar_item_set_icon_name(item, icon);
     adw_sidebar_section_append(static_nav_section, item);
+#if ADW_CHECK_VERSION(1, 10, 0)
+    // libadwaita 1.10 (GNOME 51) lets a sidebar item carry a suffix widget:
+    // the queue shows the playing indicator there, visible from any page.
+    if (std::string(name) == "queue")
+    {
+      queue_nav_indicator_ = Gtk::make_managed<PlayingIndicator>();
+      queue_nav_indicator_->add_css_class("accent");
+      queue_nav_indicator_->set_visible(false);
+      adw_sidebar_item_set_suffix(item, GTK_WIDGET(queue_nav_indicator_->gobj()));
+    }
+#endif
 
     std::string page_name = name;
     if (page_name == "library")
@@ -900,6 +915,10 @@ GnomosWindow::GnomosWindow()
   });
   now_playing_view_.signal_artist_info().connect([this](std::string artist) { ShowArtistInfoDialog(artist); });
   now_playing_view_.signal_palette_changed().connect(sigc::mem_fun(*this, &GnomosWindow::ApplyCoverTint));
+  now_playing_view_.signal_cover_changed().connect([this](const Glib::RefPtr<Gdk::Texture>& texture) {
+    if (mini_player_window_)
+      mini_player_window_->SetCover(texture, now_playing_view_.palette());
+  });
   // The tinted button's lightness depends on light/dark — recompute.
   g_signal_connect_swapped(adw_style_manager_get_default(), "notify::dark", G_CALLBACK(+[](GnomosWindow* self) {
                              self->ApplyCoverTint(self->now_playing_view_.palette());
@@ -1474,6 +1493,12 @@ void GnomosWindow::OnZonesChanged()
     room_icon->set_from_icon_name("audio-speakers-symbolic");
     room_icon->add_css_class("dimmed");
     row_box->append(*room_icon);
+    // Takes the speaker icon's place while the room plays — see
+    // UpdateZoneRowsNowPlaying().
+    auto* room_indicator = Gtk::make_managed<PlayingIndicator>();
+    room_indicator->add_css_class("accent");
+    room_indicator->set_visible(false);
+    row_box->append(*room_indicator);
 
     // Name + a live now-playing subtitle stacked vertically — lets the
     // switcher show "what's playing where" at a glance, matching
@@ -1521,7 +1546,7 @@ void GnomosWindow::OnZonesChanged()
     play_pause_button->signal_clicked().connect(
         [this, coordinator_uuid] { backend_->ToggleRoomPlayback(coordinator_uuid); });
     row_box->append(*play_pause_button);
-    zone_rows_.push_back({zone.coordinator_uuid, subtitle_label, play_pause_button});
+    zone_rows_.push_back({zone.coordinator_uuid, subtitle_label, play_pause_button, room_icon, room_indicator});
 
     auto* info_button = Gtk::make_managed<Gtk::Button>();
     info_button->set_icon_name("dialog-information-symbolic");
@@ -1651,6 +1676,9 @@ void GnomosWindow::UpdateZoneRowsNowPlaying()
     row.subtitle->set_visible(!subtitle.empty());
 
     bool playing = room_np.valid && room_np.state == TransportState::Playing;
+    row.icon->set_visible(!playing);
+    row.indicator->set_visible(playing);
+    row.indicator->SetPlaying(playing);
     row.play_pause->set_visible(room_np.valid);
     row.play_pause->set_icon_name(playing ? "media-playback-pause-symbolic" : "media-playback-start-symbolic");
     row.play_pause->set_tooltip_text(playing ? "Pause" : "Abspielen");
@@ -1660,6 +1688,9 @@ void GnomosWindow::UpdateZoneRowsNowPlaying()
 void GnomosWindow::OnPlayerReady()
 {
   player_bar_.SetEnabled(true);
+  // Picks up a sleep timer already running in this room (set from the
+  // Sonos app, say), for the ring around the play button.
+  backend_->RefreshSleepTimerAsync();
   if (mini_player_window_)
     mini_player_window_->SetEnabled(true);
   backend_->RefreshQueueAsync();
@@ -1685,6 +1716,14 @@ void GnomosWindow::OnNowPlayingChanged()
   if (np.state != TransportState::Transitioning)
     current_queue_index_ = (np.valid && np.playing_from_queue) ? static_cast<int>(np.current_queue_index) : -1;
   queue_view_.SetCurrentIndex(current_queue_index_);
+  bool playing = np.valid && np.state == TransportState::Playing;
+  queue_view_.SetPlaying(playing);
+  if (queue_nav_indicator_)
+  {
+    queue_nav_indicator_->SetPlaying(playing);
+    queue_nav_indicator_->set_visible(np.valid && (np.state == TransportState::Playing ||
+                                                    np.state == TransportState::Paused));
+  }
   UpdateNextTrackHint();
   RecordHistoryIfTrackChanged(np);
   MaybeScheduleScrobble(np);
@@ -1709,6 +1748,7 @@ void GnomosWindow::OnPositionChanged()
 
 bool GnomosWindow::OnPositionTimerTick()
 {
+  UpdateSleepRing();
   NowPlaying np = backend_->GetNowPlaying();
   if (np.valid && np.state == TransportState::Playing && np.duration > 0)
     backend_->RefreshPositionAsync();
@@ -2002,6 +2042,13 @@ void GnomosWindow::CheckAlarmAndTransportStatus(const NowPlaying& now_playing)
   if (now_playing.alarm_running && !last_alarm_running_)
   {
     AdwToast* toast = adw_toast_new("Wecker klingelt");
+    // A little sunrise: the title sits on a night-to-dawn gradient that
+    // slowly drifts (style.css, .alarm-sunrise). Stays until stopped or
+    // dismissed rather than timing out like an ordinary toast.
+    GtkWidget* title = gtk_label_new("Guten Morgen – der Wecker klingelt");
+    gtk_widget_add_css_class(title, "alarm-sunrise");
+    adw_toast_set_custom_title(toast, title);
+    adw_toast_set_timeout(toast, 0);
     adw_toast_set_button_label(toast, "Stoppen");
     adw_toast_set_action_name(toast, "win.stop-alarm");
     adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(toast_overlay_), toast);
@@ -3248,6 +3295,7 @@ void GnomosWindow::RebuildGroupingPopover()
     });
   }
 
+  std::set<std::string> current_members;
   for (const RoomInfo& room : rooms)
   {
     auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
@@ -3319,6 +3367,14 @@ void GnomosWindow::RebuildGroupingPopover()
 
     top_row->append(*room_switch);
 
+    // A room that just joined slides into place with a short accent glow
+    // (.just-joined in style.css) — it's the one row that changed.
+    if (in_selected_group && grouping_seen_group_id_ == selected_group_id_ &&
+        !grouping_seen_members_.count(room.player_uuid))
+      row_box->add_css_class("just-joined");
+    if (in_selected_group)
+      current_members.insert(room.player_uuid);
+
     // Per-room volume within the group — only meaningful (and only known,
     // see GetRoomVolume()'s comment) for a room that's actually a member
     // of the currently selected zone right now.
@@ -3342,6 +3398,8 @@ void GnomosWindow::RebuildGroupingPopover()
 
     grouping_list_box_.append(*row_box);
   }
+  grouping_seen_group_id_ = selected_group_id_;
+  grouping_seen_members_ = std::move(current_members);
 }
 
 void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_name)
@@ -3709,6 +3767,46 @@ void GnomosWindow::OnSleepTimerChanged()
 {
   SleepTimerInfo info = backend_->GetSleepTimerInfo();
   sleep_timer_status_label_.set_text(info.active ? "Aktiv, verbleibend: " + info.remaining : "Kein Sleep-Timer aktiv");
+
+  // "H:MM:SS" -> seconds, counted down locally from here (see
+  // UpdateSleepRing()) — the device isn't asked again until it should
+  // have run out.
+  unsigned h = 0, m = 0, sec = 0;
+  if (info.active && std::sscanf(info.remaining.c_str(), "%u:%u:%u", &h, &m, &sec) == 3)
+  {
+    unsigned remaining = h * 3600 + m * 60 + sec;
+    // A timer set elsewhere (another app, the device itself) has no known
+    // total — the first remaining time seen stands in for it.
+    if (sleep_total_seconds_ < remaining)
+      sleep_total_seconds_ = remaining;
+    sleep_deadline_ = g_get_monotonic_time() + static_cast<gint64>(remaining) * G_USEC_PER_SEC;
+    sleep_timer_button_.add_css_class("sleep-active");
+  }
+  else
+  {
+    sleep_total_seconds_ = 0;
+    sleep_deadline_ = 0;
+    sleep_timer_button_.remove_css_class("sleep-active");
+  }
+  UpdateSleepRing();
+}
+
+void GnomosWindow::UpdateSleepRing()
+{
+  if (sleep_deadline_ == 0 || sleep_total_seconds_ == 0)
+  {
+    player_bar_.SetSleepProgress(0);
+    return;
+  }
+  double remaining = (sleep_deadline_ - g_get_monotonic_time()) / static_cast<double>(G_USEC_PER_SEC);
+  if (remaining <= 0)
+  {
+    player_bar_.SetSleepProgress(0);
+    sleep_deadline_ = 0;
+    backend_->RefreshSleepTimerAsync();
+    return;
+  }
+  player_bar_.SetSleepProgress(remaining / sleep_total_seconds_);
 }
 
 void GnomosWindow::OnSoundSettingsChanged()
@@ -4001,6 +4099,7 @@ void GnomosWindow::ShowMiniPlayerWindow()
   window->signal_next().connect([this] { backend_->Next(); });
   window->signal_previous().connect([this] { backend_->Previous(); });
   window->signal_seek_requested().connect([this](unsigned seconds) { backend_->SeekAsync(seconds); });
+  window->SetCover(now_playing_view_.cover_texture(), now_playing_view_.palette());
 
   NowPlaying np = backend_->GetNowPlaying();
   // No standalone "is the player ready" accessor on NosonBackend —

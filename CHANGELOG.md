@@ -8,6 +8,29 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.24.0] - 2026-10-02
+
+### Added
+- A small "playing" indicator — three bobbing bars — marks the current
+  queue entry and every playing room in the room popover; on GNOME 51
+  (libadwaita 1.10) also the queue's sidebar entry. Paused, the bars rest;
+  with reduced motion they don't move. They show the state only: Gnomos
+  never hears the audio, so they don't pretend to be a level meter.
+- Sleep timer ring: while a sleep timer runs, a thin ring around the play
+  button shows the share of time left, and the moon button in the header
+  lights up. Timers set elsewhere (the Sonos app) are picked up too.
+- A ringing alarm's notice greets you with a slowly drifting
+  night-to-dawn gradient and stays until stopped or dismissed.
+- In the grouping popover, a room that just joined the group slides into
+  place with a short glow.
+
+### Changed
+- The mini player is a "poster" now: the cover fills the square, freely
+  resizable window, and title, seek bar and controls fade in over it while
+  the pointer is on it (or while nothing plays). No title bar — drag the
+  cover to move it, the corner button brings the main window back. The
+  play button takes the cover's color.
+
 ## [0.23.0] - 2026-10-02
 
 ### Added

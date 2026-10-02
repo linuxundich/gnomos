@@ -2,9 +2,13 @@
 
 #include "playback-ui.h"
 
+#include <algorithm>
 #include <cstdio>
 
+#include <cmath>
+
 #include <gtk/gtk.h>
+#include <gtkmm/snapshot.h>
 
 namespace gnomos
 {
@@ -41,6 +45,44 @@ const char* IconForVolume(unsigned volume, bool muted)
   if (volume < 67)
     return "audio-volume-medium-symbolic";
   return "audio-volume-high-symbolic";
+}
+
+ProgressRing::ProgressRing() : Glib::ObjectBase("GnomosProgressRing"), Gtk::Widget()
+{
+  add_css_class("progress-ring");
+  set_can_target(false);
+}
+
+void ProgressRing::SetFraction(double fraction)
+{
+  fraction = std::clamp(fraction, 0.0, 1.0);
+  if (std::fabs(fraction - fraction_) < 0.001)
+    return;
+  fraction_ = fraction;
+  queue_draw();
+}
+
+void ProgressRing::snapshot_vfunc(const Glib::RefPtr<Gtk::Snapshot>& snapshot)
+{
+  if (fraction_ <= 0.0)
+    return;
+  float width = get_width(), height = get_height();
+  graphene_rect_t bounds = GRAPHENE_RECT_INIT(0, 0, width, height);
+  GdkRGBA color;
+  gtk_widget_get_color(GTK_WIDGET(gobj()), &color);
+  cairo_t* cr = gtk_snapshot_append_cairo(snapshot->gobj(), &bounds);
+  double line = 2.5;
+  double radius = std::min(width, height) / 2.0 - line / 2.0;
+  // A faint full track, then the remaining time on top, clockwise from 12.
+  cairo_set_line_width(cr, line);
+  cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+  cairo_set_source_rgba(cr, color.red, color.green, color.blue, color.alpha * 0.18);
+  cairo_arc(cr, width / 2.0, height / 2.0, radius, 0, 2 * M_PI);
+  cairo_stroke(cr);
+  cairo_set_source_rgba(cr, color.red, color.green, color.blue, color.alpha);
+  cairo_arc(cr, width / 2.0, height / 2.0, radius, -M_PI / 2, -M_PI / 2 + 2 * M_PI * fraction_);
+  cairo_stroke(cr);
+  cairo_destroy(cr);
 }
 
 void SetButtonLabel(Gtk::Widget& widget, const std::string& label)
