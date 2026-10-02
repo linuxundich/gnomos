@@ -2176,8 +2176,19 @@ controller went away. A `DialogShell` deletes itself on the dialog's
 "closed" signal (deferred to idle), which replaced each dialog's own
 `signal_hide() → delete` — three dialogs had none and leaked.
 
-Not done from the 0.22–0.26 plan: splitting `gnomos-window.cpp` into
-several files and moving the UI strings to gettext with English as the
-source language. Both are large, purely mechanical changes with no
-visible effect; they're left for a separate pass rather than mixed into
-the visual work.
+### `GnomosWindow` across several files
+
+`gnomos-window.cpp` had grown past 6000 lines. It's still one class, but
+its methods are now spread by topic (a pure move, verified line for line):
+
+| File | Contents |
+|---|---|
+| `gnomos-window.cpp` | constructor, zones/room popover, now playing, queue, keys, the sheet, confirm/artist dialogs, mini player |
+| `gnomos-window-settings.cpp` | everything in state.ini, the preferences dialog, Last.fm sign-in, About, shortcuts |
+| `gnomos-window-library.cpp` | library navigation, linked services, radio stations, M3U/PLS import, playlist and search dialogs, favorites |
+| `gnomos-window-history.cpp` | play history, scenes, scrobbling, track-change notifications |
+| `gnomos-window-rooms.cpp` | grouping popover, device info, alarms, sleep timer, sound settings |
+| `window-helpers.{h,cpp}` | what several of them share: file paths, parsers, the extern "C" signal trampolines |
+
+The trampolines used to live in anonymous namespaces; as shared
+extern "C" functions their names must now be unique program-wide.
