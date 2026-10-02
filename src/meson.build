@@ -15,6 +15,7 @@ gnomos_sources = files(
   'widgets/artist-info-fetcher.cpp',
   'widgets/cover-palette.cpp',
   'widgets/cover-thumbnail.cpp',
+  'widgets/dialog-shell.cpp',
   'widgets/favorites-view.cpp',
   'widgets/history-view.cpp',
   'widgets/http-fetch.cpp',

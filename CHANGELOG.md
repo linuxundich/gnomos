@@ -8,6 +8,20 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.25.0] - 2026-10-02
+
+### Changed
+- The remaining hand-built input windows — Stream abspielen, Als Playlist
+  speichern, Szenen and Szene speichern, Zu Playlist hinzufügen,
+  Radiosender hinzufügen, Benachrichtigungen per Sender, Bibliothek
+  durchsuchen, Dienst verknüpfen, Last.fm-Anmeldung, Geräteinfo, Alarm —
+  are libadwaita dialogs now: a header bar with a close button, Escape
+  closes them, and on narrow windows they come up as a bottom sheet.
+
+### Fixed
+- Three of those windows (Geräteinfo, Zu Playlist hinzufügen, Radiosender
+  hinzufügen) were never freed after closing.
+
 ## [0.24.0] - 2026-10-02
 
 ### Added

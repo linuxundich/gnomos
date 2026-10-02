@@ -64,6 +64,7 @@
 #include "widgets/art-cache.h"
 #include "widgets/artist-info-fetcher.h"
 #include "widgets/cover-thumbnail.h"
+#include "widgets/dialog-shell.h"
 #include "widgets/http-fetch.h"
 #include "widgets/lastfm-scrobbler.h"
 #include "widgets/listenbrainz-scrobbler.h"
@@ -2602,10 +2603,8 @@ void GnomosWindow::StartLastFmAuth()
 
 void GnomosWindow::ShowLastFmAuthDialog(const std::string& token)
 {
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Last.fm-Anmeldung");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(420, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -2655,7 +2654,6 @@ void GnomosWindow::ShowLastFmAuthDialog(const std::string& token)
   content->append(*button_box);
 
   dialog->set_child(*content);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 
@@ -3413,10 +3411,8 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
     if (room.group_id == group_id)
       members.push_back(room);
 
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Geräteinfo");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(320, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -3544,10 +3540,8 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   // duplicate (existing != nullptr, but a new one gets created instead).
   bool editing = existing && !duplicate;
 
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title(editing ? "Alarm bearbeiten" : (duplicate ? "Alarm duplizieren" : "Neuer Alarm"));
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -3759,7 +3753,6 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   content->append(*button_box);
 
   dialog->set_child(*content);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 
@@ -4066,10 +4059,8 @@ void GnomosWindow::ShowMiniPlayerWindow()
 
   auto* window = new MiniPlayerWindow();
   mini_player_window_ = window;
-  // Hooked on close-request, not signal_hide() (the pattern every other
-  // secondary Gtk::Window in this file uses for its own cleanup) — this
-  // window has no in-app "Schließen" button of its own, so its native
-  // titlebar close button is the only way to close it, and confirmed
+  // Hooked on close-request, not signal_hide() — closing goes through
+  // this window's own corner button (MiniPlayerWindow calls close()), and confirmed
   // live: that path never emits "hide" at all here, it goes straight to
   // destroying the window (same "GTK's own default close-request
   // handling destroys the window without ever emitting a hide signal"
@@ -4577,10 +4568,8 @@ void GnomosWindow::ShowLinkServiceDialog()
     return;
   }
 
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Dienst verknüpfen");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -4639,16 +4628,13 @@ void GnomosWindow::ShowLinkServiceDialog()
   content->append(*button_box);
 
   dialog->set_child(*content);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 
 void GnomosWindow::ShowSavePlaylistDialog()
 {
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Als Playlist speichern");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -4686,17 +4672,14 @@ void GnomosWindow::ShowSavePlaylistDialog()
 
   dialog->set_child(*content);
   dialog->set_default_widget(*save_button);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
   entry->grab_focus();
 }
 
 void GnomosWindow::ShowPlayStreamDialog()
 {
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Stream abspielen");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(380, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -4754,7 +4737,6 @@ void GnomosWindow::ShowPlayStreamDialog()
 
   dialog->set_child(*content);
   dialog->set_default_widget(*play_button);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
   url_entry->grab_focus();
 }
@@ -5151,10 +5133,8 @@ void GnomosWindow::ImportM3uPlaylist()
 
 void GnomosWindow::ShowScenesDialog()
 {
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Szenen");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(380, 480);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -5250,16 +5230,13 @@ void GnomosWindow::ShowScenesDialog()
   content->append(*close_button);
 
   dialog->set_child(*content);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 
 void GnomosWindow::ShowSaveSceneDialog()
 {
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Szene speichern");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -5304,7 +5281,6 @@ void GnomosWindow::ShowSaveSceneDialog()
 
   dialog->set_child(*content);
   dialog->set_default_widget(*save_button);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
   entry->grab_focus();
 }
@@ -5545,11 +5521,9 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
     connection->disconnect();
     std::vector<LibraryEntry> playlists = backend_->GetSavedPlaylists();
 
-    auto* dialog = new Gtk::Window();
+    auto* dialog = new DialogShell(*this);
     dialog->set_title("Zu Playlist hinzufügen");
-    dialog->set_transient_for(*this);
-    dialog->set_modal(true);
-    dialog->set_default_size(360, -1);
+        dialog->set_default_size(360, -1);
 
     auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
     content->set_margin_top(18);
@@ -5630,10 +5604,8 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
 
 void GnomosWindow::ShowAddRadioStationDialog()
 {
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Radiosender hinzufügen");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(420, 560);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -5888,25 +5860,10 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   std::string stream_uri = entry.stream_uri;
   RadioMprisSettings settings = backend_->GetRadioMprisSettings(stream_uri);
 
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Benachrichtigungen: " + (entry.title.empty() ? "Radiosender" : entry.title));
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(420, -1);
 
-  // A plain Gtk::Window (unlike Adw::Dialog/AdwPreferencesDialog, used
-  // everywhere else in this file) has no built-in Escape-to-close — add it
-  // explicitly, same as cancel_button below.
-  auto escape_controller = Gtk::EventControllerKey::create();
-  escape_controller->signal_key_pressed().connect(
-      [dialog](guint keyval, guint, Gdk::ModifierType) {
-        if (keyval != GDK_KEY_Escape)
-          return false;
-        dialog->close();
-        return true;
-      },
-      false);
-  dialog->add_controller(escape_controller);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
   content->set_margin_top(18);
@@ -5967,7 +5924,6 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
 
   dialog->set_child(*content);
   dialog->set_default_widget(*save_button);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 
@@ -5995,10 +5951,8 @@ void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std
   // means the current level.
   std::string local_object_id = search_scope_object_id.empty() ? library_stack_.back().first : search_scope_object_id;
 
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Suchen");
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -6065,17 +6019,14 @@ void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std
 
   dialog->set_child(*content);
   dialog->set_default_widget(*search_button);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
   entry->grab_focus();
 }
 
 void GnomosWindow::OnServiceLinkReady(std::string url, std::string code)
 {
-  auto* dialog = new Gtk::Window();
+  auto* dialog = new DialogShell(*this);
   dialog->set_title("Verknüpfung: " + pending_link_service_name_);
-  dialog->set_transient_for(*this);
-  dialog->set_modal(true);
   dialog->set_default_size(420, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -6121,7 +6072,6 @@ void GnomosWindow::OnServiceLinkReady(std::string url, std::string code)
   content->append(*button_box);
 
   dialog->set_child(*content);
-  dialog->signal_hide().connect([dialog] { delete dialog; });
   dialog->present();
 }
 

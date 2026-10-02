@@ -2163,3 +2163,21 @@ clicks.** The header bar keeps every button it has.
   `EventControllerMotion` (always shown while not playing). The cover
   comes from `NowPlayingView::cover_texture()`/`signal_cover_changed()`,
   so it's decoded once; its own small CSS provider colors the play button.
+
+### 0.25: every dialog an AdwDialog
+
+`DialogShell` (`widgets/dialog-shell.{h,cpp}`) wraps an `AdwDialog` +
+`AdwToolbarView` + `AdwHeaderBar` behind the handful of `Gtk::Window`
+methods the 13 hand-built dialogs used (`set_title`, `set_default_size`,
+`set_child`, `set_default_widget`, `present`, `close`), so their contents
+moved over unchanged: `new Gtk::Window()` became `new DialogShell(*this)`,
+the `set_transient_for`/`set_modal` calls and one hand-rolled Escape
+controller went away. A `DialogShell` deletes itself on the dialog's
+"closed" signal (deferred to idle), which replaced each dialog's own
+`signal_hide() → delete` — three dialogs had none and leaked.
+
+Not done from the 0.22–0.26 plan: splitting `gnomos-window.cpp` into
+several files and moving the UI strings to gettext with English as the
+source language. Both are large, purely mechanical changes with no
+visible effect; they're left for a separate pass rather than mixed into
+the visual work.
