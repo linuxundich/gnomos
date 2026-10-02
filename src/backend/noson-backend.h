@@ -608,6 +608,10 @@ private:
   // cache and cheap, non-blocking libnoson getters (GetTransportProperty(),
   // GetRenderingProperty() are locked in-memory reads, not network calls).
   void RefreshNowPlayingLocked();
+  // Cross-checks the event-derived now_playing_ against a GetPositionInfo
+  // reply (see verified_track_'s comment). Returns true when it corrected
+  // now_playing_, i.e. the UI needs a now-playing refresh.
+  bool ApplyPositionInfoLocked(const std::string& track_key, const NSROOT::ElementList& vars);
   void RefreshVolumeLocked();
   // Resolves against player_'s own host/port — correct for a
   // upnp:albumArtURI that came from player_ itself (NowPlaying, the
@@ -803,6 +807,31 @@ private:
   // from a same-track play/pause/stop (both fire SVCEvent_TransportChanged)
   // so position_ only resets to 0 on the former.
   std::string current_track_key_;
+  // Sonos' GENA events can lag behind its own SOAP state right after the
+  // queue is replaced: confirmed live, "Play All" on an album while the
+  // room's old queue was stopped produced a TransportChanged event with
+  // CurrentTrack 1 but the *old* queue's track 1 URI and metadata, and
+  // the event carrying the real track sometimes only came seconds later
+  // (the same after a following Next); other events paired one track's
+  // number with another track's URI. GetPositionInfo() was correct the
+  // whole time, so it is the tiebreaker: when its Track/TrackURI disagree
+  // with the event's CurrentTrack/CurrentTrackURI, its metadata and track
+  // number win, keyed to the event's track key so a later event that
+  // still repeats the stale values (pause, resume) keeps the correction,
+  // and a real track change drops it.
+  struct VerifiedTrack
+  {
+    std::string track_key;
+    std::string title, artist, album, art_uri;
+    unsigned duration = 0;
+    unsigned queue_index = 0;
+  };
+  VerifiedTrack verified_track_;
+  // Set by RefreshNowPlayingLocked() on a track change, so
+  // HandlePlayerEvent() follows up (for queue playback) with a GetPositionInfo() check right
+  // away instead of waiting for the next position tick.
+  bool verify_track_pending_ = false;
+  Glib::Dispatcher now_playing_dispatcher_;
   VolumeInfo volume_;
   // uuid -> volume for every non-fixed-output member of the *currently
   // selected* zone — populated alongside volume_ in RefreshVolumeLocked(),

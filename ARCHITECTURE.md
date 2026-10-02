@@ -2316,3 +2316,18 @@ of returning early. `SetRowDragIcon()` (playback-ui) gives the rooms
 popover and the queue a snapshot of the dragged row on a card as drag
 icon, hotspot at the pointer — GTK's default icon for a string payload is
 the raw text, i.e. the Sonos group id.
+
+### 0.28.4: stale track details in Sonos events
+
+After a queue replace (Play All), Sonos' AVTransport LastChange events can
+carry the *old* queue's CurrentTrackURI/CurrentTrackMetaData, or pair one
+track's number with another track's URI, while `GetPositionInfo` is
+already right; libnoson drops out-of-order events by SEQ, so this is the
+device's own state. `RefreshNowPlayingLocked()` flags every track-key
+change; `HandlePlayerEvent()` then calls `RefreshPositionAsync()` at once
+(besides the 1 s tick while playing). `ApplyPositionInfoLocked()` compares
+Track/TrackURI with the event and, on a mismatch, stores the reply's
+metadata in `verified_track_` keyed to the event's track key and emits
+`now_playing_dispatcher_`. Later events with the same key (pause, resume,
+TRANSITIONING) reuse it; a reply that started before a newer event is
+discarded.

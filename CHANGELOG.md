@@ -8,6 +8,16 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.28.4] - 2026-10-02
+
+### Fixed
+- After "Play All" replaced a room's queue, the player bar, Now Playing
+  and the lyrics could show a track of the old queue for several seconds
+  (and again after the next skip), although the new track was already
+  playing. Sonos sometimes reports stale track details in its change
+  notifications; Gnomos now checks every track change against the
+  speaker's current position info and uses that when they disagree.
+
 ## [0.28.3] - 2026-10-02
 
 ### Fixed

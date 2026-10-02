@@ -291,6 +291,10 @@ NosonBackend::NosonBackend()
     signal_service_link_ready_.emit(url, code);
   });
   position_dispatcher_.connect([this] { signal_position_changed_.emit(); });
+  now_playing_dispatcher_.connect([this] {
+    signal_now_playing_changed_.emit();
+    signal_position_changed_.emit();
+  });
 
   // Constructing System already starts its internal UPnP-eventing listener
   // thread (noson/src/sonossystem.cpp), independent of Discover().
@@ -1230,17 +1234,32 @@ void NosonBackend::RefreshPositionAsync()
     auto player = SnapshotPlayer();
     if (!player)
       return;
+    // Taken before the SOAP call: if an event changes the track while it
+    // is in flight, this reply may predate that event and must not
+    // "correct" it (ApplyPositionInfoLocked() compares the keys).
+    std::string track_key;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      track_key = current_track_key_;
+    }
     NSROOT::ElementList vars;
     if (!player->GetPositionInfo(vars))
       return;
     unsigned hh = 0, hm = 0, hs = 0, pos = 0;
     if (std::sscanf(vars.GetValue("RelTime").c_str(), "%u:%u:%u", &hh, &hm, &hs) == 3)
       pos = hh * 3600 + hm * 60 + hs;
+    bool corrected;
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
+      if (track_key != current_track_key_)
+        return;
       position_ = pos;
+      corrected = ApplyPositionInfoLocked(track_key, vars);
     }
-    position_dispatcher_.emit();
+    if (corrected)
+      now_playing_dispatcher_.emit();
+    else
+      position_dispatcher_.emit();
   });
 }
 
@@ -4056,6 +4075,7 @@ void NosonBackend::RefreshNowPlayingLocked()
   {
     current_track_key_ = track_key;
     position_ = 0;
+    verify_track_pending_ = true;
   }
 
   NowPlaying np;
@@ -4165,7 +4185,59 @@ void NosonBackend::RefreshNowPlayingLocked()
     np.art_uri = ResolveArtUri(prop.CurrentTrackMetaData->GetValue("upnp:albumArtURI"));
   }
 
+  // Also while TRANSITIONING (playing_from_queue is false then): the key
+  // still identifies the same stale event values.
+  if (verified_track_.track_key == track_key)
+  {
+    np.title = verified_track_.title;
+    np.artist = verified_track_.artist;
+    np.album = verified_track_.album;
+    np.art_uri = verified_track_.art_uri;
+    if (verified_track_.duration > 0)
+      np.duration = verified_track_.duration;
+    np.current_queue_index = verified_track_.queue_index;
+  }
+
   now_playing_ = std::move(np);
+}
+
+bool NosonBackend::ApplyPositionInfoLocked(const std::string& track_key, const NSROOT::ElementList& vars)
+{
+  if (!player_ || !now_playing_.valid || !now_playing_.playing_from_queue || verified_track_.track_key == track_key)
+    return false;
+  // Queue tracks only: a radio stream's TrackURI legitimately differs from
+  // the event's view of it, and its metadata is handled separately anyway.
+  NSROOT::AVTProperty prop = player_->GetTransportProperty();
+  std::string uri = vars.GetValue("TrackURI");
+  unsigned track = 0;
+  if (std::sscanf(vars.GetValue("Track").c_str(), "%u", &track) != 1 || track == 0 || uri.empty() ||
+      (uri == prop.CurrentTrackURI && track == prop.CurrentTrack))
+    return false;
+  NSROOT::DIDLParser didl(vars.GetValue("TrackMetaData").c_str());
+  if (!didl.IsValid() || didl.GetItems().empty())
+    return false;
+  const NSROOT::DigitalItemPtr& item = didl.GetItems()[0];
+
+  VerifiedTrack verified;
+  verified.track_key = track_key;
+  verified.title = item->GetValue("dc:title");
+  verified.artist = item->GetValue("dc:creator");
+  verified.album = item->GetValue("upnp:album");
+  verified.art_uri = ResolveArtUri(item->GetValue("upnp:albumArtURI"));
+  unsigned hh = 0, hm = 0, hs = 0;
+  if (std::sscanf(vars.GetValue("TrackDuration").c_str(), "%u:%u:%u", &hh, &hm, &hs) == 3)
+    verified.duration = hh * 3600 + hm * 60 + hs;
+  verified.queue_index = track - 1;
+  verified_track_ = std::move(verified);
+
+  now_playing_.title = verified_track_.title;
+  now_playing_.artist = verified_track_.artist;
+  now_playing_.album = verified_track_.album;
+  now_playing_.art_uri = verified_track_.art_uri;
+  if (verified_track_.duration > 0)
+    now_playing_.duration = verified_track_.duration;
+  now_playing_.current_queue_index = verified_track_.queue_index;
+  return true;
 }
 
 void NosonBackend::RefreshVolumeLocked()
@@ -4467,6 +4539,7 @@ void NosonBackend::HandlePlayerEvent()
   bool now_playing_dirty = false;
   bool volume_dirty = false;
   bool content_dirty = false;
+  bool verify_track = false;
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     if (!player_)
@@ -4476,6 +4549,8 @@ void NosonBackend::HandlePlayerEvent()
     {
       RefreshNowPlayingLocked();
       now_playing_dirty = true;
+      verify_track = verify_track_pending_ && now_playing_.playing_from_queue;
+      verify_track_pending_ = false;
     }
     if (mask & NSROOT::SVCEvent_RenderingControlChanged)
     {
@@ -4503,6 +4578,11 @@ void NosonBackend::HandlePlayerEvent()
     signal_volume_changed_.emit();
   if (content_dirty)
     RefreshQueueAsync();
+  // See verified_track_'s comment: a new queue track from an event is
+  // checked against GetPositionInfo() at once, not only on the next
+  // position tick (which only runs while playing).
+  if (verify_track)
+    RefreshPositionAsync();
 }
 
 void NosonBackend::HandleDiscoveryDone()
