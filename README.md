@@ -158,18 +158,20 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - Light/dark appearance override, adjustable cover art cache size
 - Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
   and repeat, plus Ctrl+F (search), Ctrl+J (current track), F9 (sidebar),
-  Ctrl+W/Ctrl+Q; the full list is under "Tastenkürzel" (Ctrl+?)
+  Ctrl+W/Ctrl+Q; the full list is under "Keyboard Shortcuts" (Ctrl+?)
 - A fast, virtualized cover grid for large libraries, and generated
   covers (a gradient with the initials) for anything without art
-- A section sidebar (Warteschlange, Favoriten, Alarme, Verlauf, Bibliothek)
+- A section sidebar (Queue, Favorites, Alarms, History, Library)
   in the style of noson-app's own navigation, plus a compact room/zone
-  picker in the header bar; the library's own root categories (Interpreten,
-  Alben, Genres, Radiosender, linked services, ...) are listed right there
+  picker in the header bar; the library's own root categories (Artists,
+  Albums, Genres, Radio Stations, linked services, ...) are listed right there
   as sub-items, for jumping straight to one without browsing in first
 - A responsive window: the section sidebar tucks away behind a toggle
   button once the window gets narrow, and both the window's and the
   sidebar's size are remembered across restarts
 - Optional desktop notifications on track change
+- Translatable (gettext): English and German included, following the
+  desktop language
 
 ## Hardware support
 
@@ -225,6 +227,17 @@ The companion GNOME Shell extension
 (`gnome-shell-extension/gnomos-volume@linuxundich.de/`) is a separate,
 optional install — see its own [README](gnome-shell-extension/gnomos-volume@linuxundich.de/README.md)
 for how to add it.
+
+## Translations
+
+The interface is written in English and translated with gettext; German
+is included in `po/de.po`. To add a language, add its code to
+`po/LINGUAS`, create the `.po` file from `po/gnomos.pot`
+(`msginit -i po/gnomos.pot -o po/xx.po -l xx`) and translate it. After
+changing strings in the code, `ninja -C _build gnomos-pot` and
+`ninja -C _build gnomos-update-po` refresh the template and the
+translations. To try a translation without installing:
+`GNOMOS_LOCALEDIR=_build/po _build/src/gnomos`.
 
 ## Status
 

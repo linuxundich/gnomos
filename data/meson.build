@@ -1,5 +1,9 @@
-install_data(
-  'de.linuxundich.Gnomos.desktop',
+i18n.merge_file(
+  input: 'de.linuxundich.Gnomos.desktop.in',
+  output: 'de.linuxundich.Gnomos.desktop',
+  type: 'desktop',
+  po_dir: '../po',
+  install: true,
   install_dir: get_option('datadir') / 'applications',
 )
 
@@ -29,9 +33,8 @@ foreach size : ['48', '64', '128', '256']
   )
 endforeach
 
-# NOTE: translations (i18n.merge_file() + po/) are not wired up yet — see
-# README.md roadmap. The .desktop/.metainfo files below are installed as
-# plain, untranslated data files for now.
+# The .desktop file is translated through po/ (i18n.merge_file above); the
+# metainfo is installed as is, in English.
 
 # Stylesheet (and any future UI assets), compiled into the executable.
 gnomos_resources = gnome.compile_resources(

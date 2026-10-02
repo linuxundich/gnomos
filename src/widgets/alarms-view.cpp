@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "alarms-view.h"
+#include "../i18n.h"
 
 #include <algorithm>
 
@@ -29,7 +30,7 @@ AlarmsView::AlarmsView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   next_alarm_label_.set_visible(false);
   toolbar->append(next_alarm_label_);
   add_button_.set_icon_name("list-add-symbolic");
-  add_button_.set_tooltip_text("Alarm hinzufügen");
+  add_button_.set_tooltip_text(_("Add Alarm"));
   add_button_.add_css_class("flat");
   add_button_.signal_clicked().connect([this] { signal_add_requested_.emit(); });
   toolbar->append(add_button_);
@@ -37,7 +38,7 @@ AlarmsView::AlarmsView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 
   placeholder_ = adw_status_page_new();
   adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "alarm-symbolic");
-  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Keine Alarme eingerichtet");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), _("No Alarms Set"));
 
   list_box_.set_placeholder(*Glib::wrap(placeholder_));
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
@@ -99,7 +100,7 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
     linked_zones_button->add_css_class("flat");
     linked_zones_button->set_valign(Gtk::Align::CENTER);
     linked_zones_button->set_tooltip_text(
-        "Auch in verknüpften Räumen abspielen (nicht nur in diesem Raum)");
+        _("Also play in grouped rooms (not just this room)"));
     linked_zones_button->set_active(alarm.include_linked_zones);
     std::string id_for_linked_zones = alarm.id;
     // signal_clicked() (not signal_toggled()), same reasoning as the
@@ -114,7 +115,7 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
     edit_button->set_icon_name("document-edit-symbolic");
     edit_button->add_css_class("flat");
     edit_button->set_valign(Gtk::Align::CENTER);
-    edit_button->set_tooltip_text("Alarm bearbeiten");
+    edit_button->set_tooltip_text(_("Edit Alarm"));
     std::string id_for_edit = alarm.id;
     edit_button->signal_clicked().connect([this, id_for_edit] { signal_edit_requested_.emit(id_for_edit); });
     row_box->append(*edit_button);
@@ -123,7 +124,7 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
     duplicate_button->set_icon_name("edit-copy-symbolic");
     duplicate_button->add_css_class("flat");
     duplicate_button->set_valign(Gtk::Align::CENTER);
-    duplicate_button->set_tooltip_text("Alarm duplizieren");
+    duplicate_button->set_tooltip_text(_("Duplicate Alarm"));
     std::string id_for_duplicate = alarm.id;
     duplicate_button->signal_clicked().connect(
         [this, id_for_duplicate] { signal_duplicate_requested_.emit(id_for_duplicate); });
@@ -133,7 +134,7 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
     delete_button->set_icon_name("user-trash-symbolic");
     delete_button->add_css_class("flat");
     delete_button->set_valign(Gtk::Align::CENTER);
-    delete_button->set_tooltip_text("Alarm löschen");
+    delete_button->set_tooltip_text(_("Delete Alarm"));
     std::string id_for_delete = alarm.id;
     delete_button->signal_clicked().connect(
         [this, id_for_delete] { signal_delete_requested_.emit(id_for_delete); });
@@ -161,7 +162,7 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
 void AlarmsView::SetNextAlarmLabel(const std::string& text)
 {
   next_alarm_label_.set_visible(!text.empty());
-  next_alarm_label_.set_text("Nächster Alarm: " + text);
+  next_alarm_label_.set_text(Format(_("Next alarm: %s"), text.c_str()));
 }
 
 void AlarmsView::Clear()

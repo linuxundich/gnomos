@@ -5,6 +5,7 @@
     "sdk": "org.gnome.Sdk",
     "command": "gnomos",
     "appstream-compose": false,
+    "separate-locales": false,
     "finish-args": [
         "--share=ipc",
         "--socket=wayland",

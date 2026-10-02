@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "gnomos-window.h"
+#include "i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -96,7 +97,7 @@ GnomosWindow::GnomosWindow()
   // windows; bound to split_view_'s own "collapsed"/"show-sidebar"
   // properties once split_view_ exists further down this constructor.
   sidebar_toggle_button_.set_icon_name("sidebar-show-symbolic");
-  sidebar_toggle_button_.set_tooltip_text("Bereiche ein-/ausblenden");
+  sidebar_toggle_button_.set_tooltip_text(_("Show/Hide Sections"));
   sidebar_toggle_button_.set_visible(false);
   adw_header_bar_pack_start(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(sidebar_toggle_button_.gobj()));
 
@@ -110,9 +111,9 @@ GnomosWindow::GnomosWindow()
   // opening the popover. ---
   room_button_content_ = adw_button_content_new();
   adw_button_content_set_icon_name(ADW_BUTTON_CONTENT(room_button_content_), "audio-speakers-symbolic");
-  adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), "Kein Raum");
+  adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), _("No Room"));
   room_button_.set_child(*Glib::wrap(room_button_content_));
-  room_button_.set_tooltip_text("Raum wählen");
+  room_button_.set_tooltip_text(_("Choose Room"));
   room_button_.set_popover(room_popover_);
   adw_header_bar_pack_start(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(room_button_.gobj()));
 
@@ -142,7 +143,7 @@ GnomosWindow::GnomosWindow()
   add_action("play-stream", sigc::mem_fun(*this, &GnomosWindow::ShowPlayStreamDialog));
   add_action("mute-everywhere", [this] {
     backend_->MuteAllRoomsAsync(true);
-    ShowToast("Alle Räume stummgeschaltet");
+    ShowToast(_("All rooms muted"));
   });
   add_action("export-radio-favorites", sigc::mem_fun(*this, &GnomosWindow::ExportRadioFavorites));
   add_action("import-radio-favorites", sigc::mem_fun(*this, &GnomosWindow::ImportRadioFavorites));
@@ -151,7 +152,7 @@ GnomosWindow::GnomosWindow()
   add_action("mini-player", sigc::mem_fun(*this, &GnomosWindow::ShowMiniPlayerWindow));
   add_action("refresh-library-index", [this] {
     backend_->RefreshLibraryIndexAsync();
-    ShowToast("Bibliothek wird aktualisiert…");
+    ShowToast(_("Updating library…"));
   });
   // The window's own close button just hides it when run_in_background_ is
   // on (see OnCloseRequest()) — this is the one reachable way to actually
@@ -176,20 +177,20 @@ GnomosWindow::GnomosWindow()
   add_action("seek-forward", [this] { SeekRelative(+10); });
   add_action("seek-backward", [this] { SeekRelative(-10); });
   primary_menu_ = Gio::Menu::create();
-  primary_menu_->append("Stream abspielen…", "win.play-stream");
-  primary_menu_->append("Überall stummschalten", "win.mute-everywhere");
-  primary_menu_->append("Szenen…", "win.scenes");
-  primary_menu_->append("Radiosender-Favoriten exportieren…", "win.export-radio-favorites");
-  primary_menu_->append("Radiosender-Favoriten importieren…", "win.import-radio-favorites");
-  primary_menu_->append("M3U/PLS-Playlist importieren…", "win.import-m3u-playlist");
-  primary_menu_->append("Bibliothek aktualisieren", "win.refresh-library-index");
-  primary_menu_->append("Mini-Player…", "win.mini-player");
-  primary_menu_->append("Einstellungen", "win.settings");
-  primary_menu_->append("Tastenkürzel", "win.shortcuts");
-  primary_menu_->append("Über Gnomos", "win.about");
-  primary_menu_->append("Gnomos beenden", "win.quit");
+  primary_menu_->append(_("Play Stream…"), "win.play-stream");
+  primary_menu_->append(_("Mute Everywhere"), "win.mute-everywhere");
+  primary_menu_->append(_("Scenes…"), "win.scenes");
+  primary_menu_->append(_("Export Radio Station Favorites…"), "win.export-radio-favorites");
+  primary_menu_->append(_("Import Radio Station Favorites…"), "win.import-radio-favorites");
+  primary_menu_->append(_("Import M3U/PLS Playlist…"), "win.import-m3u-playlist");
+  primary_menu_->append(_("Update Library"), "win.refresh-library-index");
+  primary_menu_->append(_("Mini Player…"), "win.mini-player");
+  primary_menu_->append(_("Preferences"), "win.settings");
+  primary_menu_->append(_("Keyboard Shortcuts"), "win.shortcuts");
+  primary_menu_->append(_("About Gnomos"), "win.about");
+  primary_menu_->append(_("Quit Gnomos"), "win.quit");
   primary_menu_button_.set_icon_name("open-menu-symbolic");
-  primary_menu_button_.set_tooltip_text("Hauptmenü");
+  primary_menu_button_.set_tooltip_text(_("Main Menu"));
   primary_menu_button_.set_menu_model(primary_menu_);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(primary_menu_button_.gobj()));
   // Backgrounding (see OnCloseRequest()) hides this same window rather than
@@ -206,14 +207,14 @@ GnomosWindow::GnomosWindow()
   activity_spinner_ = adw_spinner_new();
   gtk_widget_set_margin_start(activity_spinner_, 6);
   gtk_widget_set_margin_end(activity_spinner_, 6);
-  gtk_widget_set_tooltip_text(activity_spinner_, "Sonos-System antwortet …");
+  gtk_widget_set_tooltip_text(activity_spinner_, _("Waiting for the Sonos system…"));
   // Starts hidden — UpdateActivitySpinner() is the only thing that ever
   // shows it, and a hidden widget can't be hovered, so (unlike the old
   // Gtk::Spinner, which stayed hoverable even while stopped) the tooltip
   // above never needs its own separate show/hide dance.
   gtk_widget_set_visible(activity_spinner_, false);
   refresh_button_.set_icon_name("view-refresh-symbolic");
-  refresh_button_.set_tooltip_text("Sonos-Geräte suchen");
+  refresh_button_.set_tooltip_text(_("Search for Sonos Devices"));
   refresh_button_.signal_clicked().connect(sigc::mem_fun(*this, &GnomosWindow::OnRefreshClicked));
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(refresh_button_.gobj()));
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), activity_spinner_);
@@ -247,10 +248,10 @@ GnomosWindow::GnomosWindow()
   // onGroupAllZoneClicked -> zoneList.selectAll()), minus the rooms the
   // per-row switches now also refuse to touch directly — see
   // RebuildGroupingPopover()'s own comment.
-  auto* group_all_button = Gtk::make_managed<Gtk::Button>("Alle Räume gruppieren");
+  auto* group_all_button = Gtk::make_managed<Gtk::Button>(_("Group All Rooms"));
   group_all_button->add_css_class("flat");
   group_all_button->set_tooltip_text(
-      "Fügt jeden freien Raum hinzu — bereits mit einem anderen Raum gruppierte Räume bleiben unverändert");
+      _("Adds every free room — rooms already grouped with another room stay as they are"));
   group_all_button->set_margin_top(6);
   group_all_button->set_margin_start(6);
   group_all_button->set_margin_end(6);
@@ -272,7 +273,7 @@ GnomosWindow::GnomosWindow()
   // Symmetric counterpart — removes every *other* member of the current
   // group (leaving the coordinator standalone), reusing the exact same
   // RemoveRoomFromGroup() each per-room switch already calls.
-  auto* ungroup_all_button = Gtk::make_managed<Gtk::Button>("Gruppe auflösen");
+  auto* ungroup_all_button = Gtk::make_managed<Gtk::Button>(_("Ungroup"));
   ungroup_all_button->add_css_class("flat");
   ungroup_all_button->set_margin_start(6);
   ungroup_all_button->set_margin_end(6);
@@ -303,7 +304,7 @@ GnomosWindow::GnomosWindow()
   });
 
   grouping_button_.set_icon_name("audio-speakers-symbolic");
-  grouping_button_.set_tooltip_text("Räume gruppieren");
+  grouping_button_.set_tooltip_text(_("Group Rooms"));
   grouping_button_.set_popover(grouping_popover_);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(grouping_button_.gobj()));
 
@@ -313,13 +314,13 @@ GnomosWindow::GnomosWindow()
   input_box->set_margin_bottom(6);
   input_box->set_margin_start(6);
   input_box->set_margin_end(6);
-  auto* line_in_button = Gtk::make_managed<Gtk::Button>("Line-In");
+  auto* line_in_button = Gtk::make_managed<Gtk::Button>(_("Line In"));
   line_in_button->add_css_class("flat");
   line_in_button->signal_clicked().connect([this] {
     backend_->PlayLineIn();
     input_popover_.popdown();
   });
-  auto* digital_in_button = Gtk::make_managed<Gtk::Button>("Digital-In");
+  auto* digital_in_button = Gtk::make_managed<Gtk::Button>(_("Digital In"));
   digital_in_button->add_css_class("flat");
   digital_in_button->signal_clicked().connect([this] {
     backend_->PlayDigitalIn();
@@ -333,7 +334,7 @@ GnomosWindow::GnomosWindow()
   // audio-input-microphone-symbolic is the closest generic "audio input"
   // icon (confirmed present: /usr/share/icons/Adwaita/symbolic/devices/).
   input_button_.set_icon_name("audio-input-microphone-symbolic");
-  input_button_.set_tooltip_text("Eingang");
+  input_button_.set_tooltip_text(_("Input"));
   input_button_.set_popover(input_popover_);
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(input_button_.gobj()));
 
@@ -349,12 +350,12 @@ GnomosWindow::GnomosWindow()
   sleep_box->append(*Gtk::make_managed<Gtk::Separator>());
   // (label, minutes) — 0 cancels an active timer.
   static const std::array<std::pair<const char*, unsigned>, 6> kSleepPresets = {{
-      {"Aus", 0},
-      {"15 Minuten", 15},
-      {"30 Minuten", 30},
-      {"45 Minuten", 45},
-      {"60 Minuten", 60},
-      {"90 Minuten", 90},
+      {_("Off"), 0},
+      {_("15 Minutes"), 15},
+      {_("30 Minutes"), 30},
+      {_("45 Minutes"), 45},
+      {_("60 Minutes"), 60},
+      {_("90 Minutes"), 90},
   }};
   for (const auto& [label, minutes] : kSleepPresets)
   {
@@ -372,7 +373,7 @@ GnomosWindow::GnomosWindow()
   sleep_timer_popover_.set_child(*sleep_box);
 
   sleep_timer_button_.set_icon_name("weather-clear-night-symbolic");
-  sleep_timer_button_.set_tooltip_text("Sleep-Timer");
+  sleep_timer_button_.set_tooltip_text(_("Sleep Timer"));
   sleep_timer_button_.set_popover(sleep_timer_popover_);
   sleep_timer_popover_.signal_show().connect([this] { backend_->RefreshSleepTimerAsync(); });
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(sleep_timer_button_.gobj()));
@@ -393,7 +394,7 @@ GnomosWindow::GnomosWindow()
     sound_box->append(*label);
   };
 
-  add_sound_label("Bässe");
+  add_sound_label(_("Bass"));
   bass_scale_.set_range(-10, 10);
   bass_scale_.set_digits(0);
   bass_scale_.signal_value_changed().connect([this] {
@@ -402,7 +403,7 @@ GnomosWindow::GnomosWindow()
   });
   sound_box->append(bass_scale_);
 
-  add_sound_label("Höhen");
+  add_sound_label(_("Treble"));
   treble_scale_.set_range(-10, 10);
   treble_scale_.set_digits(0);
   treble_scale_.signal_value_changed().connect([this] {
@@ -411,7 +412,7 @@ GnomosWindow::GnomosWindow()
   });
   sound_box->append(treble_scale_);
 
-  auto* reset_eq_button = Gtk::make_managed<Gtk::Button>("Bässe/Höhen zurücksetzen");
+  auto* reset_eq_button = Gtk::make_managed<Gtk::Button>(_("Reset Bass/Treble"));
   reset_eq_button->add_css_class("flat");
   reset_eq_button->signal_clicked().connect([this] {
     suppress_sound_signals_ = true;
@@ -423,7 +424,7 @@ GnomosWindow::GnomosWindow()
   });
   sound_box->append(*reset_eq_button);
 
-  add_sound_label("Sub-Pegel");
+  add_sound_label(_("Sub Level"));
   sub_gain_scale_.set_range(-15, 15);
   sub_gain_scale_.set_digits(0);
   sub_gain_scale_.signal_value_changed().connect([this] {
@@ -435,7 +436,7 @@ GnomosWindow::GnomosWindow()
   sound_box->append(*Gtk::make_managed<Gtk::Separator>());
 
   auto* loudness_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* loudness_label = Gtk::make_managed<Gtk::Label>("Loudness");
+  auto* loudness_label = Gtk::make_managed<Gtk::Label>(_("Loudness"));
   loudness_label->set_halign(Gtk::Align::START);
   loudness_label->set_hexpand(true);
   loudness_row->append(*loudness_label);
@@ -453,7 +454,7 @@ GnomosWindow::GnomosWindow()
   sound_box->append(*loudness_row);
 
   auto* nightmode_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* nightmode_label = Gtk::make_managed<Gtk::Label>("Night Mode");
+  auto* nightmode_label = Gtk::make_managed<Gtk::Label>(_("Night Mode"));
   nightmode_label->set_halign(Gtk::Align::START);
   nightmode_label->set_hexpand(true);
   nightmode_row->append(*nightmode_label);
@@ -468,13 +469,13 @@ GnomosWindow::GnomosWindow()
   sound_box->append(*nightmode_row);
 
   auto* output_fixed_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* output_fixed_label = Gtk::make_managed<Gtk::Label>("Feste Lautstärke (Line-Out)");
+  auto* output_fixed_label = Gtk::make_managed<Gtk::Label>(_("Fixed Volume (Line Out)"));
   output_fixed_label->set_halign(Gtk::Align::START);
   output_fixed_label->set_hexpand(true);
   output_fixed_row->append(*output_fixed_label);
   output_fixed_switch_.set_valign(Gtk::Align::CENTER);
   output_fixed_switch_.set_tooltip_text(
-      "Ignoriert die eigene Lautstärkeregelung — für den Anschluss an einen Verstärker mit eigener Lautstärke");
+      _("Ignores its own volume control — for connecting to an amplifier with its own volume"));
   output_fixed_switch_.signal_state_set().connect(
       [this](bool state) -> bool {
         backend_->SetOutputFixed(state);
@@ -503,7 +504,7 @@ GnomosWindow::GnomosWindow()
   auto* advanced_toggle_row = Gtk::make_managed<Gtk::Button>();
   advanced_toggle_row->add_css_class("flat");
   auto* advanced_toggle_content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* advanced_toggle_label = Gtk::make_managed<Gtk::Label>("Erweitert");
+  auto* advanced_toggle_label = Gtk::make_managed<Gtk::Label>(_("Advanced"));
   advanced_toggle_label->set_halign(Gtk::Align::START);
   advanced_toggle_label->set_hexpand(true);
   advanced_toggle_content->append(*advanced_toggle_label);
@@ -526,13 +527,13 @@ GnomosWindow::GnomosWindow()
   advanced_box->set_margin_top(6);
 
   auto* autoplay_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* autoplay_label = Gtk::make_managed<Gtk::Label>("Autoplay (Line-In)");
+  auto* autoplay_label = Gtk::make_managed<Gtk::Label>(_("Autoplay (Line In)"));
   autoplay_label->set_halign(Gtk::Align::START);
   autoplay_label->set_hexpand(true);
   autoplay_row->append(*autoplay_label);
   autoplay_switch_.set_valign(Gtk::Align::CENTER);
   autoplay_switch_.set_tooltip_text(
-      "Startet automatisch die Wiedergabe hier, sobald ein Line-In-Signal an diesem Gerät anliegt");
+      _("Starts playing here automatically as soon as a line-in signal reaches this device"));
   autoplay_switch_.signal_state_set().connect(
       [this](bool state) -> bool {
         backend_->SetAutoplay(state);
@@ -543,7 +544,7 @@ GnomosWindow::GnomosWindow()
   advanced_box->append(*autoplay_row);
 
   auto* autoplay_volume_switch_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* autoplay_volume_switch_label = Gtk::make_managed<Gtk::Label>("Eigene Autoplay-Lautstärke");
+  auto* autoplay_volume_switch_label = Gtk::make_managed<Gtk::Label>(_("Custom Autoplay Volume"));
   autoplay_volume_switch_label->set_halign(Gtk::Align::START);
   autoplay_volume_switch_label->set_hexpand(true);
   autoplay_volume_switch_row->append(*autoplay_volume_switch_label);
@@ -557,7 +558,7 @@ GnomosWindow::GnomosWindow()
   autoplay_volume_switch_row->append(autoplay_use_volume_switch_);
   advanced_box->append(*autoplay_volume_switch_row);
 
-  auto* autoplay_volume_label = Gtk::make_managed<Gtk::Label>("Autoplay-Lautstärke");
+  auto* autoplay_volume_label = Gtk::make_managed<Gtk::Label>(_("Autoplay Volume"));
   autoplay_volume_label->set_halign(Gtk::Align::START);
   autoplay_volume_label->add_css_class("caption");
   autoplay_volume_label->add_css_class("dimmed");
@@ -577,14 +578,14 @@ GnomosWindow::GnomosWindow()
   // corrected via RefreshSoundSettingsAsync() after every use) — a switch
   // here would just be guessing at a state we don't actually know.
   auto* led_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* led_label = Gtk::make_managed<Gtk::Label>("Status-LED");
+  auto* led_label = Gtk::make_managed<Gtk::Label>(_("Status Light"));
   led_label->set_halign(Gtk::Align::START);
   led_label->set_hexpand(true);
   led_row->append(*led_label);
-  auto* led_on_button = Gtk::make_managed<Gtk::Button>("An");
+  auto* led_on_button = Gtk::make_managed<Gtk::Button>(_("On"));
   led_on_button->signal_clicked().connect([this] { backend_->SetLedState(true); });
   led_row->append(*led_on_button);
-  auto* led_off_button = Gtk::make_managed<Gtk::Button>("Aus");
+  auto* led_off_button = Gtk::make_managed<Gtk::Button>(_("Off"));
   led_off_button->signal_clicked().connect([this] { backend_->SetLedState(false); });
   led_row->append(*led_off_button);
   advanced_box->append(*led_row);
@@ -594,7 +595,7 @@ GnomosWindow::GnomosWindow()
   sound_popover_.set_child(*sound_box);
 
   sound_button_.set_icon_name("multimedia-volume-control-symbolic");
-  sound_button_.set_tooltip_text("Klang");
+  sound_button_.set_tooltip_text(_("Sound"));
   sound_button_.set_popover(sound_popover_);
   sound_popover_.signal_show().connect([this] { backend_->RefreshSoundSettingsAsync(); });
   adw_header_bar_pack_end(ADW_HEADER_BAR(header_bar_), GTK_WIDGET(sound_button_.gobj()));
@@ -607,7 +608,7 @@ GnomosWindow::GnomosWindow()
   // grouping_popover_'s own room list already uses, rather than the
   // set_vexpand(true)/set_min_content_width() sizing appropriate for a
   // permanent panel this used to have. ---
-  zones_placeholder_.set_text("Keine Sonos-Geräte gefunden.\nKlicke auf Aktualisieren.");
+  zones_placeholder_.set_text(_("No Sonos devices found.\nClick Refresh."));
   zones_placeholder_.set_wrap(true);
   zones_placeholder_.set_justify(Gtk::Justification::CENTER);
   zones_placeholder_.add_css_class("dimmed");
@@ -673,11 +674,11 @@ GnomosWindow::GnomosWindow()
   // Gtk::ListBox). Built from the same (page-name, title, icon) tuples
   // view_stack_'s pages themselves use, so the two can never drift apart. ---
   static const std::array<std::tuple<const char*, const char*, const char*>, 5> kNavPages = {{
-      {"queue", "Warteschlange", "view-list-symbolic"},
-      {"favorites", "Favoriten", "starred-symbolic"},
-      {"alarms", "Alarme", "alarm-symbolic"},
-      {"history", "Verlauf", "document-open-recent-symbolic"},
-      {"library", "Bibliothek", "folder-music-symbolic"},
+      {"queue", _("Queue"), "view-list-symbolic"},
+      {"favorites", _("Favorites"), "starred-symbolic"},
+      {"alarms", _("Alarms"), "alarm-symbolic"},
+      {"history", _("History"), "document-open-recent-symbolic"},
+      {"library", _("Library"), "folder-music-symbolic"},
   }};
   nav_sidebar_ = adw_sidebar_new();
   g_signal_connect_data(nav_sidebar_, "notify::selected", G_CALLBACK(OnNavSidebarSelectedChanged), nullptr, nullptr,
@@ -716,7 +717,7 @@ GnomosWindow::GnomosWindow()
       // itself, not a specific category within it.
       SetSidebarItemAction(item, [this, page_name] {
         library_stack_.clear();
-        library_stack_.push_back({"", "Bibliothek"});
+        library_stack_.push_back({"", _("Library")});
         // Cleared and retitled synchronously, before switching the page
         // into view — BrowseLibraryAsync() below is a real network round
         // trip, and library_view_ otherwise keeps showing whatever level
@@ -724,7 +725,7 @@ GnomosWindow::GnomosWindow()
         // that entire round trip once the page is already visible,
         // flashing stale content. Confirmed live.
         library_view_.ShowLoading();
-        library_view_.SetLevelTitle("Bibliothek");
+        library_view_.SetLevelTitle(_("Library"));
         backend_->BrowseLibraryAsync("");
         adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str());
       });
@@ -745,7 +746,7 @@ GnomosWindow::GnomosWindow()
   // same word).
   services_nav_section_ = adw_sidebar_section_new();
   g_object_ref(services_nav_section_);
-  adw_sidebar_section_set_title(services_nav_section_, "Dienste");
+  adw_sidebar_section_set_title(services_nav_section_, _("Services"));
 
   // --- Content: queue/favorites/alarms/library pages. The Now Playing
   // panel (player_bar_) is docked separately, as a bottom bar spanning
@@ -753,31 +754,31 @@ GnomosWindow::GnomosWindow()
   // root_box further down this constructor. ---
   view_stack_ = adw_view_stack_new();
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(queue_view_.gobj()), "queue",
-                                       "Warteschlange", "view-list-symbolic");
+                                       _("Queue"), "view-list-symbolic");
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(favorites_view_.gobj()), "favorites",
-                                       "Favoriten", "starred-symbolic");
+                                       _("Favorites"), "starred-symbolic");
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(alarms_view_.gobj()), "alarms",
-                                       "Alarme", "alarm-symbolic");
+                                       _("Alarms"), "alarm-symbolic");
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(history_view_.gobj()), "history",
-                                       "Verlauf", "document-open-recent-symbolic");
+                                       _("History"), "document-open-recent-symbolic");
   adw_view_stack_add_titled_with_icon(ADW_VIEW_STACK(view_stack_), GTK_WIDGET(library_view_.gobj()), "library",
-                                       "Bibliothek", "folder-music-symbolic");
+                                       _("Library"), "folder-music-symbolic");
 
   favorites_view_.signal_item_activated().connect([this](unsigned index) { backend_->PlayFavorite(index); });
   favorites_view_.signal_add_to_queue_requested().connect([this](unsigned index) {
     backend_->AddFavoriteToQueue(index);
-    ShowToast("Zur Warteschlange hinzugefügt");
+    ShowToast(_("Added to queue"));
   });
   favorites_view_.signal_play_next_requested().connect([this](unsigned index) {
     backend_->PlayFavoriteNext(index);
-    ShowToast("Als Nächstes hinzugefügt");
+    ShowToast(_("Added to play next"));
   });
   favorites_view_.signal_delete_requested().connect(
       sigc::mem_fun(*this, &GnomosWindow::ShowDeleteFavoriteConfirmDialog));
   favorites_view_.signal_play_all_requested().connect([this] { backend_->PlayAllFavoritesAsync(); });
   favorites_view_.signal_queue_all_requested().connect([this] {
     backend_->AddAllFavoritesToQueue();
-    ShowToast("Zur Warteschlange hinzugefügt");
+    ShowToast(_("Added to queue"));
   });
 
   alarms_view_.signal_enabled_toggled().connect(
@@ -806,23 +807,23 @@ GnomosWindow::GnomosWindow()
                              entry.artist.empty() ? "" : "A:ALBUMARTIST");
   });
 
-  library_stack_.push_back({"", "Bibliothek"});
-  library_view_.SetLevelTitle("Bibliothek");
+  library_stack_.push_back({"", _("Library")});
+  library_view_.SetLevelTitle(_("Library"));
   library_view_.SetBackVisible(false);
   library_view_.signal_entry_activated().connect(sigc::mem_fun(*this, &GnomosWindow::OnLibraryEntryActivated));
   library_view_.signal_back_requested().connect(sigc::mem_fun(*this, &GnomosWindow::OnLibraryBackRequested));
   library_view_.signal_search_requested().connect([this] { ShowLibrarySearchDialog(); });
   library_view_.signal_add_to_queue_requested().connect([this](unsigned index) {
     backend_->AddLibraryItemToQueue(index);
-    ShowToast("Zur Warteschlange hinzugefügt");
+    ShowToast(_("Added to queue"));
   });
   library_view_.signal_play_next_requested().connect([this](unsigned index) {
     backend_->PlayLibraryItemNext(index);
-    ShowToast("Als Nächstes hinzugefügt");
+    ShowToast(_("Added to play next"));
   });
   library_view_.signal_add_to_favorites_requested().connect([this](unsigned index) {
     backend_->AddLibraryItemToFavorites(index);
-    ShowToast("Zu Favoriten hinzugefügt");
+    ShowToast(_("Added to favorites"));
   });
   library_view_.signal_delete_requested().connect(
       sigc::mem_fun(*this, &GnomosWindow::ShowDeleteLibraryEntryConfirmDialog));
@@ -842,7 +843,7 @@ GnomosWindow::GnomosWindow()
   library_view_.signal_play_all_requested().connect([this] { backend_->PlayAllLibraryItemsAsync(); });
   library_view_.signal_queue_all_requested().connect([this] {
     backend_->AddAllLibraryItemsToQueue();
-    ShowToast("Zur Warteschlange hinzugefügt");
+    ShowToast(_("Added to queue"));
   });
   // Re-renders the already-fetched current_library_entries_ with the new
   // preference — no need to ask NosonBackend for anything again, this is
@@ -1113,7 +1114,7 @@ void GnomosWindow::UpdateRoomButtonLabel()
       return;
     }
   }
-  adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), "Kein Raum");
+  adw_button_content_set_label(ADW_BUTTON_CONTENT(room_button_content_), _("No Room"));
   now_playing_view_.SetRoomName("");
 }
 
@@ -1180,7 +1181,7 @@ void GnomosWindow::OnDiscoveryDone(bool ok)
   discovering_ = false;
   UpdateActivitySpinner();
   if (!ok)
-    ShowToast("Kein Sonos-Gerät im Netzwerk gefunden.");
+    ShowToast(_("No Sonos device found on the network."));
 }
 
 void GnomosWindow::OnBusyChanged(bool busy)
@@ -1287,7 +1288,7 @@ void GnomosWindow::OnZonesChanged()
 
     if (zone.is_gen1)
     {
-      auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
+      auto* badge = Gtk::make_managed<Gtk::Label>(_("Gen 1"));
       badge->add_css_class("dimmed");
       badge->add_css_class("caption");
       row_box->append(*badge);
@@ -1310,7 +1311,7 @@ void GnomosWindow::OnZonesChanged()
     info_button->set_icon_name("dialog-information-symbolic");
     info_button->add_css_class("flat");
     info_button->set_valign(Gtk::Align::CENTER);
-    info_button->set_tooltip_text("Geräteinfo");
+    info_button->set_tooltip_text(_("Device Info"));
     std::string group_id = zone.group_id;
     std::string zone_name = zone.display_name;
     info_button->signal_clicked().connect([this, group_id, zone_name] { ShowDeviceInfoDialog(group_id, zone_name); });
@@ -1428,7 +1429,7 @@ void GnomosWindow::UpdateZoneRowsNowPlaying()
     std::string subtitle;
     if (room_np.valid)
       subtitle = room_np.state == TransportState::Playing   ? room_np.title
-                 : room_np.state == TransportState::Paused ? "Pausiert"
+                 : room_np.state == TransportState::Paused ? _("Paused")
                                                             : "";
     row.subtitle->set_text(subtitle);
     row.subtitle->set_visible(!subtitle.empty());
@@ -1439,7 +1440,7 @@ void GnomosWindow::UpdateZoneRowsNowPlaying()
     row.indicator->SetPlaying(playing);
     row.play_pause->set_visible(room_np.valid);
     row.play_pause->set_icon_name(playing ? "media-playback-pause-symbolic" : "media-playback-start-symbolic");
-    row.play_pause->set_tooltip_text(playing ? "Pause" : "Abspielen");
+    row.play_pause->set_tooltip_text(playing ? _("Pause") : _("Play"));
   }
 }
 
@@ -1534,7 +1535,7 @@ void GnomosWindow::UpdateNextTrackHint()
   if (current_queue_index_ >= 0 && static_cast<size_t>(current_queue_index_) + 1 < queue.size())
   {
     const QueueItem& next = queue[static_cast<size_t>(current_queue_index_) + 1];
-    player_bar_.UpdateNextTrack(next.title.empty() ? "Unbekannter Titel" : next.title);
+    player_bar_.UpdateNextTrack(next.title.empty() ? _("Unknown Track") : next.title);
   }
   else
   {
@@ -1546,22 +1547,22 @@ void GnomosWindow::CheckAlarmAndTransportStatus(const NowPlaying& now_playing)
 {
   if (now_playing.alarm_running && !last_alarm_running_)
   {
-    AdwToast* toast = adw_toast_new("Wecker klingelt");
+    AdwToast* toast = adw_toast_new(_("Alarm ringing"));
     // A little sunrise: the title sits on a night-to-dawn gradient that
     // slowly drifts (style.css, .alarm-sunrise). Stays until stopped or
     // dismissed rather than timing out like an ordinary toast.
-    GtkWidget* title = gtk_label_new("Guten Morgen – der Wecker klingelt");
+    GtkWidget* title = gtk_label_new(_("Good morning – your alarm is ringing"));
     gtk_widget_add_css_class(title, "alarm-sunrise");
     adw_toast_set_custom_title(toast, title);
     adw_toast_set_timeout(toast, 0);
-    adw_toast_set_button_label(toast, "Stoppen");
+    adw_toast_set_button_label(toast, _("Stop"));
     adw_toast_set_action_name(toast, "win.stop-alarm");
     adw_toast_overlay_add_toast(ADW_TOAST_OVERLAY(toast_overlay_), toast);
   }
   last_alarm_running_ = now_playing.alarm_running;
 
   if (now_playing.valid && !now_playing.transport_status_ok && last_transport_status_ok_)
-    ShowToast("Gerät meldet einen Wiedergabefehler.");
+    ShowToast(_("The device reports a playback error."));
   last_transport_status_ok_ = now_playing.transport_status_ok;
 }
 
@@ -1844,7 +1845,7 @@ void GnomosWindow::ShowMiniPlayerWindow()
 void GnomosWindow::ShowSavePlaylistDialog()
 {
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Als Playlist speichern");
+  dialog->set_title(_("Save as Playlist"));
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -1853,7 +1854,7 @@ void GnomosWindow::ShowSavePlaylistDialog()
   content->set_margin_start(18);
   content->set_margin_end(18);
 
-  auto* label = Gtk::make_managed<Gtk::Label>("Name der Playlist");
+  auto* label = Gtk::make_managed<Gtk::Label>(_("Playlist name"));
   label->set_halign(Gtk::Align::START);
   content->append(*label);
 
@@ -1864,9 +1865,9 @@ void GnomosWindow::ShowSavePlaylistDialog()
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* save_button = Gtk::make_managed<Gtk::Button>("Speichern");
+  auto* save_button = Gtk::make_managed<Gtk::Button>(_("Save"));
   save_button->add_css_class("suggested-action");
   auto do_save = [this, dialog, entry] {
     Glib::ustring title = entry->get_text();
@@ -1915,9 +1916,8 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
   // "wird geladen" placeholder that would never resolve.
   auto* bio_label = Gtk::make_managed<Gtk::Label>(
       lastfm_api_key_.empty()
-          ? "Last.fm-API-Schlüssel in Einstellungen → Allgemein → Scrobbling eintragen, um eine Biografie "
-            "zu laden."
-          : "Biografie wird geladen …");
+          ? _("Enter a Last.fm API key in Preferences → General → Scrobbling to load a biography.")
+          : _("Loading biography…"));
   bio_label->set_wrap(true);
   bio_label->set_halign(Gtk::Align::START);
   bio_label->set_justify(Gtk::Justification::LEFT);
@@ -1941,13 +1941,13 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
         api_key, artist_name, [bio_label, bio_cancellable](std::string bio) {
           if (bio_cancellable->is_cancelled())
             return;
-          bio_label->set_text(bio.empty() ? "Keine Biografie gefunden." : bio);
+          bio_label->set_text(bio.empty() ? _("No biography found.") : bio);
         });
   }
 
   content->append(*Gtk::make_managed<Gtk::Separator>(Gtk::Orientation::HORIZONTAL));
 
-  auto* related_heading = Gtk::make_managed<Gtk::Label>("Ähnliche Interpreten");
+  auto* related_heading = Gtk::make_managed<Gtk::Label>(_("Similar Artists"));
   related_heading->set_halign(Gtk::Align::START);
   related_heading->add_css_class("heading");
   content->append(*related_heading);
@@ -1961,7 +1961,7 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
   related_scroller->set_policy(Gtk::PolicyType::NEVER, Gtk::PolicyType::AUTOMATIC);
   content->append(*related_scroller);
 
-  auto* related_loading_placeholder = Gtk::make_managed<Gtk::Label>("Wird geladen …");
+  auto* related_loading_placeholder = Gtk::make_managed<Gtk::Label>(_("Loading…"));
   related_loading_placeholder->add_css_class("dimmed");
   related_loading_placeholder->set_margin_top(12);
   related_loading_placeholder->set_margin_bottom(12);
@@ -1979,7 +1979,7 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
           related_list->remove(*child);
         if (related.empty())
         {
-          auto* placeholder = Gtk::make_managed<Gtk::Label>("Keine ähnlichen Interpreten gefunden.");
+          auto* placeholder = Gtk::make_managed<Gtk::Label>(_("No similar artists found."));
           placeholder->add_css_class("dimmed");
           placeholder->set_margin_top(12);
           placeholder->set_margin_bottom(12);
@@ -2002,7 +2002,7 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
           search_button->set_icon_name("system-search-symbolic");
           search_button->add_css_class("flat");
           search_button->set_valign(Gtk::Align::CENTER);
-          search_button->set_tooltip_text("In der Bibliothek suchen");
+          search_button->set_tooltip_text(_("Search in Library"));
           std::string name = related_artist.name;
           search_button->signal_clicked().connect([this, dialog, name] {
             adw_dialog_close(dialog);
@@ -2023,7 +2023,7 @@ void GnomosWindow::ShowConfirmDialog(const std::string& heading, const std::stri
 {
   AdwDialog* dialog = adw_alert_dialog_new(heading.c_str(), body.c_str());
   AdwAlertDialog* alert = ADW_ALERT_DIALOG(dialog);
-  adw_alert_dialog_add_responses(alert, "cancel", "Abbrechen", "confirm", confirm_label.c_str(), nullptr);
+  adw_alert_dialog_add_responses(alert, "cancel", _("Cancel"), "confirm", confirm_label.c_str(), nullptr);
   adw_alert_dialog_set_response_appearance(alert, "confirm", ADW_RESPONSE_DESTRUCTIVE);
   // Cancel, not the destructive action, is both the Enter-key default and
   // what a plain Escape/close counts as — matches GNOME HIG for
@@ -2043,19 +2043,17 @@ void GnomosWindow::ShowConfirmDialog(const std::string& heading, const std::stri
 
 void GnomosWindow::ShowClearQueueConfirmDialog()
 {
-  ShowConfirmDialog("Warteschlange leeren?",
-                     "Alle Titel aus der Warteschlange entfernen? Das kann nicht rückgängig gemacht werden.",
-                     "Leeren", [this] { backend_->ClearQueue(); });
+  ShowConfirmDialog(_("Clear Queue?"),
+                     _("Remove all tracks from the queue? This can't be undone."),
+                     _("Clear"), [this] { backend_->ClearQueue(); });
 }
 
 void GnomosWindow::ShowRemoveSelectedQueueItemsConfirmDialog(std::vector<unsigned> indices)
 {
-  std::string body = indices.size() == 1 ? "1 Titel aus der Warteschlange entfernen? Das kann nicht rückgängig "
-                                            "gemacht werden."
-                                          : std::to_string(indices.size()) +
-                                                " Titel aus der Warteschlange entfernen? Das kann nicht "
-                                                "rückgängig gemacht werden.";
-  ShowConfirmDialog("Ausgewählte entfernen?", body, "Entfernen",
+  std::string body = Format(ngettext("Remove %zu track from the queue? This can't be undone.",
+                                     "Remove %zu tracks from the queue? This can't be undone.", indices.size()),
+                            indices.size());
+  ShowConfirmDialog(_("Remove Selected?"), body, _("Remove"),
                      [this, indices] { backend_->RemoveQueueItems(indices); });
 }
 

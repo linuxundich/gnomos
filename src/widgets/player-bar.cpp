@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "player-bar.h"
+#include "../i18n.h"
 
 #include <cstdio>
 
@@ -59,7 +60,7 @@ PlayerBar::PlayerBar()
   position_scale_.set_hexpand(true);
   position_scale_.add_css_class("position-scale");
   gtk_accessible_update_property(GTK_ACCESSIBLE(position_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL,
-                                 "Wiedergabeposition", -1);
+                                 _("Playback position"), -1);
   position_scale_.set_valign(Gtk::Align::CENTER);
   // Gtk::Range's own internal drag gesture claims the pointer sequence, so
   // a separately-added Gtk::GestureClick sibling never reliably sees a
@@ -89,7 +90,7 @@ PlayerBar::PlayerBar()
   duration_button_.set_child(duration_label_);
   duration_button_.add_css_class("flat");
   duration_button_.set_valign(Gtk::Align::CENTER);
-  duration_button_.set_tooltip_text("Gesamtdauer/Restzeit umschalten");
+  duration_button_.set_tooltip_text(_("Toggle Total/Remaining Time"));
   duration_button_.signal_clicked().connect([this] {
     show_remaining_ = !show_remaining_;
     RenderDurationLabel();
@@ -148,7 +149,7 @@ PlayerBar::PlayerBar()
   art_button_.add_css_class("circular");
   art_button_.set_valign(Gtk::Align::CENTER);
   art_button_.set_halign(Gtk::Align::CENTER);
-  SetButtonLabel(art_button_, "Wiedergabe-Ansicht öffnen");
+  SetButtonLabel(art_button_, _("Open Now Playing"));
   art_button_.signal_clicked().connect([this] { signal_art_clicked_.emit(); });
   info_box->append(art_button_);
 
@@ -174,7 +175,7 @@ PlayerBar::PlayerBar()
   next_track_label_.set_visible(false);
   text_box->append(next_track_label_);
 
-  crossfade_label_.set_text("Crossfade aktiv");
+  crossfade_label_.set_text(_("Crossfade on"));
   crossfade_label_.set_halign(Gtk::Align::START);
   crossfade_label_.add_css_class("dimmed");
   crossfade_label_.add_css_class("caption");
@@ -201,7 +202,7 @@ PlayerBar::PlayerBar()
   shuffle_button_.add_css_class("circular");
   shuffle_button_.set_size_request(32, 32);
   shuffle_button_.set_valign(Gtk::Align::CENTER);
-  shuffle_button_.set_tooltip_text("Zufallswiedergabe");
+  shuffle_button_.set_tooltip_text(_("Shuffle"));
   shuffle_button_.signal_clicked().connect([this] { signal_shuffle_clicked_.emit(); });
   transport_row->append(shuffle_button_);
 
@@ -210,7 +211,7 @@ PlayerBar::PlayerBar()
   previous_button_.add_css_class("circular");
   previous_button_.set_size_request(36, 36);
   previous_button_.set_valign(Gtk::Align::CENTER);
-  SetButtonLabel(previous_button_, "Vorheriger Titel");
+  SetButtonLabel(previous_button_, _("Previous Track"));
   previous_button_.signal_clicked().connect([this] { signal_previous_.emit(); });
   transport_row->append(previous_button_);
 
@@ -238,7 +239,7 @@ PlayerBar::PlayerBar()
   next_button_.add_css_class("circular");
   next_button_.set_size_request(36, 36);
   next_button_.set_valign(Gtk::Align::CENTER);
-  SetButtonLabel(next_button_, "Nächster Titel");
+  SetButtonLabel(next_button_, _("Next Track"));
   next_button_.signal_clicked().connect([this] { signal_next_.emit(); });
   transport_row->append(next_button_);
 
@@ -247,7 +248,7 @@ PlayerBar::PlayerBar()
   repeat_button_.add_css_class("circular");
   repeat_button_.set_size_request(32, 32);
   repeat_button_.set_valign(Gtk::Align::CENTER);
-  repeat_button_.set_tooltip_text("Wiederholen");
+  repeat_button_.set_tooltip_text(_("Repeat"));
   repeat_button_.signal_clicked().connect([this] { signal_repeat_clicked_.emit(); });
   transport_row->append(repeat_button_);
 
@@ -262,7 +263,7 @@ PlayerBar::PlayerBar()
   favorite_button_.add_css_class("circular");
   favorite_button_.set_size_request(32, 32);
   favorite_button_.set_valign(Gtk::Align::CENTER);
-  favorite_button_.set_tooltip_text("Zu Favoriten hinzufügen");
+  favorite_button_.set_tooltip_text(_("Add to Favorites"));
   favorite_button_.signal_clicked().connect([this] { signal_add_to_favorites_clicked_.emit(); });
   secondary_row->append(favorite_button_);
 
@@ -271,7 +272,7 @@ PlayerBar::PlayerBar()
   mute_button_.add_css_class("circular");
   mute_button_.set_size_request(32, 32);
   mute_button_.set_valign(Gtk::Align::CENTER);
-  SetButtonLabel(mute_button_, "Stummschalten");
+  SetButtonLabel(mute_button_, _("Mute"));
   mute_button_.signal_clicked().connect([this] {
     muted_ = !muted_;
     signal_mute_toggled_.emit(muted_);
@@ -288,7 +289,7 @@ PlayerBar::PlayerBar()
   // not the first, that sets how coarse one scroll notch feels.
   volume_scale_.set_increments(1, 2);
   volume_scale_.set_size_request(120, -1);
-  gtk_accessible_update_property(GTK_ACCESSIBLE(volume_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, "Lautstärke", -1);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(volume_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, _("Volume"), -1);
   volume_scale_.set_valign(Gtk::Align::CENTER);
   volume_scale_.signal_value_changed().connect([this] {
     if (!suppress_volume_signal_)
@@ -305,7 +306,7 @@ void PlayerBar::Update(const NowPlaying& now_playing)
 {
   if (!now_playing.valid)
   {
-    title_label_.set_text("Keine Wiedergabe");
+    title_label_.set_text(_("Nothing Playing"));
     subtitle_label_.set_text("");
     play_pause_button_.set_icon_name(PlayPauseIconForState(TransportState::Stopped));
     if (position_row_)
@@ -327,7 +328,7 @@ void PlayerBar::Update(const NowPlaying& now_playing)
     }
   }
 
-  title_label_.set_text(now_playing.title.empty() ? "Unbekannter Titel" : now_playing.title);
+  title_label_.set_text(now_playing.title.empty() ? _("Unknown Track") : now_playing.title);
   std::string subtitle = now_playing.artist;
   if (!now_playing.album.empty())
     subtitle += (subtitle.empty() ? "" : " — ") + now_playing.album;
@@ -344,7 +345,7 @@ void PlayerBar::Update(const NowPlaying& now_playing)
   repeat_button_.set_active(now_playing.repeat != RepeatMode::Off);
   repeat_button_.set_icon_name(now_playing.repeat == RepeatMode::One ? "media-playlist-repeat-song-symbolic"
                                                                       : "media-playlist-repeat-symbolic");
-  repeat_button_.set_tooltip_text(now_playing.repeat == RepeatMode::One ? "Titel wiederholen" : "Wiederholen");
+  repeat_button_.set_tooltip_text(now_playing.repeat == RepeatMode::One ? _("Repeat Track") : _("Repeat"));
   // Not every source supports shuffle/repeat at all (radio, line-in) —
   // see NowPlaying::shuffle_supported/repeat_supported's own comment.
   // Independent of SetEnabled()'s blanket on/off, which only ever runs
@@ -392,7 +393,7 @@ void PlayerBar::RenderDurationLabel()
 void PlayerBar::UpdateNextTrack(const std::string& title)
 {
   next_track_label_.set_visible(!title.empty());
-  next_track_label_.set_text("Weiter: " + title);
+  next_track_label_.set_text(Format(_("Next: %s"), title.c_str()));
 }
 
 void PlayerBar::LoadArt(const std::string& uri)
@@ -482,7 +483,7 @@ void PlayerBar::UpdateVolume(const VolumeInfo& volume)
 
   muted_ = volume.muted;
   mute_button_.set_icon_name(IconForVolume(volume.volume, volume.muted));
-  SetButtonLabel(mute_button_, volume.muted ? "Ton einschalten" : "Stummschalten");
+  SetButtonLabel(mute_button_, volume.muted ? _("Unmute") : _("Mute"));
 }
 
 void PlayerBar::SetSleepProgress(double fraction)
@@ -507,7 +508,7 @@ void PlayerBar::SetEnabled(bool enabled)
       position_row_->set_visible(false);
     next_track_label_.set_visible(false);
     crossfade_label_.set_visible(false);
-    title_label_.set_text("Kein Sonos-Gerät ausgewählt");
+    title_label_.set_text(_("No Sonos device selected"));
     subtitle_label_.set_text("");
     LoadArt("");
   }

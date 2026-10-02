@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "cover-thumbnail.h"
+#include "../i18n.h"
 
 #include <cmath>
 #include <map>

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "history-view.h"
+#include "../i18n.h"
 
 #include <adwaita.h>
 #include <gtkmm/box.h>
@@ -21,7 +22,7 @@ HistoryView::HistoryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   toolbar->set_margin_top(6);
   toolbar->set_margin_end(12);
   clear_button_.set_icon_name("user-trash-symbolic");
-  clear_button_.set_tooltip_text("Verlauf leeren");
+  clear_button_.set_tooltip_text(_("Clear History"));
   clear_button_.add_css_class("flat");
   clear_button_.signal_clicked().connect([this] { signal_clear_requested_.emit(); });
   toolbar->append(clear_button_);
@@ -29,7 +30,7 @@ HistoryView::HistoryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 
   placeholder_ = adw_status_page_new();
   adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "document-open-recent-symbolic");
-  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Noch nichts gespielt");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), _("Nothing Played Yet"));
 
   list_box_.set_placeholder(*Glib::wrap(placeholder_));
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
@@ -65,7 +66,7 @@ void HistoryView::SetItems(const std::vector<HistoryEntry>& items)
     auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     labels->set_hexpand(true);
 
-    auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? "Unbekannter Titel" : entry.title);
+    auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? _("Unknown Track") : entry.title);
     title->set_halign(Gtk::Align::START);
     title->set_ellipsize(Pango::EllipsizeMode::END);
     labels->append(*title);
@@ -88,7 +89,7 @@ void HistoryView::SetItems(const std::vector<HistoryEntry>& items)
     search_button->set_icon_name("system-search-symbolic");
     search_button->add_css_class("flat");
     search_button->set_valign(Gtk::Align::CENTER);
-    search_button->set_tooltip_text("In der Bibliothek suchen");
+    search_button->set_tooltip_text(_("Search in Library"));
     search_button->signal_clicked().connect([this, index] { signal_search_requested_.emit(index); });
     row_box->append(*search_button);
 

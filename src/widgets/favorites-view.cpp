@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "favorites-view.h"
+#include "../i18n.h"
 
 #include <algorithm>
 #include <cctype>
@@ -34,19 +35,19 @@ FavoritesView::FavoritesView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   toolbar->set_margin_end(12);
   play_all_button_.set_icon_name("media-playback-start-symbolic");
   play_all_button_.add_css_class("flat");
-  play_all_button_.set_tooltip_text("Alle Favoriten abspielen");
+  play_all_button_.set_tooltip_text(_("Play All Favorites"));
   play_all_button_.set_visible(false);
   play_all_button_.signal_clicked().connect([this] { signal_play_all_requested_.emit(); });
   toolbar->append(play_all_button_);
   queue_all_button_.set_icon_name("list-add-symbolic");
   queue_all_button_.add_css_class("flat");
-  queue_all_button_.set_tooltip_text("Alle Favoriten zur Warteschlange hinzufügen");
+  queue_all_button_.set_tooltip_text(_("Add All Favorites to Queue"));
   queue_all_button_.set_visible(false);
   queue_all_button_.signal_clicked().connect([this] { signal_queue_all_requested_.emit(); });
   toolbar->append(queue_all_button_);
   append(*toolbar);
 
-  search_entry_.set_placeholder_text("Favoriten durchsuchen…");
+  search_entry_.set_placeholder_text(_("Search favorites…"));
   search_entry_.set_margin_top(6);
   search_entry_.set_margin_start(12);
   search_entry_.set_margin_end(12);
@@ -55,7 +56,7 @@ FavoritesView::FavoritesView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 
   placeholder_ = adw_status_page_new();
   adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "starred-symbolic");
-  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Keine Favoriten gefunden");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), _("No Favorites Found"));
 
   list_box_.set_placeholder(*Glib::wrap(placeholder_));
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
@@ -117,7 +118,7 @@ void FavoritesView::ApplyFilter()
     auto* box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     box->set_hexpand(true);
 
-    auto* title = Gtk::make_managed<Gtk::Label>(item.title.empty() ? "Unbenannter Favorit" : item.title);
+    auto* title = Gtk::make_managed<Gtk::Label>(item.title.empty() ? _("Untitled Favorite") : item.title);
     title->set_halign(Gtk::Align::START);
     title->set_ellipsize(Pango::EllipsizeMode::END);
     box->append(*title);
@@ -137,7 +138,7 @@ void FavoritesView::ApplyFilter()
     add_button->set_icon_name("list-add-symbolic");
     add_button->add_css_class("flat");
     add_button->set_valign(Gtk::Align::CENTER);
-    add_button->set_tooltip_text("Zur Warteschlange hinzufügen");
+    add_button->set_tooltip_text(_("Add to Queue"));
     unsigned index = item.index;
     add_button->signal_clicked().connect([this, index] { signal_add_to_queue_requested_.emit(index); });
     row_box->append(*add_button);
@@ -146,7 +147,7 @@ void FavoritesView::ApplyFilter()
     play_next_button->set_icon_name("media-skip-forward-symbolic");
     play_next_button->add_css_class("flat");
     play_next_button->set_valign(Gtk::Align::CENTER);
-    play_next_button->set_tooltip_text("Als nächstes abspielen");
+    play_next_button->set_tooltip_text(_("Play Next"));
     play_next_button->signal_clicked().connect([this, index] { signal_play_next_requested_.emit(index); });
     row_box->append(*play_next_button);
 
@@ -154,7 +155,7 @@ void FavoritesView::ApplyFilter()
     delete_button->set_icon_name("user-trash-symbolic");
     delete_button->add_css_class("flat");
     delete_button->set_valign(Gtk::Align::CENTER);
-    delete_button->set_tooltip_text("Favorit löschen");
+    delete_button->set_tooltip_text(_("Remove Favorite"));
     delete_button->signal_clicked().connect([this, index] { signal_delete_requested_.emit(index); });
     row_box->append(*delete_button);
 

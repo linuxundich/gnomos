@@ -2192,3 +2192,29 @@ its methods are now spread by topic (a pure move, verified line for line):
 
 The trampolines used to live in anonymous namespaces; as shared
 extern "C" functions their names must now be unique program-wide.
+
+### 0.26: gettext
+
+- Source strings are English; `po/de.po` carries German. `src/i18n.h`
+  pulls in `glib/gi18n.h` (`_()`, `N_()`, `ngettext()`) and adds
+  `Format()`, a `g_strdup_vprintf` wrapper returning `std::string`, for
+  sentences with values in them (`Format(_("“%s” added"), name)`).
+  Counts go through `ngettext`.
+- `main()` sets the locale and binds the `gnomos` text domain to
+  `LOCALEDIR` (from meson's prefix), or to `$GNOMOS_LOCALEDIR` when set —
+  for trying a translation from the build tree:
+  `GNOMOS_LOCALEDIR=_build/po _build/src/gnomos`.
+- `po/` uses meson's `i18n.gettext(preset: 'glib')`; `ninja gnomos-pot`
+  regenerates `po/gnomos.pot`, `ninja gnomos-update-po` merges it into
+  the `.po` files. `po/POTFILES.in` lists every source with marked
+  strings plus the `.desktop.in`, which `i18n.merge_file()` translates at
+  build time.
+- Table entries initialized at namespace scope use `N_()` and get
+  translated where they're used (`GlobalShortcutsService`'s descriptions,
+  the weekday names); function-local `static` tables can use `_()`
+  directly, since they're first built after `main()` set up the domain.
+- Not translated on purpose: D-Bus/MPRIS names, protocol strings
+  ("Pause" as a UPnP transport action), CSS, keyfile keys.
+- The Flatpak sets `separate-locales: false`: otherwise flatpak-builder
+  moves `/app/share/locale` into a `.Locale` extension that
+  `flatpak build-bundle` doesn't include.

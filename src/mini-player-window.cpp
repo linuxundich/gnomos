@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "mini-player-window.h"
+#include "i18n.h"
 
 #include <cstdio>
 
@@ -21,7 +22,7 @@ namespace gnomos
 
 MiniPlayerWindow::MiniPlayerWindow()
 {
-  set_title("Gnomos – Mini-Player");
+  set_title(_("Gnomos – Mini Player"));
   set_default_size(320, 320);
   set_decorated(false);
   add_css_class("mini-player");
@@ -41,7 +42,7 @@ MiniPlayerWindow::MiniPlayerWindow()
   close_button->set_icon_name("window-close-symbolic");
   close_button->add_css_class("circular");
   close_button->add_css_class("osd");
-  SetButtonLabel(*close_button, "Zurück zum Hauptfenster");
+  SetButtonLabel(*close_button, _("Back to Main Window"));
   close_button->signal_clicked().connect([this] { close(); });
   close_revealer_.set_child(*close_button);
   close_revealer_.set_transition_type(Gtk::RevealerTransitionType::CROSSFADE);
@@ -74,7 +75,7 @@ MiniPlayerWindow::MiniPlayerWindow()
   position_scale_.set_hexpand(true);
   position_scale_.set_valign(Gtk::Align::CENTER);
   gtk_accessible_update_property(GTK_ACCESSIBLE(position_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL,
-                                 "Wiedergabeposition", -1);
+                                 _("Playback position"), -1);
   // Same debounce PlayerBar's own position_scale_ uses — see its header
   // comment — coalescing a drag's many intermediate ticks into one seek
   // once the value settles, rather than flooding the device with a
@@ -112,7 +113,7 @@ MiniPlayerWindow::MiniPlayerWindow()
   previous_button_.add_css_class("circular");
   previous_button_.set_size_request(36, 36);
   previous_button_.set_valign(Gtk::Align::CENTER);
-  SetButtonLabel(previous_button_, "Vorheriger Titel");
+  SetButtonLabel(previous_button_, _("Previous Track"));
   previous_button_.signal_clicked().connect([this] { signal_previous_.emit(); });
   transport_row->append(previous_button_);
 
@@ -130,7 +131,7 @@ MiniPlayerWindow::MiniPlayerWindow()
   next_button_.add_css_class("circular");
   next_button_.set_size_request(36, 36);
   next_button_.set_valign(Gtk::Align::CENTER);
-  SetButtonLabel(next_button_, "Nächster Titel");
+  SetButtonLabel(next_button_, _("Next Track"));
   next_button_.signal_clicked().connect([this] { signal_next_.emit(); });
   transport_row->append(next_button_);
   content->append(*transport_row);
@@ -194,7 +195,7 @@ void MiniPlayerWindow::Update(const NowPlaying& now_playing)
 {
   if (!now_playing.valid)
   {
-    title_label_.set_text("Keine Wiedergabe");
+    title_label_.set_text(_("Nothing Playing"));
     subtitle_label_.set_text("");
     play_pause_button_.set_icon_name(PlayPauseIconForState(TransportState::Stopped));
     seek_row_->set_visible(false);
@@ -203,7 +204,7 @@ void MiniPlayerWindow::Update(const NowPlaying& now_playing)
     return;
   }
 
-  title_label_.set_text(now_playing.title.empty() ? "Unbekannter Titel" : now_playing.title);
+  title_label_.set_text(now_playing.title.empty() ? _("Unknown Track") : now_playing.title);
   std::string subtitle = now_playing.artist;
   if (!now_playing.album.empty())
     subtitle += (subtitle.empty() ? "" : " — ") + now_playing.album;

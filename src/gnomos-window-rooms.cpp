@@ -4,6 +4,7 @@
 // The class itself and its constructor live in gnomos-window.cpp.
 
 #include "gnomos-window.h"
+#include "i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -162,7 +163,7 @@ void GnomosWindow::RebuildGroupingPopover()
     master_row->set_margin_bottom(6);
     master_row->set_margin_start(6);
     master_row->set_margin_end(6);
-    auto* master_label = Gtk::make_managed<Gtk::Label>("Alle Räume");
+    auto* master_label = Gtk::make_managed<Gtk::Label>(_("All Rooms"));
     master_label->set_halign(Gtk::Align::START);
     master_label->add_css_class("heading");
     master_row->append(*master_label);
@@ -219,7 +220,7 @@ void GnomosWindow::RebuildGroupingPopover()
 
     if (room.is_gen1)
     {
-      auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
+      auto* badge = Gtk::make_managed<Gtk::Label>(_("Gen 1"));
       badge->add_css_class("dimmed");
       badge->add_css_class("caption");
       top_row->append(*badge);
@@ -248,7 +249,7 @@ void GnomosWindow::RebuildGroupingPopover()
     room_switch->set_sensitive(!is_self && can_toggle);
     if (!is_self && !can_toggle)
       room_switch->set_tooltip_text(
-          "Bereits mit einem anderen Raum gruppiert — dort zuerst entfernen, um ihn hier hinzuzufügen");
+          _("Already grouped with another room — remove it there first to add it here"));
 
     // signal_state_set() (unlike notify::active) only fires for user
     // interaction, never for the set_active() call above. Deliberately not
@@ -317,7 +318,7 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
       members.push_back(room);
 
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Geräteinfo");
+  dialog->set_title(_("Device Info"));
   dialog->set_default_size(320, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -352,7 +353,7 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
     room_row->append(*room_heading);
     if (info.is_gen1)
     {
-      auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
+      auto* badge = Gtk::make_managed<Gtk::Label>(_("Gen 1"));
       badge->add_css_class("dimmed");
       badge->add_css_class("caption");
       room_row->append(*badge);
@@ -368,12 +369,12 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
     // room that dropped out of the topology between opening the popover
     // and clicking its info button) shows as "—" rather than an empty cell.
     const std::vector<std::pair<std::string, std::string>> fields = {
-        {"Modell", info.model_number.empty() ? "—" : info.model_number},
-        {"IP-Adresse", info.ip.empty() ? "—" : info.ip},
-        {"MAC-Adresse", info.mac.empty() ? "—" : info.mac},
-        {"Software-Version", info.software_version.empty() ? "—" : info.software_version},
-        {"Hardware-Version", info.hardware_version.empty() ? "—" : info.hardware_version},
-        {"Seriennummer", info.serial_number.empty() ? "—" : info.serial_number},
+        {_("Model"), info.model_number.empty() ? "—" : info.model_number},
+        {_("IP Address"), info.ip.empty() ? "—" : info.ip},
+        {_("MAC Address"), info.mac.empty() ? "—" : info.mac},
+        {_("Software Version"), info.software_version.empty() ? "—" : info.software_version},
+        {_("Hardware Version"), info.hardware_version.empty() ? "—" : info.hardware_version},
+        {_("Serial Number"), info.serial_number.empty() ? "—" : info.serial_number},
     };
     int row = 0;
     for (const auto& [label_text, value_text] : fields)
@@ -398,21 +399,21 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
     }
     content->append(*grid);
 
-    clipboard_text += "\n\n" + member.name + "\nModell: " + (info.model_number.empty() ? "—" : info.model_number) +
-                       "\nIP-Adresse: " + (info.ip.empty() ? "—" : info.ip) +
-                       "\nMAC-Adresse: " + (info.mac.empty() ? "—" : info.mac) +
-                       "\nSoftware-Version: " + (info.software_version.empty() ? "—" : info.software_version) +
-                       "\nHardware-Version: " + (info.hardware_version.empty() ? "—" : info.hardware_version) +
-                       "\nSeriennummer: " + (info.serial_number.empty() ? "—" : info.serial_number);
+    auto or_dash = [](const std::string& value) { return value.empty() ? std::string("—") : value; };
+    clipboard_text += "\n\n" + member.name + "\n" + _("Model") + ": " + or_dash(info.model_number) + "\n" +
+                      _("IP Address") + ": " + or_dash(info.ip) + "\n" + _("MAC Address") + ": " + or_dash(info.mac) +
+                      "\n" + _("Software Version") + ": " + or_dash(info.software_version) + "\n" +
+                      _("Hardware Version") + ": " + or_dash(info.hardware_version) + "\n" + _("Serial Number") +
+                      ": " + or_dash(info.serial_number);
   }
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* copy_button = Gtk::make_managed<Gtk::Button>("Kopieren");
+  auto* copy_button = Gtk::make_managed<Gtk::Button>(_("Copy"));
   copy_button->signal_clicked().connect([this, clipboard_text] { get_clipboard()->set_text(clipboard_text); });
   button_box->append(*copy_button);
-  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
+  auto* close_button = Gtk::make_managed<Gtk::Button>(_("Close"));
   close_button->add_css_class("suggested-action");
   close_button->signal_clicked().connect([dialog] { dialog->close(); });
   button_box->append(*close_button);
@@ -435,7 +436,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   std::vector<RoomInfo> rooms = backend_->Rooms();
   if (rooms.empty())
   {
-    ShowToast("Kein Raum verfügbar.");
+    ShowToast(_("No room available."));
     return;
   }
 
@@ -446,7 +447,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   bool editing = existing && !duplicate;
 
   auto* dialog = new DialogShell(*this);
-  dialog->set_title(editing ? "Alarm bearbeiten" : (duplicate ? "Alarm duplizieren" : "Neuer Alarm"));
+  dialog->set_title(editing ? _("Edit Alarm") : (duplicate ? _("Duplicate Alarm") : _("New Alarm")));
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -461,7 +462,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
     content->append(*label);
   };
 
-  add_section_label("Raum");
+  add_section_label(_("Room"));
   std::vector<Glib::ustring> room_names;
   room_names.reserve(rooms.size());
   guint preselected_room = 0;
@@ -476,7 +477,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   room_dropdown->set_selected(preselected_room);
   content->append(*room_dropdown);
 
-  add_section_label("Uhrzeit");
+  add_section_label(_("Time"));
   auto* time_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   auto* hour_spin = Gtk::make_managed<Gtk::SpinButton>();
   hour_spin->set_range(0, 23);
@@ -496,20 +497,20 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   time_box->append(*minute_spin);
   content->append(*time_box);
 
-  add_section_label("Wiederholung");
+  add_section_label(_("Repeat"));
   auto* days_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 0);
   days_box->add_css_class("linked");
   // label, NSROOT::Day_t value, default-checked (only used for a new
   // alarm) — Monday-first display order (common convention), Sonos day
   // values (0=Sunday..6=Saturday).
   static const std::array<std::tuple<const char*, int, bool>, 7> kDays = {{
-      {"Mo", 1, true},
-      {"Di", 2, true},
-      {"Mi", 3, true},
-      {"Do", 4, true},
-      {"Fr", 5, true},
-      {"Sa", 6, false},
-      {"So", 0, false},
+      {_("Mon"), 1, true},
+      {_("Tue"), 2, true},
+      {_("Wed"), 3, true},
+      {_("Thu"), 4, true},
+      {_("Fri"), 5, true},
+      {_("Sat"), 6, false},
+      {_("Sun"), 0, false},
   }};
   std::vector<int> existing_days = existing ? ParseRecurrenceDays(existing->recurrence) : std::vector<int>();
   auto day_buttons = std::make_shared<std::vector<std::pair<Gtk::ToggleButton*, int>>>();
@@ -524,19 +525,19 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   }
   content->append(*days_box);
 
-  add_section_label("Lautstärke");
+  add_section_label(_("Volume"));
   auto* volume_scale = Gtk::make_managed<Gtk::Scale>();
   volume_scale->set_range(0, 100);
   volume_scale->set_value(existing ? existing->volume : 30);
   content->append(*volume_scale);
 
-  add_section_label("Dauer");
+  add_section_label(_("Duration"));
   static const std::array<std::pair<const char*, unsigned>, 5> kDurations = {{
-      {"15 Minuten", 15},
-      {"30 Minuten", 30},
-      {"1 Stunde", 60},
-      {"2 Stunden", 120},
-      {"3 Stunden", 180},
+      {_("15 Minutes"), 15},
+      {_("30 Minutes"), 30},
+      {_("1 Hour"), 60},
+      {_("2 Hours"), 120},
+      {_("3 Hours"), 180},
   }};
   std::vector<Glib::ustring> duration_labels;
   duration_labels.reserve(kDurations.size());
@@ -553,7 +554,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   content->append(*duration_dropdown);
 
   auto* shuffle_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
-  auto* shuffle_label = Gtk::make_managed<Gtk::Label>("Zufallswiedergabe beim Wecken");
+  auto* shuffle_label = Gtk::make_managed<Gtk::Label>(_("Shuffle when waking"));
   shuffle_label->set_halign(Gtk::Align::START);
   shuffle_label->set_hexpand(true);
   shuffle_row->append(*shuffle_label);
@@ -563,7 +564,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   shuffle_row->append(*shuffle_switch);
   content->append(*shuffle_row);
 
-  add_section_label("Klang");
+  add_section_label(_("Sound"));
   // Index 0 in sound_titles is always "Wecker-Ton" (the buzzer); when
   // editing, an extra "Aktueller Klang beibehalten" entry is prepended so
   // that editing time/room/etc. can't silently reset a custom alarm sound
@@ -572,7 +573,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   std::vector<std::string> sound_titles = backend_->GetAlarmSoundTitles();
   std::vector<Glib::ustring> sound_entries;
   if (editing)
-    sound_entries.push_back("Aktueller Klang beibehalten");
+    sound_entries.push_back(_("Keep current sound"));
   for (const std::string& title : sound_titles)
     sound_entries.push_back(title);
   auto sound_model = Gtk::StringList::create(sound_entries);
@@ -587,7 +588,7 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   content->append(*sound_dropdown);
 
   bool has_keep_current_for_test = editing;
-  auto* test_sound_button = Gtk::make_managed<Gtk::Button>("Wecker-Ton testen");
+  auto* test_sound_button = Gtk::make_managed<Gtk::Button>(_("Preview Alarm Sound"));
   test_sound_button->add_css_class("flat");
   test_sound_button->set_halign(Gtk::Align::START);
   test_sound_button->signal_clicked().connect([this, room_dropdown, sound_dropdown, rooms, has_keep_current_for_test] {
@@ -613,9 +614,9 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* confirm_button = Gtk::make_managed<Gtk::Button>(editing ? "Speichern" : "Erstellen");
+  auto* confirm_button = Gtk::make_managed<Gtk::Button>(editing ? _("Save") : _("Create"));
   confirm_button->add_css_class("suggested-action");
   std::string alarm_id = editing ? existing->id : std::string();
   bool has_keep_current = editing;
@@ -664,7 +665,8 @@ void GnomosWindow::ShowAlarmDialog(const AlarmInfo* existing, bool duplicate)
 void GnomosWindow::OnSleepTimerChanged()
 {
   SleepTimerInfo info = backend_->GetSleepTimerInfo();
-  sleep_timer_status_label_.set_text(info.active ? "Aktiv, verbleibend: " + info.remaining : "Kein Sleep-Timer aktiv");
+  sleep_timer_status_label_.set_text(info.active ? Format(_("Active, %s left"), info.remaining.c_str())
+                                                 : std::string(_("No sleep timer set")));
 
   // "H:MM:SS" -> seconds, counted down locally from here (see
   // UpdateSleepRing()) — the device isn't asked again until it should
@@ -745,7 +747,7 @@ void GnomosWindow::OnSoundSettingsChanged()
 
 void GnomosWindow::ShowDeleteAlarmConfirmDialog(std::string alarm_id)
 {
-  ShowConfirmDialog("Alarm löschen?", "Diesen Alarm wirklich löschen?", "Löschen",
+  ShowConfirmDialog(_("Delete Alarm?"), _("Really delete this alarm?"), _("Delete"),
                      [this, alarm_id] { backend_->DeleteAlarm(alarm_id); });
 }
 

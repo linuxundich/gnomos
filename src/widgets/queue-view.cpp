@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "queue-view.h"
+#include "../i18n.h"
 
 #include <algorithm>
 #include <string>
@@ -32,30 +33,30 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   count_label_.set_halign(Gtk::Align::START);
   toolbar->append(count_label_);
   save_playlist_button_.set_icon_name("document-save-as-symbolic");
-  save_playlist_button_.set_tooltip_text("Als Playlist speichern");
+  save_playlist_button_.set_tooltip_text(_("Save as Playlist"));
   save_playlist_button_.add_css_class("flat");
   save_playlist_button_.signal_clicked().connect([this] { signal_save_playlist_requested_.emit(); });
   toolbar->append(save_playlist_button_);
   jump_to_current_button_.set_icon_name("go-jump-symbolic");
-  jump_to_current_button_.set_tooltip_text("Zur aktuellen Wiedergabe springen");
+  jump_to_current_button_.set_tooltip_text(_("Jump to Current Track"));
   jump_to_current_button_.add_css_class("flat");
   jump_to_current_button_.set_sensitive(false);
   jump_to_current_button_.signal_clicked().connect([this] { ScrollToCurrent(); });
   toolbar->append(jump_to_current_button_);
   clear_button_.set_icon_name("user-trash-symbolic");
-  clear_button_.set_tooltip_text("Warteschlange leeren");
+  clear_button_.set_tooltip_text(_("Clear Queue"));
   clear_button_.add_css_class("flat");
   clear_button_.signal_clicked().connect([this] { signal_clear_requested_.emit(); });
   toolbar->append(clear_button_);
 
   select_mode_button_.set_icon_name("selection-mode-symbolic");
-  select_mode_button_.set_tooltip_text("Mehrere auswählen");
+  select_mode_button_.set_tooltip_text(_("Select Multiple"));
   select_mode_button_.add_css_class("flat");
   select_mode_button_.signal_toggled().connect([this] { UpdateSelectModeVisibility(); });
   toolbar->append(select_mode_button_);
 
   remove_selected_button_.set_icon_name("user-trash-symbolic");
-  remove_selected_button_.set_tooltip_text("Ausgewählte entfernen");
+  remove_selected_button_.set_tooltip_text(_("Remove Selected"));
   remove_selected_button_.add_css_class("flat");
   remove_selected_button_.add_css_class("destructive-action");
   remove_selected_button_.set_visible(false);
@@ -73,7 +74,7 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 
   placeholder_ = adw_status_page_new();
   adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "view-list-symbolic");
-  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Warteschlange ist leer");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), _("Queue Is Empty"));
   list_box_.set_placeholder(*Glib::wrap(placeholder_));
 
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
@@ -97,9 +98,9 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 void QueueView::SetItems(const std::vector<QueueItem>& items)
 {
   Clear();
-  count_label_.set_text(items.empty()      ? "Leer"
-                         : items.size() == 1 ? "1 Titel"
-                                              : std::to_string(items.size()) + " Titel");
+  count_label_.set_text(items.empty()      ? _("Empty")
+                                              : Format(ngettext("%zu track", "%zu tracks", items.size()),
+                                                       items.size()));
   for (const QueueItem& item : items)
   {
     auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
@@ -136,7 +137,7 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
     auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     labels->set_hexpand(true);
 
-    auto* title = Gtk::make_managed<Gtk::Label>(item.title.empty() ? "Unbekannter Titel" : item.title);
+    auto* title = Gtk::make_managed<Gtk::Label>(item.title.empty() ? _("Unknown Track") : item.title);
     title->set_halign(Gtk::Align::START);
     title->set_ellipsize(Pango::EllipsizeMode::END);
     labels->append(*title);
@@ -159,7 +160,7 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
     remove_button->set_icon_name("user-trash-symbolic");
     remove_button->add_css_class("flat");
     remove_button->set_valign(Gtk::Align::CENTER);
-    remove_button->set_tooltip_text("Aus Warteschlange entfernen");
+    remove_button->set_tooltip_text(_("Remove from Queue"));
     unsigned index = item.index;
     remove_button->signal_clicked().connect([this, index] { signal_item_remove_requested_.emit(index); });
     row_box->append(*remove_button);

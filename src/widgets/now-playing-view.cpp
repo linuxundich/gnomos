@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "now-playing-view.h"
+#include "../i18n.h"
 
 #include <algorithm>
 #include <cmath>
@@ -391,7 +392,7 @@ NowPlayingView::NowPlayingView()
   room_label_.set_ellipsize(Pango::EllipsizeMode::END);
   header->set_center_widget(room_label_);
   auto* close_button = Gtk::make_managed<Gtk::Button>();
-  MakeFlatIconButton(*close_button, "go-down-symbolic", "Wiedergabe-Ansicht schließen");
+  MakeFlatIconButton(*close_button, "go-down-symbolic", _("Close Now Playing"));
   close_button->signal_clicked().connect([this] { signal_close_requested_.emit(); });
   header->set_end_widget(*close_button);
   content->append(*header);
@@ -440,7 +441,7 @@ NowPlayingView::NowPlayingView()
   auto* actions = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   actions->set_halign(Gtk::Align::CENTER);
   auto* copy_button = Gtk::make_managed<Gtk::Button>();
-  MakeFlatIconButton(*copy_button, "edit-copy-symbolic", "Titel-Infos kopieren");
+  MakeFlatIconButton(*copy_button, "edit-copy-symbolic", _("Copy Track Info"));
   copy_button->signal_clicked().connect([this] {
     std::string text = now_playing_.title;
     if (!now_playing_.artist.empty())
@@ -450,13 +451,13 @@ NowPlayingView::NowPlayingView()
     get_clipboard()->set_text(text);
   });
   actions->append(*copy_button);
-  MakeFlatIconButton(search_artist_button_, "system-search-symbolic", "Interpret in der Bibliothek suchen");
+  MakeFlatIconButton(search_artist_button_, "system-search-symbolic", _("Search Artist in Library"));
   search_artist_button_.signal_clicked().connect([this] { signal_search_artist_.emit(now_playing_.artist); });
   actions->append(search_artist_button_);
-  MakeFlatIconButton(artist_info_button_, "avatar-default-symbolic", "Über den Interpreten");
+  MakeFlatIconButton(artist_info_button_, "avatar-default-symbolic", _("About the Artist"));
   artist_info_button_.signal_clicked().connect([this] { signal_artist_info_.emit(now_playing_.artist); });
   actions->append(artist_info_button_);
-  MakeFlatIconButton(search_album_button_, "media-optical-cd-audio-symbolic", "Album in der Bibliothek suchen");
+  MakeFlatIconButton(search_album_button_, "media-optical-cd-audio-symbolic", _("Search Album in Library"));
   search_album_button_.signal_clicked().connect([this] { signal_search_album_.emit(now_playing_.album); });
   actions->append(search_album_button_);
   info_column_.append(*actions);
@@ -474,7 +475,7 @@ NowPlayingView::NowPlayingView()
   position_scale_.set_hexpand(true);
   position_scale_.add_css_class("position-scale");
   gtk_accessible_update_property(GTK_ACCESSIBLE(position_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL,
-                                 "Wiedergabeposition", -1);
+                                 _("Playback position"), -1);
   // Same debounce as PlayerBar's own position scale — a drag's many
   // intermediate values coalesce into one seek.
   position_scale_.signal_value_changed().connect([this] {
@@ -504,10 +505,10 @@ NowPlayingView::NowPlayingView()
   shuffle_button_.add_css_class("flat");
   shuffle_button_.add_css_class("circular");
   shuffle_button_.set_valign(Gtk::Align::CENTER);
-  SetButtonLabel(shuffle_button_, "Zufallswiedergabe");
+  SetButtonLabel(shuffle_button_, _("Shuffle"));
   shuffle_button_.signal_clicked().connect([this] { signal_shuffle_clicked_.emit(); });
   transport->append(shuffle_button_);
-  MakeFlatIconButton(previous_button_, "media-skip-backward-symbolic", "Vorheriger Titel");
+  MakeFlatIconButton(previous_button_, "media-skip-backward-symbolic", _("Previous Track"));
   previous_button_.add_css_class("large-transport");
   previous_button_.signal_clicked().connect([this] { signal_previous_.emit(); });
   transport->append(previous_button_);
@@ -520,7 +521,7 @@ NowPlayingView::NowPlayingView()
   SetButtonLabel(play_pause_button_, PlayPauseLabelForState(TransportState::Stopped));
   play_pause_button_.signal_clicked().connect([this] { signal_play_pause_.emit(); });
   transport->append(play_pause_button_);
-  MakeFlatIconButton(next_button_, "media-skip-forward-symbolic", "Nächster Titel");
+  MakeFlatIconButton(next_button_, "media-skip-forward-symbolic", _("Next Track"));
   next_button_.add_css_class("large-transport");
   next_button_.signal_clicked().connect([this] { signal_next_.emit(); });
   transport->append(next_button_);
@@ -528,7 +529,7 @@ NowPlayingView::NowPlayingView()
   repeat_button_.add_css_class("flat");
   repeat_button_.add_css_class("circular");
   repeat_button_.set_valign(Gtk::Align::CENTER);
-  SetButtonLabel(repeat_button_, "Wiederholen");
+  SetButtonLabel(repeat_button_, _("Repeat"));
   repeat_button_.signal_clicked().connect([this] { signal_repeat_clicked_.emit(); });
   transport->append(repeat_button_);
   info_column_.append(*transport);
@@ -536,7 +537,7 @@ NowPlayingView::NowPlayingView()
   // Volume.
   auto* volume_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   volume_row->set_halign(Gtk::Align::CENTER);
-  MakeFlatIconButton(mute_button_, "audio-volume-high-symbolic", "Stummschalten");
+  MakeFlatIconButton(mute_button_, "audio-volume-high-symbolic", _("Mute"));
   mute_button_.signal_clicked().connect([this] {
     muted_ = !muted_;
     signal_mute_toggled_.emit(muted_);
@@ -546,7 +547,7 @@ NowPlayingView::NowPlayingView()
   volume_scale_.set_increments(1, 2);
   volume_scale_.set_draw_value(false);
   volume_scale_.set_size_request(200, -1);
-  gtk_accessible_update_property(GTK_ACCESSIBLE(volume_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, "Lautstärke",
+  gtk_accessible_update_property(GTK_ACCESSIBLE(volume_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, _("Volume"),
                                  -1);
   volume_scale_.signal_value_changed().connect([this] {
     if (!suppress_volume_signal_)
@@ -565,11 +566,11 @@ NowPlayingView::NowPlayingView()
   gtk_widget_set_halign(side_toggles_, GTK_ALIGN_CENTER);
   AdwToggle* lyrics_toggle = adw_toggle_new();
   adw_toggle_set_name(lyrics_toggle, "lyrics");
-  adw_toggle_set_label(lyrics_toggle, "Songtext");
+  adw_toggle_set_label(lyrics_toggle, _("Lyrics"));
   adw_toggle_group_add(ADW_TOGGLE_GROUP(side_toggles_), lyrics_toggle);
   AdwToggle* next_toggle = adw_toggle_new();
   adw_toggle_set_name(next_toggle, "up-next");
-  adw_toggle_set_label(next_toggle, "Als Nächstes");
+  adw_toggle_set_label(next_toggle, _("Up Next"));
   adw_toggle_group_add(ADW_TOGGLE_GROUP(side_toggles_), next_toggle);
   side_column_.append(*Glib::wrap(side_toggles_));
 
@@ -608,7 +609,7 @@ NowPlayingView::NowPlayingView()
       signal_queue_item_activated_.emit(
           static_cast<unsigned>(GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(row->gobj()), "queue-index"))));
   });
-  auto* up_next_placeholder = Gtk::make_managed<Gtk::Label>("Nichts mehr in der Warteschlange");
+  auto* up_next_placeholder = Gtk::make_managed<Gtk::Label>(_("Nothing more in the queue"));
   up_next_placeholder->add_css_class("dimmed");
   up_next_placeholder->set_margin_top(48);
   up_next_list_.set_placeholder(*up_next_placeholder);
@@ -682,13 +683,13 @@ void NowPlayingView::Update(const NowPlaying& now_playing)
   now_playing_ = now_playing;
   if (!now_playing.valid)
   {
-    title_label_.set_text("Keine Wiedergabe");
+    title_label_.set_text(_("Nothing Playing"));
     subtitle_label_.set_text("");
     art_.SetPlaying(false);
     return;
   }
 
-  title_label_.set_text(now_playing.title.empty() ? "Unbekannter Titel" : now_playing.title);
+  title_label_.set_text(now_playing.title.empty() ? _("Unknown Track") : now_playing.title);
   std::string subtitle = now_playing.artist;
   if (!now_playing.album.empty())
     subtitle += (subtitle.empty() ? "" : " · ") + now_playing.album;
@@ -754,12 +755,12 @@ void NowPlayingView::UpdateVolume(const VolumeInfo& volume)
   suppress_volume_signal_ = false;
   muted_ = volume.muted;
   mute_button_.set_icon_name(IconForVolume(volume.volume, volume.muted));
-  SetButtonLabel(mute_button_, volume.muted ? "Ton einschalten" : "Stummschalten");
+  SetButtonLabel(mute_button_, volume.muted ? _("Unmute") : _("Mute"));
 }
 
 void NowPlayingView::SetRoomName(const std::string& name)
 {
-  room_label_.set_text(name.empty() ? "" : "Spielt in " + name);
+  room_label_.set_text(name.empty() ? "" : Format(_("Playing in %s"), name.c_str()));
 }
 
 void NowPlayingView::SetUpNext(const std::vector<QueueItem>& queue, int current_index)
@@ -783,7 +784,7 @@ void NowPlayingView::SetUpNext(const std::vector<QueueItem>& queue, int current_
     auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     labels->set_valign(Gtk::Align::CENTER);
     labels->set_hexpand(true);
-    auto* title = Gtk::make_managed<Gtk::Label>(item.title.empty() ? "Unbekannter Titel" : item.title);
+    auto* title = Gtk::make_managed<Gtk::Label>(item.title.empty() ? _("Unknown Track") : item.title);
     title->set_halign(Gtk::Align::START);
     title->set_ellipsize(Pango::EllipsizeMode::END);
     labels->append(*title);
@@ -825,7 +826,7 @@ void NowPlayingView::ClearLyricLines()
 void NowPlayingView::SetLyricsLoading()
 {
   ClearLyricLines();
-  lyrics_status_.set_text("Songtext wird geladen …");
+  lyrics_status_.set_text(_("Loading lyrics…"));
   lyrics_status_.set_visible(true);
 }
 
@@ -834,7 +835,7 @@ void NowPlayingView::SetLyrics(const Lyrics& lyrics)
   ClearLyricLines();
   if (lyrics.empty())
   {
-    lyrics_status_.set_text("Kein Songtext gefunden.");
+    lyrics_status_.set_text(_("No lyrics found."));
     lyrics_status_.set_visible(true);
     return;
   }

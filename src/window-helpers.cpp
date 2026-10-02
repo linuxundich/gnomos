@@ -11,7 +11,6 @@
 #include <sstream>
 #include <tuple>
 
-#include <gdk/gdkkeysyms.h>
 #include <gdkmm/contentprovider.h>
 #include <gdkmm/texture.h>
 #include <giomm/application.h>
@@ -60,6 +59,7 @@
 #include <pangomm/layout.h>
 
 #include "window-helpers.h"
+#include "i18n.h"
 
 #include "config.h"
 #include "widgets/art-cache.h"
@@ -184,8 +184,9 @@ std::string NextAlarmSummary(const std::vector<AlarmInfo>& alarms)
   int now_wday = now_tm.tm_wday;
   int now_minutes = now_tm.tm_hour * 60 + now_tm.tm_min;
 
-  static const std::array<const char*, 7> kWeekdayNames = {"Sonntag",     "Montag", "Dienstag", "Mittwoch",
-                                                             "Donnerstag", "Freitag", "Samstag"};
+  static const std::array<const char*, 7> kWeekdayNames = {N_("Sunday"),   N_("Monday"), N_("Tuesday"),
+                                                             N_("Wednesday"), N_("Thursday"), N_("Friday"),
+                                                             N_("Saturday")};
 
   int best_day_offset = -1;
   int best_minutes = -1;
@@ -224,10 +225,11 @@ std::string NextAlarmSummary(const std::vector<AlarmInfo>& alarms)
 
   char time_buf[16];
   std::snprintf(time_buf, sizeof(time_buf), "%02d:%02d", best_minutes / 60, best_minutes % 60);
-  std::string when = best_day_offset == 0    ? "Heute"
-                      : best_day_offset == 1 ? "Morgen"
-                                              : kWeekdayNames[(now_wday + best_day_offset) % 7];
-  return when + ", " + time_buf + " Uhr — " + best_alarm->room_name;
+  const char* when = best_day_offset == 0    ? _("Today")
+                     : best_day_offset == 1 ? _("Tomorrow")
+                                             : _(kWeekdayNames[(now_wday + best_day_offset) % 7]);
+  // Translators: day, time ("07:30"), room — e.g. "Tomorrow, 07:30 — Kitchen"
+  return Format(_("%s, %s — %s"), when, time_buf, best_alarm->room_name.c_str());
 }
 
 // notify::active has no gtkmm binding on AdwToggleGroup (an Adw-only

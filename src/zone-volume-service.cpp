@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "zone-volume-service.h"
+#include "i18n.h"
 
 #include <algorithm>
 #include <tuple>

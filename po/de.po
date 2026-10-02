@@ -1,0 +1,1836 @@
+# German translation for Gnomos.
+# Copyright (C) 2026 Christoph Langner
+# This file is distributed under the same license as the gnomos package.
+# Christoph Langner, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnomos 0.26.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-02 14:09+0200\n"
+"PO-Revision-Date: 2026-10-02 14:15+0200\n"
+"Last-Translator: Christoph Langner\n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/backend/noson-backend.cpp:453
+msgid "The link was activated but couldn't be saved permanently."
+msgstr "Verknüpfung wurde aktiviert, konnte aber nicht dauerhaft gespeichert werden."
+
+#: src/backend/noson-backend.cpp:671
+msgid "Couldn't add the room to the group."
+msgstr "Raum konnte nicht zur Gruppe hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:692
+msgid "Couldn't group the room."
+msgstr "Raum konnte nicht gruppiert werden."
+
+#: src/backend/noson-backend.cpp:713
+msgid "Couldn't remove the room from the group."
+msgstr "Raum konnte nicht aus der Gruppe entfernt werden."
+
+#: src/backend/noson-backend.cpp:861
+msgid "Couldn't connect to the Sonos player."
+msgstr "Verbindung zum Sonos-Player fehlgeschlagen."
+
+#: src/backend/noson-backend.cpp:1195
+msgid "Couldn't add the track to favorites."
+msgstr "Titel konnte nicht zu Favoriten hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:1219
+msgid "Couldn't add the entry to favorites."
+msgstr "Eintrag konnte nicht zu Favoriten hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:1278
+msgid "Line-in isn't supported by this device or couldn't be started."
+msgstr "Line-In wird von diesem Gerät nicht unterstützt oder konnte nicht gestartet werden."
+
+#: src/backend/noson-backend.cpp:1291
+msgid "Digital-in isn't supported by this device or couldn't be started."
+msgstr "Digital-In wird von diesem Gerät nicht unterstützt oder konnte nicht gestartet werden."
+
+#: src/backend/noson-backend.cpp:1304
+msgid "Couldn't set the sleep timer."
+msgstr "Sleep-Timer konnte nicht gesetzt werden."
+
+#: src/backend/noson-backend.cpp:1464
+msgid "Night mode isn't supported by this device."
+msgstr "Night Mode wird von diesem Gerät nicht unterstützt."
+
+#: src/backend/noson-backend.cpp:1484
+msgid "Couldn't change fixed volume."
+msgstr "Feste Lautstärke konnte nicht geändert werden."
+
+#: src/backend/noson-backend.cpp:1506
+msgid "Couldn't change the sub level."
+msgstr "Sub-Pegel konnte nicht geändert werden."
+
+#: src/backend/noson-backend.cpp:1522
+msgid "Couldn't change autoplay."
+msgstr "Automatische Wiedergabe konnte nicht geändert werden."
+
+#: src/backend/noson-backend.cpp:1548
+msgid "Couldn't change the setting."
+msgstr "Einstellung konnte nicht geändert werden."
+
+#: src/backend/noson-backend.cpp:1562
+msgid "Couldn't change the status light."
+msgstr "Status-LED konnte nicht geändert werden."
+
+#: src/backend/noson-backend.cpp:1655
+msgid "Couldn't remove the track from the queue."
+msgstr "Titel konnte nicht aus der Warteschlange entfernt werden."
+
+#: src/backend/noson-backend.cpp:1727
+msgid "Couldn't remove the tracks from the queue."
+msgstr "Titel konnten nicht aus der Warteschlange entfernt werden."
+
+#: src/backend/noson-backend.cpp:1743 src/backend/noson-backend.cpp:2089
+#: src/backend/noson-backend.cpp:3157
+msgid "Couldn't clear the queue."
+msgstr "Warteschlange konnte nicht geleert werden."
+
+#: src/backend/noson-backend.cpp:1776
+msgid "Couldn't save the queue as a playlist."
+msgstr "Warteschlange konnte nicht als Playlist gespeichert werden."
+
+#: src/backend/noson-backend.cpp:1804
+msgid "Couldn't reorder the queue."
+msgstr "Warteschlange konnte nicht umsortiert werden."
+
+#: src/backend/noson-backend.cpp:1932
+msgid "Couldn't play the favorite."
+msgstr "Favorit konnte nicht abgespielt werden."
+
+#: src/backend/noson-backend.cpp:1964
+msgid "Couldn't add the favorite to the queue."
+msgstr "Favorit konnte nicht zur Warteschlange hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:1965
+msgid "This favorite can't be added to the queue."
+msgstr "Dieser Favorit kann nicht zur Warteschlange hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:2000
+msgid "Couldn't add the favorite to play next."
+msgstr "Favorit konnte nicht als nächster Titel eingefügt werden."
+
+#: src/backend/noson-backend.cpp:2001
+msgid "This favorite can't be added to play next."
+msgstr "Dieser Favorit kann nicht als nächster Titel eingefügt werden."
+
+#: src/backend/noson-backend.cpp:2022
+msgid "Couldn't remove the favorite."
+msgstr "Favorit konnte nicht gelöscht werden."
+
+#: src/backend/noson-backend.cpp:2065
+msgid "Couldn't add the favorites to the queue."
+msgstr "Favoriten konnten nicht zur Warteschlange hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:2106
+msgid "Couldn't play the favorites."
+msgstr "Favoriten konnten nicht abgespielt werden."
+
+#: src/backend/noson-backend.cpp:2251
+msgid "Artists"
+msgstr "Interpreten"
+
+#: src/backend/noson-backend.cpp:2252
+msgid "Albums"
+msgstr "Alben"
+
+#: src/backend/noson-backend.cpp:2253 src/gnomos-window-settings.cpp:1173
+msgid "Genres"
+msgstr "Genres"
+
+#: src/backend/noson-backend.cpp:2259
+msgid "Composers"
+msgstr "Komponisten"
+
+#: src/backend/noson-backend.cpp:2260
+msgid "Tracks"
+msgstr "Titel"
+
+#: src/backend/noson-backend.cpp:2261
+msgid "Playlists"
+msgstr "Playlisten"
+
+#: src/backend/noson-backend.cpp:2262
+msgid "Playlists (Local Share)"
+msgstr "Playlisten (lokale Freigabe)"
+
+#: src/backend/noson-backend.cpp:2263
+msgid "Radio Stations"
+msgstr "Radiosender"
+
+#: src/backend/noson-backend.cpp:2286
+msgid "Link Service…"
+msgstr "Dienst verknüpfen…"
+
+#: src/backend/noson-backend.cpp:2311 src/backend/noson-backend.cpp:2843
+msgid "Couldn't initialize the service."
+msgstr "Dienst konnte nicht initialisiert werden."
+
+#: src/backend/noson-backend.cpp:2326
+msgid ""
+"Your sign-in for this service has expired or is incomplete — please link it "
+"again via “Link Service”."
+msgstr "Anmeldung bei diesem Dienst ist abgelaufen oder unvollständig — bitte über \"Dienst verknüpfen\" erneut verknüpfen."
+
+#: src/backend/noson-backend.cpp:2494
+msgid "Couldn't update the library."
+msgstr "Bibliothek konnte nicht aktualisiert werden."
+
+#: src/backend/noson-backend.cpp:2586
+msgid "Search failed."
+msgstr "Suche fehlgeschlagen."
+
+#: src/backend/noson-backend.cpp:2783
+msgid ""
+"Your sign-in for this service has expired — please link it again via “Link "
+"Service”."
+msgstr "Anmeldung bei diesem Dienst ist abgelaufen — bitte über \"Dienst verknüpfen\" erneut verknüpfen."
+
+#: src/backend/noson-backend.cpp:2784
+msgid "Couldn't browse the service."
+msgstr "Dienst konnte nicht durchsucht werden."
+
+#: src/backend/noson-backend.cpp:2834
+msgid "Service not found."
+msgstr "Dienst nicht gefunden."
+
+#: src/backend/noson-backend.cpp:2858
+msgid "Couldn't start linking."
+msgstr "Verknüpfung konnte nicht gestartet werden."
+
+#: src/backend/noson-backend.cpp:2886
+msgid "Linking isn't finished yet — confirm it in the browser and try again."
+msgstr "Verknüpfung noch nicht abgeschlossen — bitte im Browser bestätigen und erneut versuchen."
+
+#: src/backend/noson-backend.cpp:2893
+msgid "Linking failed."
+msgstr "Verknüpfung fehlgeschlagen."
+
+#: src/backend/noson-backend.cpp:2923
+msgid "The link was saved, but the service couldn't be started."
+msgstr "Verknüpfung gespeichert, aber Dienst konnte nicht gestartet werden."
+
+#: src/backend/noson-backend.cpp:2973
+msgid "Couldn't play the track."
+msgstr "Titel konnte nicht abgespielt werden."
+
+#: src/backend/noson-backend.cpp:2999
+msgid "Couldn't add the track to the queue."
+msgstr "Titel konnte nicht zur Warteschlange hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:3000
+msgid "This track can't be added to the queue."
+msgstr "Dieser Titel kann nicht zur Warteschlange hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:3029
+msgid "Couldn't add the track to play next."
+msgstr "Titel konnte nicht als nächster Titel eingefügt werden."
+
+#: src/backend/noson-backend.cpp:3030
+msgid "This track can't be added to play next."
+msgstr "Dieser Titel kann nicht als nächster Titel eingefügt werden."
+
+#: src/backend/noson-backend.cpp:3098 src/backend/noson-backend.cpp:3129
+msgid "Couldn't add the tracks to the queue."
+msgstr "Titel konnten nicht zur Warteschlange hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:3172
+msgid "Couldn't play the tracks."
+msgstr "Titel konnten nicht abgespielt werden."
+
+#: src/backend/noson-backend.cpp:3193
+msgid "Couldn't delete the playlist."
+msgstr "Playlist konnte nicht gelöscht werden."
+
+#: src/backend/noson-backend.cpp:3230
+msgid "Couldn't delete the radio station."
+msgstr "Radiosender konnte nicht gelöscht werden."
+
+#: src/backend/noson-backend.cpp:3299
+msgid "Couldn't add the track to the playlist."
+msgstr "Titel konnte nicht zur Playlist hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:3300 src/backend/noson-backend.cpp:3329
+msgid "This track can't be added to a playlist."
+msgstr "Dieser Titel kann nicht zu einer Playlist hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:3330
+msgid "Couldn't create the playlist."
+msgstr "Playlist konnte nicht erstellt werden."
+
+#: src/backend/noson-backend.cpp:3371
+msgid "Couldn't find the newly created playlist."
+msgstr "Neu erstellte Playlist konnte nicht gefunden werden."
+
+#: src/backend/noson-backend.cpp:3383
+msgid "Couldn't add the track to the new playlist."
+msgstr "Titel konnte nicht zur neuen Playlist hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:3412
+msgid "Couldn't reorder the playlist."
+msgstr "Playlist konnte nicht umsortiert werden."
+
+#: src/backend/noson-backend.cpp:3430
+msgid "Couldn't start the library scan."
+msgstr "Bibliotheks-Scan konnte nicht gestartet werden."
+
+#: src/backend/noson-backend.cpp:3468
+msgid "Couldn't add the radio station."
+msgstr "Radiosender konnte nicht hinzugefügt werden."
+
+#: src/backend/noson-backend.cpp:3773
+msgid "Alarm sound"
+msgstr "Wecker-Ton"
+
+#: src/backend/noson-backend.cpp:3775 src/widgets/favorites-view.cpp:121
+msgid "Untitled Favorite"
+msgstr "Unbenannter Favorit"
+
+#: src/backend/noson-backend.cpp:3795 src/backend/noson-backend.cpp:3820
+#: src/backend/noson-backend.cpp:4013
+msgid "Couldn't update the alarm."
+msgstr "Alarm konnte nicht aktualisiert werden."
+
+#: src/backend/noson-backend.cpp:3839
+msgid "Couldn't delete the alarm."
+msgstr "Alarm konnte nicht gelöscht werden."
+
+#: src/backend/noson-backend.cpp:3889
+msgid "Couldn't preview the alarm sound."
+msgstr "Wecker-Ton konnte nicht getestet werden."
+
+#: src/backend/noson-backend.cpp:3965
+msgid "Couldn't create the alarm."
+msgstr "Alarm konnte nicht erstellt werden."
+
+#: src/global-shortcuts-service.cpp:30 src/gnomos-window-settings.cpp:786
+msgid "Play/Pause"
+msgstr "Wiedergabe/Pause"
+
+#: src/global-shortcuts-service.cpp:31 src/gnomos-window-settings.cpp:787
+#: src/mini-player-window.cpp:134 src/widgets/now-playing-view.cpp:524
+#: src/widgets/player-bar.cpp:242
+msgid "Next Track"
+msgstr "Nächster Titel"
+
+#: src/global-shortcuts-service.cpp:32 src/gnomos-window-settings.cpp:788
+#: src/mini-player-window.cpp:116 src/widgets/now-playing-view.cpp:511
+#: src/widgets/player-bar.cpp:214
+msgid "Previous Track"
+msgstr "Vorheriger Titel"
+
+#: src/global-shortcuts-service.cpp:33 src/gnomos-window.cpp:181
+msgid "Mute Everywhere"
+msgstr "Überall stummschalten"
+
+#: src/gnomos-window.cpp:100
+msgid "Show/Hide Sections"
+msgstr "Bereiche ein-/ausblenden"
+
+#: src/gnomos-window.cpp:114 src/gnomos-window.cpp:1117
+msgid "No Room"
+msgstr "Kein Raum"
+
+#: src/gnomos-window.cpp:116
+msgid "Choose Room"
+msgstr "Raum wählen"
+
+#: src/gnomos-window.cpp:146
+msgid "All rooms muted"
+msgstr "Alle Räume stummgeschaltet"
+
+#: src/gnomos-window.cpp:155
+msgid "Updating library…"
+msgstr "Bibliothek wird aktualisiert…"
+
+#: src/gnomos-window.cpp:180
+msgid "Play Stream…"
+msgstr "Stream abspielen…"
+
+#: src/gnomos-window.cpp:182
+msgid "Scenes…"
+msgstr "Szenen…"
+
+#: src/gnomos-window.cpp:183
+msgid "Export Radio Station Favorites…"
+msgstr "Radiosender-Favoriten exportieren…"
+
+#: src/gnomos-window.cpp:184
+msgid "Import Radio Station Favorites…"
+msgstr "Radiosender-Favoriten importieren…"
+
+#: src/gnomos-window.cpp:185
+msgid "Import M3U/PLS Playlist…"
+msgstr "M3U/PLS-Playlist importieren…"
+
+#: src/gnomos-window.cpp:186
+msgid "Update Library"
+msgstr "Bibliothek aktualisieren"
+
+#: src/gnomos-window.cpp:187
+msgid "Mini Player…"
+msgstr "Mini-Player…"
+
+#: src/gnomos-window.cpp:188 src/gnomos-window-settings.cpp:806
+msgid "Preferences"
+msgstr "Einstellungen"
+
+#: src/gnomos-window.cpp:189 src/gnomos-window-settings.cpp:807
+msgid "Keyboard Shortcuts"
+msgstr "Tastenkürzel"
+
+#: src/gnomos-window.cpp:190
+msgid "About Gnomos"
+msgstr "Über Gnomos"
+
+#: src/gnomos-window.cpp:191 src/gnomos-window-settings.cpp:809
+msgid "Quit Gnomos"
+msgstr "Gnomos beenden"
+
+#: src/gnomos-window.cpp:193
+msgid "Main Menu"
+msgstr "Hauptmenü"
+
+#: src/gnomos-window.cpp:210
+msgid "Waiting for the Sonos system…"
+msgstr "Sonos-System antwortet …"
+
+#: src/gnomos-window.cpp:217
+msgid "Search for Sonos Devices"
+msgstr "Sonos-Geräte suchen"
+
+#: src/gnomos-window.cpp:251
+msgid "Group All Rooms"
+msgstr "Alle Räume gruppieren"
+
+#: src/gnomos-window.cpp:254
+msgid ""
+"Adds every free room — rooms already grouped with another room stay as they "
+"are"
+msgstr "Fügt jeden freien Raum hinzu — bereits mit einem anderen Raum gruppierte Räume bleiben unverändert"
+
+#: src/gnomos-window.cpp:276
+msgid "Ungroup"
+msgstr "Gruppe auflösen"
+
+#: src/gnomos-window.cpp:307
+msgid "Group Rooms"
+msgstr "Räume gruppieren"
+
+#: src/gnomos-window.cpp:317
+msgid "Line In"
+msgstr "Line-In"
+
+#: src/gnomos-window.cpp:323
+msgid "Digital In"
+msgstr "Digital-In"
+
+#: src/gnomos-window.cpp:337
+msgid "Input"
+msgstr "Eingang"
+
+#: src/gnomos-window.cpp:353 src/gnomos-window.cpp:588
+msgid "Off"
+msgstr "Aus"
+
+#: src/gnomos-window.cpp:354 src/gnomos-window-rooms.cpp:536
+msgid "15 Minutes"
+msgstr "15 Minuten"
+
+#: src/gnomos-window.cpp:355 src/gnomos-window-rooms.cpp:537
+msgid "30 Minutes"
+msgstr "30 Minuten"
+
+#: src/gnomos-window.cpp:356
+msgid "45 Minutes"
+msgstr "45 Minuten"
+
+#: src/gnomos-window.cpp:357
+msgid "60 Minutes"
+msgstr "60 Minuten"
+
+#: src/gnomos-window.cpp:358
+msgid "90 Minutes"
+msgstr "90 Minuten"
+
+#: src/gnomos-window.cpp:376
+msgid "Sleep Timer"
+msgstr "Sleep-Timer"
+
+#: src/gnomos-window.cpp:397
+msgid "Bass"
+msgstr "Bässe"
+
+#: src/gnomos-window.cpp:406
+msgid "Treble"
+msgstr "Höhen"
+
+#: src/gnomos-window.cpp:415
+msgid "Reset Bass/Treble"
+msgstr "Bässe/Höhen zurücksetzen"
+
+#: src/gnomos-window.cpp:427
+msgid "Sub Level"
+msgstr "Sub-Pegel"
+
+#: src/gnomos-window.cpp:439
+msgid "Loudness"
+msgstr "Loudness"
+
+#: src/gnomos-window.cpp:457
+msgid "Night Mode"
+msgstr "Night Mode"
+
+#: src/gnomos-window.cpp:472
+msgid "Fixed Volume (Line Out)"
+msgstr "Feste Lautstärke (Line-Out)"
+
+#: src/gnomos-window.cpp:478
+msgid ""
+"Ignores its own volume control — for connecting to an amplifier with its own "
+"volume"
+msgstr "Ignoriert die eigene Lautstärkeregelung — für den Anschluss an einen Verstärker mit eigener Lautstärke"
+
+#: src/gnomos-window.cpp:507
+msgid "Advanced"
+msgstr "Erweitert"
+
+#: src/gnomos-window.cpp:530
+msgid "Autoplay (Line In)"
+msgstr "Autoplay (Line-In)"
+
+#: src/gnomos-window.cpp:536
+msgid ""
+"Starts playing here automatically as soon as a line-in signal reaches this "
+"device"
+msgstr "Startet automatisch die Wiedergabe hier, sobald ein Line-In-Signal an diesem Gerät anliegt"
+
+#: src/gnomos-window.cpp:547
+msgid "Custom Autoplay Volume"
+msgstr "Eigene Autoplay-Lautstärke"
+
+#: src/gnomos-window.cpp:561
+msgid "Autoplay Volume"
+msgstr "Autoplay-Lautstärke"
+
+#: src/gnomos-window.cpp:581
+msgid "Status Light"
+msgstr "Status-LED"
+
+#: src/gnomos-window.cpp:585
+msgid "On"
+msgstr "An"
+
+#: src/gnomos-window.cpp:598 src/gnomos-window-rooms.cpp:567
+msgid "Sound"
+msgstr "Klang"
+
+#: src/gnomos-window.cpp:611
+msgid ""
+"No Sonos devices found.\n"
+"Click Refresh."
+msgstr "Keine Sonos-Geräte gefunden.\nKlicke auf Aktualisieren."
+
+#: src/gnomos-window.cpp:677 src/gnomos-window.cpp:757
+msgid "Queue"
+msgstr "Warteschlange"
+
+#: src/gnomos-window.cpp:678 src/gnomos-window.cpp:759
+msgid "Favorites"
+msgstr "Favoriten"
+
+#: src/gnomos-window.cpp:679 src/gnomos-window.cpp:761
+msgid "Alarms"
+msgstr "Alarme"
+
+#: src/gnomos-window.cpp:680 src/gnomos-window.cpp:763
+msgid "History"
+msgstr "Verlauf"
+
+#: src/gnomos-window.cpp:681 src/gnomos-window.cpp:720
+#: src/gnomos-window.cpp:728 src/gnomos-window.cpp:765
+#: src/gnomos-window.cpp:810 src/gnomos-window.cpp:811
+#: src/gnomos-window-library.cpp:133 src/gnomos-window-settings.cpp:838
+#: src/gnomos-window-settings.cpp:1107
+msgid "Library"
+msgstr "Bibliothek"
+
+#: src/gnomos-window.cpp:749 src/gnomos-window-settings.cpp:764
+msgid "Services"
+msgstr "Dienste"
+
+#: src/gnomos-window.cpp:770 src/gnomos-window.cpp:781
+#: src/gnomos-window.cpp:818 src/gnomos-window.cpp:846
+msgid "Added to queue"
+msgstr "Zur Warteschlange hinzugefügt"
+
+#: src/gnomos-window.cpp:774 src/gnomos-window.cpp:822
+msgid "Added to play next"
+msgstr "Als Nächstes hinzugefügt"
+
+#: src/gnomos-window.cpp:826
+msgid "Added to favorites"
+msgstr "Zu Favoriten hinzugefügt"
+
+#: src/gnomos-window.cpp:1184
+msgid "No Sonos device found on the network."
+msgstr "Kein Sonos-Gerät im Netzwerk gefunden."
+
+#: src/gnomos-window.cpp:1291 src/gnomos-window-rooms.cpp:223
+#: src/gnomos-window-rooms.cpp:356
+msgid "Gen 1"
+msgstr "Gen 1"
+
+#: src/gnomos-window.cpp:1314 src/gnomos-window-rooms.cpp:321
+msgid "Device Info"
+msgstr "Geräteinfo"
+
+#: src/gnomos-window.cpp:1432
+msgid "Paused"
+msgstr "Pausiert"
+
+#: src/gnomos-window.cpp:1443 src/gnomos-window-history.cpp:458
+#: src/widgets/playback-ui.cpp:37
+msgid "Pause"
+msgstr "Pause"
+
+#: src/gnomos-window.cpp:1443 src/gnomos-window-history.cpp:458
+#: src/gnomos-window-library.cpp:435 src/gnomos-window-settings.cpp:785
+#: src/widgets/playback-ui.cpp:37
+msgid "Play"
+msgstr "Abspielen"
+
+#: src/gnomos-window.cpp:1538 src/gnomos-window-history.cpp:385
+#: src/mini-player-window.cpp:207 src/widgets/history-view.cpp:69
+#: src/widgets/now-playing-view.cpp:692 src/widgets/now-playing-view.cpp:787
+#: src/widgets/player-bar.cpp:331 src/widgets/queue-view.cpp:140
+msgid "Unknown Track"
+msgstr "Unbekannter Titel"
+
+#: src/gnomos-window.cpp:1550
+msgid "Alarm ringing"
+msgstr "Wecker klingelt"
+
+#: src/gnomos-window.cpp:1554
+msgid "Good morning – your alarm is ringing"
+msgstr "Guten Morgen – der Wecker klingelt"
+
+#: src/gnomos-window.cpp:1558
+msgid "Stop"
+msgstr "Stoppen"
+
+#: src/gnomos-window.cpp:1565
+msgid "The device reports a playback error."
+msgstr "Gerät meldet einen Wiedergabefehler."
+
+#: src/gnomos-window.cpp:1848 src/widgets/queue-view.cpp:36
+msgid "Save as Playlist"
+msgstr "Als Playlist speichern"
+
+#: src/gnomos-window.cpp:1857
+msgid "Playlist name"
+msgstr "Name der Playlist"
+
+#: src/gnomos-window.cpp:1868 src/gnomos-window.cpp:2026
+#: src/gnomos-window-history.cpp:597 src/gnomos-window-library.cpp:372
+#: src/gnomos-window-library.cpp:433 src/gnomos-window-library.cpp:942
+#: src/gnomos-window-library.cpp:1281 src/gnomos-window-library.cpp:1360
+#: src/gnomos-window-library.cpp:1426 src/gnomos-window-rooms.cpp:617
+#: src/gnomos-window-settings.cpp:565
+msgid "Cancel"
+msgstr "Abbrechen"
+
+#: src/gnomos-window.cpp:1870 src/gnomos-window-history.cpp:602
+#: src/gnomos-window-library.cpp:1283 src/gnomos-window-rooms.cpp:619
+msgid "Save"
+msgstr "Speichern"
+
+#: src/gnomos-window.cpp:1919
+msgid ""
+"Enter a Last.fm API key in Preferences → General → Scrobbling to load a "
+"biography."
+msgstr "Last.fm-API-Schlüssel in Einstellungen → Allgemein → Scrobbling eintragen, um eine Biografie zu laden."
+
+#: src/gnomos-window.cpp:1920
+msgid "Loading biography…"
+msgstr "Biografie wird geladen …"
+
+#: src/gnomos-window.cpp:1944
+msgid "No biography found."
+msgstr "Keine Biografie gefunden."
+
+#: src/gnomos-window.cpp:1950
+msgid "Similar Artists"
+msgstr "Ähnliche Interpreten"
+
+#: src/gnomos-window.cpp:1964
+msgid "Loading…"
+msgstr "Wird geladen …"
+
+#: src/gnomos-window.cpp:1982
+msgid "No similar artists found."
+msgstr "Keine ähnlichen Interpreten gefunden."
+
+#: src/gnomos-window.cpp:2005 src/widgets/history-view.cpp:92
+msgid "Search in Library"
+msgstr "In der Bibliothek suchen"
+
+#: src/gnomos-window.cpp:2046
+msgid "Clear Queue?"
+msgstr "Warteschlange leeren?"
+
+#: src/gnomos-window.cpp:2047
+msgid "Remove all tracks from the queue? This can't be undone."
+msgstr "Alle Titel aus der Warteschlange entfernen? Das kann nicht rückgängig gemacht werden."
+
+#: src/gnomos-window.cpp:2048
+msgid "Clear"
+msgstr "Leeren"
+
+#: src/gnomos-window.cpp:2053
+#, c-format
+msgid "Remove %zu track from the queue? This can't be undone."
+msgid_plural "Remove %zu tracks from the queue? This can't be undone."
+msgstr[0] "%zu Titel aus der Warteschlange entfernen? Das kann nicht rückgängig gemacht werden."
+msgstr[1] "%zu Titel aus der Warteschlange entfernen? Das kann nicht rückgängig gemacht werden."
+
+#: src/gnomos-window.cpp:2056
+msgid "Remove Selected?"
+msgstr "Ausgewählte entfernen?"
+
+#: src/gnomos-window.cpp:2056 src/gnomos-window-library.cpp:859
+msgid "Remove"
+msgstr "Entfernen"
+
+#: src/gnomos-window-history.cpp:461
+msgid "Next"
+msgstr "Weiter"
+
+#: src/gnomos-window-history.cpp:476
+msgid "Scenes"
+msgstr "Szenen"
+
+#: src/gnomos-window-history.cpp:486
+msgid ""
+"Saves which rooms are grouped together right now (and their volume) as a "
+"named scene you can restore with one click."
+msgstr "Speichert, welche Räume gerade miteinander gruppiert sind (und deren Lautstärke) als benannte Szene, mit einem Klick wiederherstellbar."
+
+#: src/gnomos-window-history.cpp:493
+msgid "Save Current Grouping…"
+msgstr "Aktuelle Gruppierung speichern…"
+
+#: src/gnomos-window-history.cpp:512
+msgid "No scenes saved yet."
+msgstr "Noch keine Szenen gespeichert."
+
+#: src/gnomos-window-history.cpp:540
+msgid "Apply"
+msgstr "Anwenden"
+
+#: src/gnomos-window-history.cpp:543
+#, c-format
+msgid "Scene “%s” applied"
+msgstr "Szene „%s“ angewendet"
+
+#: src/gnomos-window-history.cpp:552 src/gnomos-window-library.cpp:871
+#: src/gnomos-window-rooms.cpp:750 src/widgets/library-view.cpp:418
+msgid "Delete"
+msgstr "Löschen"
+
+#: src/gnomos-window-history.cpp:564 src/gnomos-window-library.cpp:1208
+#: src/gnomos-window-rooms.cpp:416
+msgid "Close"
+msgstr "Schließen"
+
+#: src/gnomos-window-history.cpp:577
+msgid "Save Scene"
+msgstr "Szene speichern"
+
+#: src/gnomos-window-history.cpp:586
+msgid "Scene name"
+msgstr "Name der Szene"
+
+#: src/gnomos-window-history.cpp:609
+#, c-format
+msgid "Scene “%s” saved"
+msgstr "Szene „%s“ gespeichert"
+
+#: src/gnomos-window-library.cpp:306
+msgid "Library scan finished"
+msgstr "Bibliotheks-Scan abgeschlossen"
+
+#: src/gnomos-window-library.cpp:307
+#, c-format
+msgid "Library scan failed: %s"
+msgstr "Bibliotheks-Scan fehlgeschlagen: %s"
+
+#: src/gnomos-window-library.cpp:327
+msgid "No services available to link."
+msgstr "Keine verknüpfbaren Dienste gefunden."
+
+#: src/gnomos-window-library.cpp:332
+msgid "Link Service"
+msgstr "Dienst verknüpfen"
+
+#: src/gnomos-window-library.cpp:341
+msgid "Service"
+msgstr "Dienst"
+
+#: src/gnomos-window-library.cpp:362
+msgid "A link will open next, which you finish in a browser."
+msgstr "Danach öffnet sich ein Link, den du in einem Browser abschließen musst."
+
+#: src/gnomos-window-library.cpp:374
+msgid "Start Linking"
+msgstr "Verknüpfung starten"
+
+#: src/gnomos-window-library.cpp:397
+msgid "Play Stream"
+msgstr "Stream abspielen"
+
+#: src/gnomos-window-library.cpp:407
+msgid ""
+"Plays a stream address once without saving it — for a permanent station, see "
+"“Add Radio Station”."
+msgstr "Spielt eine Stream-Adresse einmalig ab, ohne sie zu speichern — für einen dauerhaften Sender siehe „Radiosender hinzufügen“."
+
+#: src/gnomos-window-library.cpp:414
+msgid "Stream address"
+msgstr "Stream-Adresse"
+
+#: src/gnomos-window-library.cpp:422
+msgid "Title (optional)"
+msgstr "Titel (optional)"
+
+#: src/gnomos-window-library.cpp:426
+msgid "Shown while playing"
+msgstr "Wird in der Wiedergabe angezeigt"
+
+#: src/gnomos-window-library.cpp:463
+msgid "No radio station favorites to export"
+msgstr "Keine Radiosender-Favoriten zum Exportieren"
+
+#: src/gnomos-window-library.cpp:468
+msgid "Export Radio Station Favorites"
+msgstr "Radiosender-Favoriten exportieren"
+
+#: src/gnomos-window-library.cpp:510
+#, c-format
+msgid "%zu radio station exported"
+msgid_plural "%zu radio stations exported"
+msgstr[0] "%zu Radiosender exportiert"
+msgstr[1] "%zu Radiosender exportiert"
+
+#: src/gnomos-window-library.cpp:515
+msgid "Export failed"
+msgstr "Export fehlgeschlagen"
+
+#: src/gnomos-window-library.cpp:528
+msgid "Import Radio Station Favorites"
+msgstr "Radiosender-Favoriten importieren"
+
+#: src/gnomos-window-library.cpp:530
+msgid "JSON files"
+msgstr "JSON-Dateien"
+
+#: src/gnomos-window-library.cpp:552 src/gnomos-window-library.cpp:811
+msgid "Couldn't read the file"
+msgstr "Datei konnte nicht gelesen werden"
+
+#: src/gnomos-window-library.cpp:565
+msgid "The file isn't a valid backup JSON"
+msgstr "Datei ist kein gültiges Sicherungs-JSON"
+
+#: src/gnomos-window-library.cpp:596
+#, c-format
+msgid "%zu radio station imported"
+msgid_plural "%zu radio stations imported"
+msgstr[0] "%zu Radiosender importiert"
+msgstr[1] "%zu Radiosender importiert"
+
+#: src/gnomos-window-library.cpp:598
+msgid "No radio stations found in this file"
+msgstr "Keine Radiosender in dieser Datei gefunden"
+
+#: src/gnomos-window-library.cpp:785
+msgid "Import M3U/PLS Playlist"
+msgstr "M3U/PLS-Playlist importieren"
+
+#: src/gnomos-window-library.cpp:787
+msgid "Playlist files"
+msgstr "Playlist-Dateien"
+
+#: src/gnomos-window-library.cpp:822
+msgid "No entries found in this playlist file"
+msgstr "Keine Einträge in dieser Playlist-Datei gefunden"
+
+#: src/gnomos-window-library.cpp:826
+msgid "Matching playlist…"
+msgstr "Playlist wird abgeglichen …"
+
+#: src/gnomos-window-library.cpp:839
+#, c-format
+msgid "The track wasn't found in the library"
+msgid_plural "None of the %zu tracks were found in the library"
+msgstr[0] "Der Titel wurde nicht in der Bibliothek gefunden"
+msgstr[1] "Keiner der %zu Titel wurde in der Bibliothek gefunden"
+
+#: src/gnomos-window-library.cpp:845
+#, c-format
+msgid "%zu of %zu track added to the queue — save it as a playlist from there"
+msgid_plural ""
+"%zu of %zu tracks added to the queue — save them as a playlist from there"
+msgstr[0] "%zu von %zu Titel zur Warteschlange hinzugefügt — als Playlist speichern über die Warteschlange möglich"
+msgstr[1] "%zu von %zu Titeln zur Warteschlange hinzugefügt — als Playlist speichern über die Warteschlange möglich"
+
+#: src/gnomos-window-library.cpp:857
+#, c-format
+msgid "Really remove “%s” from your favorites?"
+msgstr "„%s“ wirklich aus den Favoriten löschen?"
+
+#: src/gnomos-window-library.cpp:858
+msgid "Really remove this favorite?"
+msgstr "Diesen Favoriten wirklich löschen?"
+
+#: src/gnomos-window-library.cpp:859
+msgid "Remove Favorite?"
+msgstr "Favorit löschen?"
+
+#: src/gnomos-window-library.cpp:867
+#, c-format
+msgid "Really delete “%s”?"
+msgstr "„%s“ wirklich löschen?"
+
+#: src/gnomos-window-library.cpp:868
+msgid "Really delete this radio station?"
+msgstr "Diesen Radiosender wirklich löschen?"
+
+#: src/gnomos-window-library.cpp:869
+msgid "Really delete this playlist?"
+msgstr "Diese Playlist wirklich löschen?"
+
+#: src/gnomos-window-library.cpp:870
+msgid "Delete Radio Station?"
+msgstr "Radiosender löschen?"
+
+#: src/gnomos-window-library.cpp:870
+msgid "Delete Playlist?"
+msgstr "Playlist löschen?"
+
+#: src/gnomos-window-library.cpp:901 src/widgets/library-view.cpp:518
+msgid "Add to Playlist"
+msgstr "Zu Playlist hinzufügen"
+
+#: src/gnomos-window-library.cpp:910
+msgid "Playlist"
+msgstr "Playlist"
+
+#: src/gnomos-window-library.cpp:923
+msgid "New Playlist…"
+msgstr "Neue Playlist…"
+
+#: src/gnomos-window-library.cpp:925 src/widgets/library-view.cpp:378
+#: src/widgets/library-view.cpp:594
+msgid "Untitled"
+msgstr "Unbenannt"
+
+#: src/gnomos-window-library.cpp:935
+msgid "Name for “New Playlist…”"
+msgstr "Name für „Neue Playlist…“"
+
+#: src/gnomos-window-library.cpp:945 src/gnomos-window-library.cpp:1120
+#: src/gnomos-window-library.cpp:1192
+msgid "Add"
+msgstr "Hinzufügen"
+
+#: src/gnomos-window-library.cpp:961
+msgid "Playlist created and track added"
+msgstr "Playlist erstellt und Titel hinzugefügt"
+
+#: src/gnomos-window-library.cpp:968
+msgid "Added to playlist"
+msgstr "Zu Playlist hinzugefügt"
+
+#: src/gnomos-window-library.cpp:984 src/widgets/library-view.cpp:149
+msgid "Add Radio Station"
+msgstr "Radiosender hinzufügen"
+
+#: src/gnomos-window-library.cpp:994
+msgid ""
+"Searches the public station directory at radio-browser.info — a real request "
+"over the internet, not a local Sonos query."
+msgstr "Durchsucht das öffentliche Senderverzeichnis von radio-browser.info — eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff."
+
+#: src/gnomos-window-library.cpp:1003
+msgid "Station name… (empty = most popular)"
+msgstr "Sendername… (leer = beliebteste Sender)"
+
+#: src/gnomos-window-library.cpp:1009
+msgid "All Countries"
+msgstr "Alle Länder"
+
+#: src/gnomos-window-library.cpp:1014
+msgid "All Genres"
+msgstr "Alle Genres"
+
+#: src/gnomos-window-library.cpp:1058
+#, c-format
+msgid "“%s” added"
+msgstr "„%s“ hinzugefügt"
+
+#: src/gnomos-window-library.cpp:1079
+msgid "No stations found."
+msgstr "Keine Sender gefunden."
+
+#: src/gnomos-window-library.cpp:1104
+#, c-format
+msgid "%u kbps"
+msgstr "%u kbit/s"
+
+#: src/gnomos-window-library.cpp:1175
+msgid "Enter Manually (Name and Stream URL)"
+msgstr "Manuell eingeben (Name und Stream-URL)"
+
+#: src/gnomos-window-library.cpp:1179
+msgid "Name"
+msgstr "Name"
+
+#: src/gnomos-window-library.cpp:1185
+msgid "Stream URL"
+msgstr "Stream-URL"
+
+#: src/gnomos-window-library.cpp:1239 src/gnomos-window-settings.cpp:938
+#: src/widgets/library-view.cpp:434
+msgid "Notifications"
+msgstr "Benachrichtigungen"
+
+#: src/gnomos-window-library.cpp:1239
+#, c-format
+msgid "Notifications: %s"
+msgstr "Benachrichtigungen: %s"
+
+#: src/gnomos-window-library.cpp:1249
+msgid "Report track changes for this station"
+msgstr "Titelwechsel für diesen Sender melden"
+
+#: src/gnomos-window-library.cpp:1253
+msgid "Regex filter (optional)"
+msgstr "Regex-Filter (optional)"
+
+#: src/gnomos-window-library.cpp:1271
+msgid ""
+"Only content matching this pattern is passed on to MPRIS and the history — "
+"ads and station idents in between are ignored. Empty = everything is passed "
+"on."
+msgstr "Nur Inhalte, die zu diesem Muster passen, werden an MPRIS und den Verlauf übermittelt — Werbung und Senderkennungen dazwischen werden ignoriert. Leer = alles wird übermittelt."
+
+#: src/gnomos-window-library.cpp:1322 src/gnomos-window-library.cpp:1362
+msgid "Search"
+msgstr "Suchen"
+
+#: src/gnomos-window-library.cpp:1334
+msgid "Category"
+msgstr "Kategorie"
+
+#: src/gnomos-window-library.cpp:1347
+msgid "Search term"
+msgstr "Suchbegriff"
+
+#: src/gnomos-window-library.cpp:1396
+#, c-format
+msgid "Link %s"
+msgstr "Verknüpfung: %s"
+
+#: src/gnomos-window-library.cpp:1406
+msgid ""
+"Open the following link in a browser and finish linking there. Then come "
+"back here and click “Done”."
+msgstr "Öffne den folgenden Link in einem Browser und schließe die Verknüpfung dort ab. Komm danach hierher zurück und klick auf \"Fertig\"."
+
+#: src/gnomos-window-library.cpp:1417
+#, c-format
+msgid "Code: %s"
+msgstr "Code: %s"
+
+#: src/gnomos-window-library.cpp:1428 src/gnomos-window-settings.cpp:567
+msgid "Done"
+msgstr "Fertig"
+
+#: src/gnomos-window-rooms.cpp:166
+msgid "All Rooms"
+msgstr "Alle Räume"
+
+#: src/gnomos-window-rooms.cpp:252
+msgid ""
+"Already grouped with another room — remove it there first to add it here"
+msgstr "Bereits mit einem anderen Raum gruppiert — dort zuerst entfernen, um ihn hier hinzuzufügen"
+
+#: src/gnomos-window-rooms.cpp:372 src/gnomos-window-rooms.cpp:403
+msgid "Model"
+msgstr "Modell"
+
+#: src/gnomos-window-rooms.cpp:373 src/gnomos-window-rooms.cpp:404
+msgid "IP Address"
+msgstr "IP-Adresse"
+
+#: src/gnomos-window-rooms.cpp:374 src/gnomos-window-rooms.cpp:404
+msgid "MAC Address"
+msgstr "MAC-Adresse"
+
+#: src/gnomos-window-rooms.cpp:375 src/gnomos-window-rooms.cpp:405
+msgid "Software Version"
+msgstr "Software-Version"
+
+#: src/gnomos-window-rooms.cpp:376 src/gnomos-window-rooms.cpp:406
+msgid "Hardware Version"
+msgstr "Hardware-Version"
+
+#: src/gnomos-window-rooms.cpp:377 src/gnomos-window-rooms.cpp:406
+msgid "Serial Number"
+msgstr "Seriennummer"
+
+#: src/gnomos-window-rooms.cpp:413
+msgid "Copy"
+msgstr "Kopieren"
+
+#: src/gnomos-window-rooms.cpp:439
+msgid "No room available."
+msgstr "Kein Raum verfügbar."
+
+#: src/gnomos-window-rooms.cpp:450 src/widgets/alarms-view.cpp:118
+msgid "Edit Alarm"
+msgstr "Alarm bearbeiten"
+
+#: src/gnomos-window-rooms.cpp:450 src/widgets/alarms-view.cpp:127
+msgid "Duplicate Alarm"
+msgstr "Alarm duplizieren"
+
+#: src/gnomos-window-rooms.cpp:450
+msgid "New Alarm"
+msgstr "Neuer Alarm"
+
+#: src/gnomos-window-rooms.cpp:465
+msgid "Room"
+msgstr "Raum"
+
+#: src/gnomos-window-rooms.cpp:480
+msgid "Time"
+msgstr "Uhrzeit"
+
+#: src/gnomos-window-rooms.cpp:500 src/gnomos-window-settings.cpp:793
+#: src/widgets/now-playing-view.cpp:532 src/widgets/player-bar.cpp:251
+#: src/widgets/player-bar.cpp:348
+msgid "Repeat"
+msgstr "Wiederholung"
+
+#: src/gnomos-window-rooms.cpp:507
+msgid "Mon"
+msgstr "Mo"
+
+#: src/gnomos-window-rooms.cpp:508
+msgid "Tue"
+msgstr "Di"
+
+#: src/gnomos-window-rooms.cpp:509
+msgid "Wed"
+msgstr "Mi"
+
+#: src/gnomos-window-rooms.cpp:510
+msgid "Thu"
+msgstr "Do"
+
+#: src/gnomos-window-rooms.cpp:511
+msgid "Fri"
+msgstr "Fr"
+
+#: src/gnomos-window-rooms.cpp:512
+msgid "Sat"
+msgstr "Sa"
+
+#: src/gnomos-window-rooms.cpp:513
+msgid "Sun"
+msgstr "So"
+
+#: src/gnomos-window-rooms.cpp:528 src/widgets/now-playing-view.cpp:550
+#: src/widgets/player-bar.cpp:292
+msgid "Volume"
+msgstr "Lautstärke"
+
+#: src/gnomos-window-rooms.cpp:534
+msgid "Duration"
+msgstr "Dauer"
+
+#: src/gnomos-window-rooms.cpp:538
+msgid "1 Hour"
+msgstr "1 Stunde"
+
+#: src/gnomos-window-rooms.cpp:539
+msgid "2 Hours"
+msgstr "2 Stunden"
+
+#: src/gnomos-window-rooms.cpp:540
+msgid "3 Hours"
+msgstr "3 Stunden"
+
+#: src/gnomos-window-rooms.cpp:557
+msgid "Shuffle when waking"
+msgstr "Zufallswiedergabe beim Wecken"
+
+#: src/gnomos-window-rooms.cpp:576
+msgid "Keep current sound"
+msgstr "Aktueller Klang beibehalten"
+
+#: src/gnomos-window-rooms.cpp:591
+msgid "Preview Alarm Sound"
+msgstr "Wecker-Ton testen"
+
+#: src/gnomos-window-rooms.cpp:619
+msgid "Create"
+msgstr "Erstellen"
+
+#: src/gnomos-window-rooms.cpp:668
+#, c-format
+msgid "Active, %s left"
+msgstr "Aktiv, verbleibend: %s"
+
+#: src/gnomos-window-rooms.cpp:669
+msgid "No sleep timer set"
+msgstr "Kein Sleep-Timer aktiv"
+
+#: src/gnomos-window-rooms.cpp:750
+msgid "Delete Alarm?"
+msgstr "Alarm löschen?"
+
+#: src/gnomos-window-rooms.cpp:750
+msgid "Really delete this alarm?"
+msgstr "Diesen Alarm wirklich löschen?"
+
+#: src/gnomos-window-settings.cpp:522
+msgid "Enter the API key and shared secret first"
+msgstr "Bitte zuerst API-Schlüssel und Shared Secret eintragen"
+
+#: src/gnomos-window-settings.cpp:530
+msgid "Last.fm sign-in failed — check the API key and shared secret"
+msgstr "Last.fm-Anmeldung fehlgeschlagen — API-Schlüssel/Shared Secret prüfen"
+
+#: src/gnomos-window-settings.cpp:540
+msgid "Last.fm Sign-In"
+msgstr "Last.fm-Anmeldung"
+
+#: src/gnomos-window-settings.cpp:550
+msgid ""
+"Open the following link in a browser, sign in to Last.fm and allow access. "
+"Then come back here and click “Done”."
+msgstr "Öffne den folgenden Link in einem Browser, melde dich bei Last.fm an und erlaube den Zugriff. Komm danach hierher zurück und klick auf \"Fertig\"."
+
+#: src/gnomos-window-settings.cpp:576
+msgid "Sign-in not finished — authorize in the browser and try again"
+msgstr "Anmeldung nicht abgeschlossen — im Browser fertig autorisieren und erneut versuchen"
+
+#: src/gnomos-window-settings.cpp:580
+msgid "Connected to Last.fm"
+msgstr "Last.fm verbunden"
+
+#: src/gnomos-window-settings.cpp:581
+#, c-format
+msgid "Connected to Last.fm as “%s”"
+msgstr "Last.fm verbunden als „%s“"
+
+#: src/gnomos-window-settings.cpp:745
+msgid ""
+"A GTK4/libadwaita client for Sonos speakers, with a special focus on first-"
+"generation devices (ZP80, ZP90, ZP100, ZP120, CR100) that Sonos' own current "
+"apps no longer support."
+msgstr "Ein GTK4/libadwaita-Client für Sonos-Lautsprecher, mit besonderem Fokus auf Geräte der ersten Generation (ZP80, ZP90, ZP100, ZP120, CR100), die von Sonos' eigenen aktuellen Apps nicht mehr unterstützt werden."
+
+#: src/gnomos-window-settings.cpp:759
+msgid "Libraries"
+msgstr "Bibliotheken"
+
+#: src/gnomos-window-settings.cpp:789
+msgid "Volume Up"
+msgstr "Lauter"
+
+#: src/gnomos-window-settings.cpp:790
+msgid "Volume Down"
+msgstr "Leiser"
+
+#: src/gnomos-window-settings.cpp:791 src/widgets/now-playing-view.cpp:540
+#: src/widgets/now-playing-view.cpp:758 src/widgets/player-bar.cpp:275
+#: src/widgets/player-bar.cpp:486
+msgid "Mute"
+msgstr "Stummschalten"
+
+#: src/gnomos-window-settings.cpp:792 src/widgets/now-playing-view.cpp:508
+#: src/widgets/player-bar.cpp:205
+msgid "Shuffle"
+msgstr "Zufallswiedergabe"
+
+#: src/gnomos-window-settings.cpp:794
+msgid "Forward 10 Seconds"
+msgstr "10 Sekunden vor"
+
+#: src/gnomos-window-settings.cpp:795
+msgid "Back 10 Seconds"
+msgstr "10 Sekunden zurück"
+
+#: src/gnomos-window-settings.cpp:798
+msgid "View"
+msgstr "Ansicht"
+
+#: src/gnomos-window-settings.cpp:799
+msgid "Show/Hide Now Playing"
+msgstr "Wiedergabe-Ansicht ein-/ausblenden"
+
+#: src/gnomos-window-settings.cpp:800 src/widgets/queue-view.cpp:41
+msgid "Jump to Current Track"
+msgstr "Zur aktuellen Wiedergabe springen"
+
+#: src/gnomos-window-settings.cpp:801
+msgid "Search Library"
+msgstr "Bibliothek durchsuchen"
+
+#: src/gnomos-window-settings.cpp:802
+msgid "Show/Hide Sidebar"
+msgstr "Seitenleiste ein-/ausblenden"
+
+#: src/gnomos-window-settings.cpp:805 src/gnomos-window-settings.cpp:834
+msgid "General"
+msgstr "Allgemein"
+
+#: src/gnomos-window-settings.cpp:808
+msgid "Close Window"
+msgstr "Fenster schließen"
+
+#: src/gnomos-window-settings.cpp:842 src/gnomos-window-settings.cpp:1204
+msgid "Radio"
+msgstr "Radio"
+
+#: src/gnomos-window-settings.cpp:847
+msgid "Window Behavior"
+msgstr "Fensterverhalten"
+
+#: src/gnomos-window-settings.cpp:850
+msgid "Keep Running in the Background"
+msgstr "Im Hintergrund weiterlaufen"
+
+#: src/gnomos-window-settings.cpp:853
+msgid ""
+"Closing the window no longer quits Gnomos — media keys, lock screen controls "
+"(MPRIS) and Last.fm/ListenBrainz scrobbling keep running without an open "
+"window. “Quit Gnomos” in the menu quits it completely at any time."
+msgstr "Das Fenster zu schließen beendet Gnomos dann nicht mehr — Medientasten/Sperrbildschirm-Steuerung (MPRIS) und Last.fm-/ListenBrainz-Scrobbling laufen weiter, auch ohne offenes Fenster. Über „Gnomos beenden“ im Menü lässt sich Gnomos jederzeit vollständig beenden."
+
+#: src/gnomos-window-settings.cpp:864
+msgid "Appearance"
+msgstr "Erscheinungsbild"
+
+#: src/gnomos-window-settings.cpp:870
+msgid "Color Scheme"
+msgstr "Farbschema"
+
+#: src/gnomos-window-settings.cpp:873
+msgid "System"
+msgstr "System"
+
+#: src/gnomos-window-settings.cpp:876
+msgid "Light"
+msgstr "Hell"
+
+#: src/gnomos-window-settings.cpp:879
+msgid "Dark"
+msgstr "Dunkel"
+
+#: src/gnomos-window-settings.cpp:915
+msgid "Colors from the Cover"
+msgstr "Farben aus dem Cover"
+
+#: src/gnomos-window-settings.cpp:915
+msgid "Tints the player bar and the Now Playing view to match the album"
+msgstr "Färbt Player-Leiste und Wiedergabe-Ansicht passend zum Album"
+
+#: src/gnomos-window-settings.cpp:922
+msgid "Blurred Background"
+msgstr "Unscharfer Hintergrund"
+
+#: src/gnomos-window-settings.cpp:922
+msgid "The cover as a soft background for the Now Playing view"
+msgstr "Das Cover als weicher Hintergrund der Wiedergabe-Ansicht"
+
+#: src/gnomos-window-settings.cpp:928
+msgid "Record Player"
+msgstr "Plattenteller"
+
+#: src/gnomos-window-settings.cpp:928
+msgid "Shows the cover as a record that turns while music plays"
+msgstr "Zeigt das Cover als Schallplatte, die sich während der Wiedergabe dreht"
+
+#: src/gnomos-window-settings.cpp:941
+msgid "Notify on Track Change"
+msgstr "Bei Titelwechsel benachrichtigen"
+
+#: src/gnomos-window-settings.cpp:952 src/widgets/now-playing-view.cpp:569
+msgid "Lyrics"
+msgstr "Songtexte"
+
+#: src/gnomos-window-settings.cpp:955
+msgid "Load Lyrics"
+msgstr "Songtexte laden"
+
+#: src/gnomos-window-settings.cpp:958
+msgid ""
+"Looks up the current track's lyrics from the public LRCLIB API (lrclib.net) "
+"in the Now Playing view — a real request over the internet, not a local "
+"Sonos query. Title, artist and album are sent to LRCLIB. LRCLIB's lyrics are "
+"community contributions without any rights guarantee (see the link below)."
+msgstr "Fragt in der Wiedergabe-Ansicht den Songtext des aktuellen Titels bei der öffentlichen LRCLIB-API (lrclib.net) ab — das ist eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff. Dabei werden Titel, Interpret und Album an LRCLIB übertragen. LRCLIBs Songtexte stammen aus Community-Beiträgen ohne Rechte-Garantie (siehe Link unten)."
+
+#: src/gnomos-window-settings.cpp:974 src/gnomos-window-settings.cpp:1007
+#: src/gnomos-window-settings.cpp:1139
+msgid "Open"
+msgstr "Öffnen"
+
+#: src/gnomos-window-settings.cpp:983
+msgid "Scrobbling"
+msgstr "Scrobbling"
+
+#: src/gnomos-window-settings.cpp:986
+msgid ""
+"Once a track has been listened to, sends artist, title and album to every "
+"service enabled here — a real transfer over the internet, not a local Sonos "
+"query. Radio stations are never sent."
+msgstr "Sendet, sobald ein Titel zu Ende gehört wurde, Interpret/Titel/Album an jeden hier aktivierten Dienst — eine echte Übertragung über das Internet, kein lokaler Sonos-Zugriff. Radiosender werden nie übertragen."
+
+#: src/gnomos-window-settings.cpp:995
+msgid "ListenBrainz User Token"
+msgstr "ListenBrainz-Benutzer-Token"
+
+#: src/gnomos-window-settings.cpp:1006
+msgid "Empty = off. Get your token at listenbrainz.org/settings."
+msgstr "Leer = aus. Eigenes Token unter listenbrainz.org/settings."
+
+#: src/gnomos-window-settings.cpp:1019
+msgid "Last.fm API Key"
+msgstr "Last.fm-API-Schlüssel"
+
+#: src/gnomos-window-settings.cpp:1029
+msgid "Last.fm Shared Secret"
+msgstr "Last.fm-Shared-Secret"
+
+#: src/gnomos-window-settings.cpp:1042
+msgid "Not connected — create an account at last.fm/api/account/create"
+msgstr "Nicht verbunden — Konto unter last.fm/api/account/create anlegen"
+
+#: src/gnomos-window-settings.cpp:1043
+msgid "Connected"
+msgstr "Verbunden"
+
+#: src/gnomos-window-settings.cpp:1044
+#, c-format
+msgid "Connected as “%s”"
+msgstr "Verbunden als „%s“"
+
+#: src/gnomos-window-settings.cpp:1048
+msgid "Sign In"
+msgstr "Anmelden"
+
+#: src/gnomos-window-settings.cpp:1060
+msgid "Disconnect"
+msgstr "Trennen"
+
+#: src/gnomos-window-settings.cpp:1065
+msgid "Disconnected from Last.fm"
+msgstr "Last.fm getrennt"
+
+#: src/gnomos-window-settings.cpp:1075
+msgid "Cover Art Cache"
+msgstr "Cover-Art-Cache"
+
+#: src/gnomos-window-settings.cpp:1078
+msgid "Maximum Size"
+msgstr "Maximale Größe"
+
+#: src/gnomos-window-settings.cpp:1083
+#, c-format
+msgid "%.1f MB used"
+msgstr "%.1f MB belegt"
+
+#: src/gnomos-window-settings.cpp:1093
+msgid "Clear Cache Now"
+msgstr "Cache jetzt leeren"
+
+#: src/gnomos-window-settings.cpp:1110
+msgid ""
+"Everything else in Gnomos stays within your Sonos household on the local "
+"network — the feature below is the only exception."
+msgstr "Alles andere in Gnomos bleibt innerhalb deines Sonos-Haushalts im lokalen Netzwerk — die Funktion unten ist die einzige Ausnahme davon."
+
+#: src/gnomos-window-settings.cpp:1113
+msgid "Icon Size"
+msgstr "Symbolgröße"
+
+#: src/gnomos-window-settings.cpp:1116
+msgid "Size of the icon inside a tile when no cover image is available"
+msgstr "Größe des Symbols innerhalb einer Kachel, wenn kein Coverbild verfügbar ist"
+
+#: src/gnomos-window-settings.cpp:1125
+msgid "Load Artist Images"
+msgstr "Künstlerbilder laden"
+
+#: src/gnomos-window-settings.cpp:1128
+msgid ""
+"Looks up a photo from the public Deezer API (api.deezer.com) for artists "
+"without a cover image — a real request over the internet, not a local Sonos "
+"query. The artist's name is sent to Deezer. Deezer's own terms of use for "
+"this API apply (see the link below)."
+msgstr "Fragt für Interpreten ohne eigenes Coverbild ein Foto bei der öffentlichen Deezer-API (api.deezer.com) ab — das ist eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff. Dabei wird jeweils der Interpretenname an Deezer übertragen. Es gelten Deezers eigene Nutzungsbedingungen für diese API (siehe Link unten)."
+
+#: src/gnomos-window-settings.cpp:1137
+msgid "Deezer API and Terms of Use"
+msgstr "Deezer-API und Nutzungsbedingungen"
+
+#: src/gnomos-window-settings.cpp:1153
+msgid "Rescan Library"
+msgstr "Bibliothek neu einlesen"
+
+#: src/gnomos-window-settings.cpp:1156
+msgid ""
+"Has Sonos rescan the connected local share — after adding new files, for "
+"example"
+msgstr "Lässt Sonos die eingebundene lokale Freigabe neu einlesen — etwa nach dem Hinzufügen neuer Dateien"
+
+#: src/gnomos-window-settings.cpp:1163
+msgid "Library scan started"
+msgstr "Bibliotheks-Scan gestartet"
+
+#: src/gnomos-window-settings.cpp:1176
+msgid ""
+"Each character here splits several genres combined in one genre tag in the "
+"library's genre view, e.g. “;” for “Rap; Metal; Hard-Core” — several "
+"characters are possible (e.g. “;/|”)."
+msgstr "Jedes Zeichen hier trennt mehrere in einem Genre-Tag zusammengefasste Genres in der Genre-Ansicht der Bibliothek auf, z. B. \";\" bei \"Rap; Metal; Hard-Core\" — mehrere Zeichen sind möglich (z. B. \";/|\")."
+
+#: src/gnomos-window-settings.cpp:1179
+msgid "Separators"
+msgstr "Trennzeichen"
+
+#: src/gnomos-window-settings.cpp:1189
+msgid "Use First Genre Only"
+msgstr "Nur erstes Genre verwenden"
+
+#: src/gnomos-window-settings.cpp:1192
+msgid ""
+"Shows only the genre before the first separator instead of splitting them "
+"all — useful when Sonos itself already cuts off a long combined genre tag, "
+"so later genres arrive incomplete (e.g. “Elec” instead of “Electronic”)"
+msgstr "Zeigt nur das erste Genre vor dem ersten Trennzeichen an, statt alle aufzuteilen — hilfreich, wenn Sonos einen langen, zusammengesetzten Genre-Tag selbst schon abschneidet und nachfolgende Genres dadurch unvollständig ankommen (z. B. „Elec“ statt „Electronic“)"
+
+#: src/gnomos-window-settings.cpp:1207
+msgid ""
+"Applies in addition to a custom pattern, which you can set per station with "
+"its gear icon under “Radio Stations”."
+msgstr "Gilt zusätzlich zu einem eigenen Muster, das sich pro Sender über dessen Zahnrad-Symbol unter „Radiosender“ einstellen lässt."
+
+#: src/gnomos-window-settings.cpp:1210
+msgid "Detect Ads Automatically"
+msgstr "Werbeinhalte automatisch erkennen"
+
+#: src/gnomos-window-settings.cpp:1213
+msgid ""
+"Treats content with more than two consecutive spaces as ads or filler — "
+"affects notifications (MPRIS) and the history alike."
+msgstr "Behandelt Inhalte mit mehr als zwei aufeinanderfolgenden Leerzeichen als Werbung/Füllinhalt — betrifft Benachrichtigungen (MPRIS) und den Verlauf gleichermaßen."
+
+#: src/mini-player-window.cpp:25
+msgid "Gnomos – Mini Player"
+msgstr "Gnomos – Mini-Player"
+
+#: src/mini-player-window.cpp:45
+msgid "Back to Main Window"
+msgstr "Zurück zum Hauptfenster"
+
+#: src/mini-player-window.cpp:78 src/widgets/now-playing-view.cpp:478
+#: src/widgets/player-bar.cpp:63
+msgid "Playback position"
+msgstr "Wiedergabeposition"
+
+#: src/mini-player-window.cpp:198 src/widgets/now-playing-view.cpp:686
+#: src/widgets/player-bar.cpp:309
+msgid "Nothing Playing"
+msgstr "Keine Wiedergabe"
+
+#: src/widgets/alarms-view.cpp:33
+msgid "Add Alarm"
+msgstr "Alarm hinzufügen"
+
+#: src/widgets/alarms-view.cpp:41
+msgid "No Alarms Set"
+msgstr "Keine Alarme eingerichtet"
+
+#: src/widgets/alarms-view.cpp:103
+msgid "Also play in grouped rooms (not just this room)"
+msgstr "Auch in verknüpften Räumen abspielen (nicht nur in diesem Raum)"
+
+#: src/widgets/alarms-view.cpp:137
+msgid "Delete Alarm"
+msgstr "Alarm löschen"
+
+#: src/widgets/alarms-view.cpp:165
+#, c-format
+msgid "Next alarm: %s"
+msgstr "Nächster Alarm: %s"
+
+#: src/widgets/favorites-view.cpp:38
+msgid "Play All Favorites"
+msgstr "Alle Favoriten abspielen"
+
+#: src/widgets/favorites-view.cpp:44
+msgid "Add All Favorites to Queue"
+msgstr "Alle Favoriten zur Warteschlange hinzufügen"
+
+#: src/widgets/favorites-view.cpp:50
+msgid "Search favorites…"
+msgstr "Favoriten durchsuchen…"
+
+#: src/widgets/favorites-view.cpp:59
+msgid "No Favorites Found"
+msgstr "Keine Favoriten gefunden"
+
+#: src/widgets/favorites-view.cpp:141 src/widgets/library-view.cpp:485
+msgid "Add to Queue"
+msgstr "Zur Warteschlange hinzufügen"
+
+#: src/widgets/favorites-view.cpp:150 src/widgets/library-view.cpp:493
+msgid "Play Next"
+msgstr "Als nächstes abspielen"
+
+#: src/widgets/favorites-view.cpp:158
+msgid "Remove Favorite"
+msgstr "Favorit löschen"
+
+#: src/widgets/history-view.cpp:25
+msgid "Clear History"
+msgstr "Verlauf leeren"
+
+#: src/widgets/history-view.cpp:33
+msgid "Nothing Played Yet"
+msgstr "Noch nichts gespielt"
+
+#: src/widgets/library-view.cpp:74
+msgid "Back"
+msgstr "Zurück"
+
+#: src/widgets/library-view.cpp:99
+msgid "Play All"
+msgstr "Alle abspielen"
+
+#: src/widgets/library-view.cpp:106
+msgid "Add All to Queue"
+msgstr "Alle zur Warteschlange hinzufügen"
+
+#: src/widgets/library-view.cpp:120
+msgid "Show as Grid"
+msgstr "Als Raster anzeigen"
+
+#: src/widgets/library-view.cpp:124
+msgid "Show as List"
+msgstr "Als Liste anzeigen"
+
+#: src/widgets/library-view.cpp:156
+msgid "Search Whole Service"
+msgstr "Im ganzen Dienst suchen"
+
+#: src/widgets/library-view.cpp:167
+msgid "Filter…"
+msgstr "Filtern…"
+
+#: src/widgets/library-view.cpp:177
+msgid "No Entries Found"
+msgstr "Keine Einträge gefunden"
+
+#: src/widgets/library-view.cpp:324
+#, c-format
+msgid "%zu entry"
+msgid_plural "%zu entries"
+msgstr[0] "%zu Eintrag"
+msgstr[1] "%zu Einträge"
+
+#: src/widgets/library-view.cpp:403 src/widgets/player-bar.cpp:266
+msgid "Add to Favorites"
+msgstr "Zu Favoriten hinzufügen"
+
+#: src/widgets/library-view.cpp:450
+msgid "Move Up"
+msgstr "Nach oben verschieben"
+
+#: src/widgets/library-view.cpp:459
+msgid "Move Down"
+msgstr "Nach unten verschieben"
+
+#: src/widgets/library-view.cpp:507
+msgid "Play Now"
+msgstr "Jetzt abspielen"
+
+#: src/widgets/now-playing-view.cpp:395
+msgid "Close Now Playing"
+msgstr "Wiedergabe-Ansicht schließen"
+
+#: src/widgets/now-playing-view.cpp:444
+msgid "Copy Track Info"
+msgstr "Titel-Infos kopieren"
+
+#: src/widgets/now-playing-view.cpp:454
+msgid "Search Artist in Library"
+msgstr "Interpret in der Bibliothek suchen"
+
+#: src/widgets/now-playing-view.cpp:457
+msgid "About the Artist"
+msgstr "Über den Interpreten"
+
+#: src/widgets/now-playing-view.cpp:460
+msgid "Search Album in Library"
+msgstr "Album in der Bibliothek suchen"
+
+#: src/widgets/now-playing-view.cpp:573
+msgid "Up Next"
+msgstr "Als Nächstes"
+
+#: src/widgets/now-playing-view.cpp:612
+msgid "Nothing more in the queue"
+msgstr "Nichts mehr in der Warteschlange"
+
+#: src/widgets/now-playing-view.cpp:758 src/widgets/player-bar.cpp:486
+msgid "Unmute"
+msgstr "Ton einschalten"
+
+#: src/widgets/now-playing-view.cpp:763
+#, c-format
+msgid "Playing in %s"
+msgstr "Spielt in %s"
+
+#: src/widgets/now-playing-view.cpp:829
+msgid "Loading lyrics…"
+msgstr "Songtext wird geladen …"
+
+#: src/widgets/now-playing-view.cpp:838
+msgid "No lyrics found."
+msgstr "Kein Songtext gefunden."
+
+#: src/widgets/player-bar.cpp:93
+msgid "Toggle Total/Remaining Time"
+msgstr "Gesamtdauer/Restzeit umschalten"
+
+#: src/widgets/player-bar.cpp:152
+msgid "Open Now Playing"
+msgstr "Wiedergabe-Ansicht öffnen"
+
+#: src/widgets/player-bar.cpp:178
+msgid "Crossfade on"
+msgstr "Crossfade aktiv"
+
+#: src/widgets/player-bar.cpp:348
+msgid "Repeat Track"
+msgstr "Titel wiederholen"
+
+#: src/widgets/player-bar.cpp:396
+#, c-format
+msgid "Next: %s"
+msgstr "Weiter: %s"
+
+#: src/widgets/player-bar.cpp:511
+msgid "No Sonos device selected"
+msgstr "Kein Sonos-Gerät ausgewählt"
+
+#: src/widgets/playing-indicator.cpp:20
+msgid "Now playing"
+msgstr "Spielt gerade"
+
+#: src/widgets/queue-view.cpp:47
+msgid "Clear Queue"
+msgstr "Warteschlange leeren"
+
+#: src/widgets/queue-view.cpp:53
+msgid "Select Multiple"
+msgstr "Mehrere auswählen"
+
+#: src/widgets/queue-view.cpp:59
+msgid "Remove Selected"
+msgstr "Ausgewählte entfernen"
+
+#: src/widgets/queue-view.cpp:77
+msgid "Queue Is Empty"
+msgstr "Warteschlange ist leer"
+
+#: src/widgets/queue-view.cpp:101
+msgid "Empty"
+msgstr "Leer"
+
+#: src/widgets/queue-view.cpp:102
+#, c-format
+msgid "%zu track"
+msgid_plural "%zu tracks"
+msgstr[0] "%zu Titel"
+msgstr[1] "%zu Titel"
+
+#: src/widgets/queue-view.cpp:163
+msgid "Remove from Queue"
+msgstr "Aus Warteschlange entfernen"
+
+#: src/window-helpers.cpp:188
+msgid "Sunday"
+msgstr "Sonntag"
+
+#: src/window-helpers.cpp:188
+msgid "Monday"
+msgstr "Montag"
+
+#: src/window-helpers.cpp:188
+msgid "Tuesday"
+msgstr "Dienstag"
+
+#: src/window-helpers.cpp:189
+msgid "Wednesday"
+msgstr "Mittwoch"
+
+#: src/window-helpers.cpp:189
+msgid "Thursday"
+msgstr "Donnerstag"
+
+#: src/window-helpers.cpp:189
+msgid "Friday"
+msgstr "Freitag"
+
+#: src/window-helpers.cpp:190
+msgid "Saturday"
+msgstr "Samstag"
+
+#: src/window-helpers.cpp:229
+msgid "Today"
+msgstr "Heute"
+
+#: src/window-helpers.cpp:230
+msgid "Tomorrow"
+msgstr "Morgen"
+
+#. Translators: day, time ("07:30"), room — e.g. "Tomorrow, 07:30 — Kitchen"
+#: src/window-helpers.cpp:233
+#, c-format
+msgid "%s, %s — %s"
+msgstr "%s, %s Uhr — %s"
+
+#: data/de.linuxundich.Gnomos.desktop.in:2
+msgid "Gnomos"
+msgstr "Gnomos"
+
+#: data/de.linuxundich.Gnomos.desktop.in:3
+msgid "Control Sonos speakers, including first-generation hardware"
+msgstr "Sonos-Lautsprecher steuern, auch Geräte der ersten Generation"

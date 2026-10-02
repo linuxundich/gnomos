@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "playing-indicator.h"
+#include "../i18n.h"
 
 #include <cmath>
 
@@ -16,7 +17,7 @@ PlayingIndicator::PlayingIndicator() : Glib::ObjectBase("GnomosPlayingIndicator"
   add_css_class("playing-indicator");
   set_valign(Gtk::Align::CENTER);
   set_can_target(false);
-  gtk_accessible_update_property(GTK_ACCESSIBLE(gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, "Spielt gerade", -1);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, _("Now playing"), -1);
   signal_map().connect(sigc::mem_fun(*this, &PlayingIndicator::UpdateTicking));
   signal_unmap().connect(sigc::mem_fun(*this, &PlayingIndicator::UpdateTicking));
 }

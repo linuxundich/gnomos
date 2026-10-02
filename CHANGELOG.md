@@ -8,6 +8,23 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.26.0] - 2026-10-02
+
+### Added
+- Gnomos is translatable: the interface is English in the source, with
+  German as the first translation (`po/de.po`, all 420 strings). It
+  follows the desktop language, so German desktops see no difference.
+  Messages with numbers use proper plural forms, and sentences with names
+  in them are whole sentences for translators instead of glued-together
+  fragments.
+- The desktop entry's description is translated too.
+
+### Changed
+- `gnomos-window.cpp` (over 6000 lines) is split by topic into several
+  files; no change in behavior.
+- The Flatpak keeps its translations inside the app instead of a separate
+  locale extension, so the downloadable bundle includes them.
+
 ## [0.25.0] - 2026-10-02
 
 ### Changed

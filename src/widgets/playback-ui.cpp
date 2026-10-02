@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "playback-ui.h"
+#include "../i18n.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -33,7 +34,7 @@ const char* PlayPauseIconForState(TransportState state)
 
 const char* PlayPauseLabelForState(TransportState state)
 {
-  return state == TransportState::Playing ? "Pause" : "Abspielen";
+  return state == TransportState::Playing ? _("Pause") : _("Play");
 }
 
 const char* IconForVolume(unsigned volume, bool muted)

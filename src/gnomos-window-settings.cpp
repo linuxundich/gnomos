@@ -4,6 +4,7 @@
 // The class itself and its constructor live in gnomos-window.cpp.
 
 #include "gnomos-window.h"
+#include "i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -518,7 +519,7 @@ void GnomosWindow::StartLastFmAuth()
 {
   if (lastfm_api_key_.empty() || lastfm_shared_secret_.empty())
   {
-    ShowToast("Bitte zuerst API-Schlüssel und Shared Secret eintragen");
+    ShowToast(_("Enter the API key and shared secret first"));
     return;
   }
   std::string api_key = lastfm_api_key_;
@@ -526,7 +527,7 @@ void GnomosWindow::StartLastFmAuth()
   LastFmScrobbler::Instance().RequestAuthToken(api_key, shared_secret, [this](std::string token) {
     if (token.empty())
     {
-      ShowToast("Last.fm-Anmeldung fehlgeschlagen — API-Schlüssel/Shared Secret prüfen");
+      ShowToast(_("Last.fm sign-in failed — check the API key and shared secret"));
       return;
     }
     ShowLastFmAuthDialog(token);
@@ -536,7 +537,7 @@ void GnomosWindow::StartLastFmAuth()
 void GnomosWindow::ShowLastFmAuthDialog(const std::string& token)
 {
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Last.fm-Anmeldung");
+  dialog->set_title(_("Last.fm Sign-In"));
   dialog->set_default_size(420, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -546,8 +547,7 @@ void GnomosWindow::ShowLastFmAuthDialog(const std::string& token)
   content->set_margin_end(18);
 
   auto* instructions = Gtk::make_managed<Gtk::Label>(
-      "Öffne den folgenden Link in einem Browser, melde dich bei Last.fm an und erlaube den Zugriff. Komm "
-      "danach hierher zurück und klick auf \"Fertig\".");
+      _("Open the following link in a browser, sign in to Last.fm and allow access. Then come back here and click “Done”."));
   instructions->set_wrap(true);
   instructions->set_halign(Gtk::Align::START);
   content->append(*instructions);
@@ -562,9 +562,9 @@ void GnomosWindow::ShowLastFmAuthDialog(const std::string& token)
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* done_button = Gtk::make_managed<Gtk::Button>("Fertig");
+  auto* done_button = Gtk::make_managed<Gtk::Button>(_("Done"));
   done_button->add_css_class("suggested-action");
   done_button->signal_clicked().connect([this, dialog, token] {
     std::string api_key = lastfm_api_key_;
@@ -573,11 +573,12 @@ void GnomosWindow::ShowLastFmAuthDialog(const std::string& token)
         api_key, shared_secret, token, [this](std::string session_key, std::string username) {
           if (session_key.empty())
           {
-            ShowToast("Anmeldung nicht abgeschlossen — im Browser fertig autorisieren und erneut versuchen");
+            ShowToast(_("Sign-in not finished — authorize in the browser and try again"));
             return;
           }
           SetLastFmSession(session_key, username);
-          ShowToast(username.empty() ? "Last.fm verbunden" : "Last.fm verbunden als „" + username + "“");
+          ShowToast(username.empty() ? std::string(_("Connected to Last.fm"))
+                                     : Format(_("Connected to Last.fm as “%s”"), username.c_str()));
         });
     dialog->close();
   });
@@ -741,9 +742,7 @@ void GnomosWindow::ShowAboutDialog()
   adw_about_dialog_set_version(about, PACKAGE_VERSION);
   adw_about_dialog_set_developer_name(about, "Christoph Langner");
   adw_about_dialog_set_comments(
-      about, "Ein GTK4/libadwaita-Client für Sonos-Lautsprecher, mit besonderem Fokus auf Geräte der ersten "
-             "Generation (ZP80, ZP90, ZP100, ZP120, CR100), die von Sonos' eigenen aktuellen Apps nicht mehr "
-             "unterstützt werden.");
+      about, _("A GTK4/libadwaita client for Sonos speakers, with a special focus on first-generation devices (ZP80, ZP90, ZP100, ZP120, CR100) that Sonos' own current apps no longer support."));
   adw_about_dialog_set_copyright(about, "© 2026 Christoph Langner");
   adw_about_dialog_set_website(about, "https://github.com/linuxundich/gnomos");
   adw_about_dialog_set_issue_url(about, "https://github.com/linuxundich/gnomos/issues");
@@ -757,12 +756,12 @@ void GnomosWindow::ShowAboutDialog()
   // clickable link in a credits/acknowledgement section (there's no link
   // field on add_legal_section itself).
   const char* libraries[] = {"libnoson (Jean-Luc Barriere) https://github.com/janbar/noson", nullptr};
-  adw_about_dialog_add_acknowledgement_section(about, "Bibliotheken", libraries);
+  adw_about_dialog_add_acknowledgement_section(about, _("Libraries"), libraries);
 
   // Radio-Browser (see RadioBrowserService's own header) — the public
   // directory the "Radiosender hinzufügen" dialog's search is built on.
   const char* services[] = {"Radio Browser https://www.radio-browser.info", nullptr};
-  adw_about_dialog_add_acknowledgement_section(about, "Dienste", services);
+  adw_about_dialog_add_acknowledgement_section(about, _("Services"), services);
 
   const char* developers[] = {"Christoph Langner", nullptr};
   adw_about_dialog_set_developers(about, developers);
@@ -772,8 +771,8 @@ void GnomosWindow::ShowAboutDialog()
   // copyable text block), no bespoke row needed for it.
   std::string household_id = backend_->GetHouseholdID();
   adw_about_dialog_set_debug_info(
-      about, ("Gnomos " + std::string(PACKAGE_VERSION) + "\nHousehold-ID: " +
-              (household_id.empty() ? "unbekannt" : household_id))
+      about, ("Gnomos " + std::string(PACKAGE_VERSION) + "\nHousehold ID: " +
+              (household_id.empty() ? std::string("—") : household_id))
                  .c_str());
 
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
@@ -783,31 +782,31 @@ void GnomosWindow::ShowShortcutsDialog()
 {
   AdwDialog* dialog = adw_shortcuts_dialog_new();
 
-  AdwShortcutsSection* section = adw_shortcuts_section_new("Wiedergabe");
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Play/Pause", "space"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Nächster Titel", "n"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Vorheriger Titel", "p"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Lauter", "<Control>Up"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Leiser", "<Control>Down"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Stumm schalten", "m"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Zufallswiedergabe", "s"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Wiederholen", "r"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("10 Sekunden vor", "<Alt>Right"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("10 Sekunden zurück", "<Alt>Left"));
+  AdwShortcutsSection* section = adw_shortcuts_section_new(_("Play"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Play/Pause"), "space"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Next Track"), "n"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Previous Track"), "p"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Volume Up"), "<Control>Up"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Volume Down"), "<Control>Down"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Mute"), "m"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Shuffle"), "s"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Repeat"), "r"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Forward 10 Seconds"), "<Alt>Right"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new(_("Back 10 Seconds"), "<Alt>Left"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), section);
 
-  AdwShortcutsSection* navigation = adw_shortcuts_section_new("Ansicht");
-  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Wiedergabe-Ansicht ein-/ausblenden", "<Control>i"));
-  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Zur aktuellen Wiedergabe springen", "<Control>j"));
-  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Bibliothek durchsuchen", "<Control>f"));
-  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Seitenleiste ein-/ausblenden", "F9"));
+  AdwShortcutsSection* navigation = adw_shortcuts_section_new(_("View"));
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new(_("Show/Hide Now Playing"), "<Control>i"));
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new(_("Jump to Current Track"), "<Control>j"));
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new(_("Search Library"), "<Control>f"));
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new(_("Show/Hide Sidebar"), "F9"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), navigation);
 
-  AdwShortcutsSection* general = adw_shortcuts_section_new("Allgemein");
-  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Einstellungen", "<Control>comma"));
-  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Tastenkürzel", "<Control>question"));
-  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Fenster schließen", "<Control>w"));
-  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Gnomos beenden", "<Control>q"));
+  AdwShortcutsSection* general = adw_shortcuts_section_new(_("General"));
+  adw_shortcuts_section_add(general, adw_shortcuts_item_new(_("Preferences"), "<Control>comma"));
+  adw_shortcuts_section_add(general, adw_shortcuts_item_new(_("Keyboard Shortcuts"), "<Control>question"));
+  adw_shortcuts_section_add(general, adw_shortcuts_item_new(_("Close Window"), "<Control>w"));
+  adw_shortcuts_section_add(general, adw_shortcuts_item_new(_("Quit Gnomos"), "<Control>q"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), general);
 
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
@@ -832,28 +831,26 @@ void GnomosWindow::ShowSettingsDialog()
   // page, confirmed live as "the settings window is too big now, it's
   // all just one long column".
   GtkWidget* general_page = adw_preferences_page_new();
-  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(general_page), "Allgemein");
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(general_page), _("General"));
   adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(general_page), "applications-system-symbolic");
 
   GtkWidget* library_page = adw_preferences_page_new();
-  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(library_page), "Bibliothek");
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(library_page), _("Library"));
   adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(library_page), "folder-music-symbolic");
 
   GtkWidget* radio_page = adw_preferences_page_new();
-  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(radio_page), "Radio");
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(radio_page), _("Radio"));
   adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(radio_page), "network-wireless-symbolic");
 
   // --- Fensterverhalten ---
   GtkWidget* window_behavior_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(window_behavior_group), "Fensterverhalten");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(window_behavior_group), _("Window Behavior"));
 
   GtkWidget* background_row = adw_switch_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(background_row), "Im Hintergrund weiterlaufen");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(background_row), _("Keep Running in the Background"));
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(background_row),
-      "Das Fenster zu schließen beendet Gnomos dann nicht mehr — Medientasten/Sperrbildschirm-Steuerung "
-      "(MPRIS) und Last.fm-/ListenBrainz-Scrobbling laufen weiter, auch ohne offenes Fenster. Über "
-      "„Gnomos beenden“ im Menü lässt sich Gnomos jederzeit vollständig beenden.");
+      _("Closing the window no longer quits Gnomos — media keys, lock screen controls (MPRIS) and Last.fm/ListenBrainz scrobbling keep running without an open window. “Quit Gnomos” in the menu quits it completely at any time."));
   adw_switch_row_set_active(ADW_SWITCH_ROW(background_row), run_in_background_);
   g_signal_connect_data(
       background_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
@@ -864,22 +861,22 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Erscheinungsbild ---
   GtkWidget* appearance_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(appearance_group), "Erscheinungsbild");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(appearance_group), _("Appearance"));
 
   // AdwToggleGroup, not AdwComboRow — a 3-way segmented control shows all
   // the choices at once, matching what GNOME Settings' own Appearance
   // panel moved to for this exact light/dark/auto choice.
   GtkWidget* scheme_row = adw_action_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(scheme_row), "Farbschema");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(scheme_row), _("Color Scheme"));
   GtkWidget* scheme_toggle_group = adw_toggle_group_new();
   AdwToggle* system_toggle = adw_toggle_new();
-  adw_toggle_set_label(system_toggle, "System");
+  adw_toggle_set_label(system_toggle, _("System"));
   adw_toggle_group_add(ADW_TOGGLE_GROUP(scheme_toggle_group), system_toggle);
   AdwToggle* light_toggle = adw_toggle_new();
-  adw_toggle_set_label(light_toggle, "Hell");
+  adw_toggle_set_label(light_toggle, _("Light"));
   adw_toggle_group_add(ADW_TOGGLE_GROUP(scheme_toggle_group), light_toggle);
   AdwToggle* dark_toggle = adw_toggle_new();
-  adw_toggle_set_label(dark_toggle, "Dunkel");
+  adw_toggle_set_label(dark_toggle, _("Dark"));
   adw_toggle_group_add(ADW_TOGGLE_GROUP(scheme_toggle_group), dark_toggle);
   // AdwStyleManager itself is the source of truth for the current scheme
   // (ApplyColorScheme() sets it directly), so read it back rather than
@@ -915,20 +912,20 @@ void GnomosWindow::ShowSettingsDialog()
                            static_cast<GConnectFlags>(0));
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(appearance_group), row);
   };
-  add_appearance_switch("Farben aus dem Cover", "Färbt Player-Leiste und Wiedergabe-Ansicht passend zum Album",
+  add_appearance_switch(_("Colors from the Cover"), _("Tints the player bar and the Now Playing view to match the album"),
                         cover_tint_, [this](bool active) {
                           cover_tint_ = active;
                           SaveAppearanceSetting("cover_tint", active);
                           now_playing_view_.SetTintEnabled(active);
                           ApplyCoverTint(now_playing_view_.palette());
                         });
-  add_appearance_switch("Unscharfer Hintergrund", "Das Cover als weicher Hintergrund der Wiedergabe-Ansicht",
+  add_appearance_switch(_("Blurred Background"), _("The cover as a soft background for the Now Playing view"),
                         cover_blur_, [this](bool active) {
                           cover_blur_ = active;
                           SaveAppearanceSetting("cover_blur", active);
                           now_playing_view_.SetBlurEnabled(active);
                         });
-  add_appearance_switch("Plattenteller", "Zeigt das Cover als Schallplatte, die sich während der Wiedergabe dreht",
+  add_appearance_switch(_("Record Player"), _("Shows the cover as a record that turns while music plays"),
                         vinyl_mode_, [this](bool active) {
                           vinyl_mode_ = active;
                           SaveAppearanceSetting("vinyl_mode", active);
@@ -938,10 +935,10 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Benachrichtigungen ---
   GtkWidget* notifications_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(notifications_group), "Benachrichtigungen");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(notifications_group), _("Notifications"));
 
   GtkWidget* notify_row = adw_switch_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(notify_row), "Bei Titelwechsel benachrichtigen");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(notify_row), _("Notify on Track Change"));
   adw_switch_row_set_active(ADW_SWITCH_ROW(notify_row), notify_on_track_change_);
   g_signal_connect_data(
       notify_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
@@ -952,16 +949,13 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Songtexte ---
   GtkWidget* lyrics_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lyrics_group), "Songtexte");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(lyrics_group), _("Lyrics"));
 
   GtkWidget* lyrics_row = adw_switch_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lyrics_row), "Songtexte laden");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lyrics_row), _("Load Lyrics"));
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(lyrics_row),
-      "Fragt in der Wiedergabe-Ansicht den Songtext des aktuellen Titels bei der öffentlichen LRCLIB-API "
-      "(lrclib.net) ab — das ist eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff. Dabei "
-      "werden Titel, Interpret und Album an LRCLIB übertragen. LRCLIBs Songtexte stammen aus "
-      "Community-Beiträgen ohne Rechte-Garantie (siehe Link unten).");
+      _("Looks up the current track's lyrics from the public LRCLIB API (lrclib.net) in the Now Playing view — a real request over the internet, not a local Sonos query. Title, artist and album are sent to LRCLIB. LRCLIB's lyrics are community contributions without any rights guarantee (see the link below)."));
   adw_switch_row_set_active(ADW_SWITCH_ROW(lyrics_row), load_lyrics_);
   g_signal_connect_data(
       lyrics_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
@@ -977,7 +971,7 @@ void GnomosWindow::ShowSettingsDialog()
   GtkWidget* lrclib_terms_row = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lrclib_terms_row), "LRCLIB");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(lrclib_terms_row), "lrclib.net");
-  auto* lrclib_link_button = Gtk::make_managed<Gtk::LinkButton>("https://lrclib.net", "Öffnen");
+  auto* lrclib_link_button = Gtk::make_managed<Gtk::LinkButton>("https://lrclib.net", _("Open"));
   lrclib_link_button->set_valign(Gtk::Align::CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(lrclib_terms_row), GTK_WIDGET(lrclib_link_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(lyrics_group), lrclib_terms_row);
@@ -986,12 +980,10 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Scrobbling ---
   GtkWidget* scrobbling_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(scrobbling_group), "Scrobbling");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(scrobbling_group), _("Scrobbling"));
   adw_preferences_group_set_description(
       ADW_PREFERENCES_GROUP(scrobbling_group),
-      "Sendet, sobald ein Titel zu Ende gehört wurde, Interpret/Titel/Album an jeden hier aktivierten "
-      "Dienst — eine echte Übertragung über das Internet, kein lokaler Sonos-Zugriff. Radiosender werden "
-      "nie übertragen.");
+      _("Once a track has been listened to, sends artist, title and album to every service enabled here — a real transfer over the internet, not a local Sonos query. Radio stations are never sent."));
 
   // AdwEntryRow (unlike AdwActionRow) has no subtitle property at all —
   // same "wrong widget type for a subtitle" issue already hit once before
@@ -1000,7 +992,7 @@ void GnomosWindow::ShowSettingsDialog()
   // listenbrainz_terms_row's subtitle below instead, the one row here
   // that's actually an AdwActionRow.
   GtkWidget* listenbrainz_token_row = adw_entry_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(listenbrainz_token_row), "ListenBrainz-Benutzer-Token");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(listenbrainz_token_row), _("ListenBrainz User Token"));
   gtk_editable_set_text(GTK_EDITABLE(listenbrainz_token_row), listenbrainz_token_.c_str());
   g_signal_connect_data(
       listenbrainz_token_row, "notify::text", G_CALLBACK(OnEntryRowTextChanged),
@@ -1011,8 +1003,8 @@ void GnomosWindow::ShowSettingsDialog()
   GtkWidget* listenbrainz_terms_row = adw_action_row_new();
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(listenbrainz_terms_row), "ListenBrainz");
   adw_action_row_set_subtitle(ADW_ACTION_ROW(listenbrainz_terms_row),
-                               "Leer = aus. Eigenes Token unter listenbrainz.org/settings.");
-  auto* listenbrainz_link_button = Gtk::make_managed<Gtk::LinkButton>("https://listenbrainz.org/settings", "Öffnen");
+                               _("Empty = off. Get your token at listenbrainz.org/settings."));
+  auto* listenbrainz_link_button = Gtk::make_managed<Gtk::LinkButton>("https://listenbrainz.org/settings", _("Open"));
   listenbrainz_link_button->set_valign(Gtk::Align::CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(listenbrainz_terms_row), GTK_WIDGET(listenbrainz_link_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), listenbrainz_terms_row);
@@ -1024,7 +1016,7 @@ void GnomosWindow::ShowSettingsDialog()
   // ListenBrainz's single pasted token — see LastFmScrobbler's own header
   // comment.
   GtkWidget* lastfm_api_key_row = adw_entry_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_api_key_row), "Last.fm-API-Schlüssel");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_api_key_row), _("Last.fm API Key"));
   gtk_editable_set_text(GTK_EDITABLE(lastfm_api_key_row), lastfm_api_key_.c_str());
   g_signal_connect_data(
       lastfm_api_key_row, "notify::text", G_CALLBACK(OnEntryRowTextChanged),
@@ -1034,7 +1026,7 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(scrobbling_group), lastfm_api_key_row);
 
   GtkWidget* lastfm_secret_row = adw_password_entry_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_secret_row), "Last.fm-Shared-Secret");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_secret_row), _("Last.fm Shared Secret"));
   gtk_editable_set_text(GTK_EDITABLE(lastfm_secret_row), lastfm_shared_secret_.c_str());
   g_signal_connect_data(
       lastfm_secret_row, "notify::text", G_CALLBACK(OnEntryRowTextChanged),
@@ -1047,12 +1039,13 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(lastfm_connect_row), "Last.fm");
   std::string lastfm_status_subtitle =
       lastfm_session_key_.empty()
-          ? "Nicht verbunden — Konto unter last.fm/api/account/create anlegen"
-          : (lastfm_username_.empty() ? "Verbunden" : "Verbunden als „" + lastfm_username_ + "“");
+          ? _("Not connected — create an account at last.fm/api/account/create")
+          : (lastfm_username_.empty() ? std::string(_("Connected"))
+                                       : Format(_("Connected as “%s”"), lastfm_username_.c_str()));
   adw_action_row_set_subtitle(ADW_ACTION_ROW(lastfm_connect_row), lastfm_status_subtitle.c_str());
   if (lastfm_session_key_.empty())
   {
-    auto* connect_button = Gtk::make_managed<Gtk::Button>("Anmelden");
+    auto* connect_button = Gtk::make_managed<Gtk::Button>(_("Sign In"));
     connect_button->set_valign(Gtk::Align::CENTER);
     // Not live-updated within this same open dialog — the row above still
     // shows "Nicht verbunden" until Settings is reopened, same as
@@ -1064,12 +1057,12 @@ void GnomosWindow::ShowSettingsDialog()
   }
   else
   {
-    auto* disconnect_button = Gtk::make_managed<Gtk::Button>("Trennen");
+    auto* disconnect_button = Gtk::make_managed<Gtk::Button>(_("Disconnect"));
     disconnect_button->set_valign(Gtk::Align::CENTER);
     disconnect_button->add_css_class("destructive-action");
     disconnect_button->signal_clicked().connect([this] {
       DisconnectLastFm();
-      ShowToast("Last.fm getrennt");
+      ShowToast(_("Disconnected from Last.fm"));
     });
     adw_action_row_add_suffix(ADW_ACTION_ROW(lastfm_connect_row), GTK_WIDGET(disconnect_button->gobj()));
   }
@@ -1079,15 +1072,15 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Cover-Art-Cache ---
   GtkWidget* cache_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(cache_group), "Cover-Art-Cache");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(cache_group), _("Cover Art Cache"));
 
   GtkWidget* size_row = adw_spin_row_new_with_range(10, 2000, 10);
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(size_row), "Maximale Größe");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(size_row), _("Maximum Size"));
   adw_spin_row_set_value(ADW_SPIN_ROW(size_row), ArtCache::Instance().GetMaxDiskMb());
   auto update_subtitle = [size_row] {
     double mb = static_cast<double>(ArtCache::Instance().GetDiskUsageBytes()) / (1024.0 * 1024.0);
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.1f MB belegt", mb);
+    std::snprintf(buf, sizeof(buf), _("%.1f MB used"), mb);
     adw_action_row_set_subtitle(ADW_ACTION_ROW(size_row), buf);
   };
   update_subtitle();
@@ -1097,7 +1090,7 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(cache_group), size_row);
 
   GtkWidget* clear_row = adw_button_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(clear_row), "Cache jetzt leeren");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(clear_row), _("Clear Cache Now"));
   adw_button_row_set_start_icon_name(ADW_BUTTON_ROW(clear_row), "user-trash-symbolic");
   gtk_widget_add_css_class(clear_row, "destructive-action");
   auto* clear_callback = new std::function<void()>([update_subtitle] {
@@ -1111,17 +1104,16 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Bibliothek ---
   GtkWidget* library_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(library_group), "Bibliothek");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(library_group), _("Library"));
   adw_preferences_group_set_description(
       ADW_PREFERENCES_GROUP(library_group),
-      "Alles andere in Gnomos bleibt innerhalb deines Sonos-Haushalts im lokalen Netzwerk — die Funktion "
-      "unten ist die einzige Ausnahme davon.");
+      _("Everything else in Gnomos stays within your Sonos household on the local network — the feature below is the only exception."));
 
   GtkWidget* icon_scale_row = adw_spin_row_new_with_range(20, 100, 5);
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(icon_scale_row), "Symbolgröße");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(icon_scale_row), _("Icon Size"));
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(icon_scale_row),
-      "Größe des Symbols innerhalb einer Kachel, wenn kein Coverbild verfügbar ist");
+      _("Size of the icon inside a tile when no cover image is available"));
   adw_spin_row_set_value(ADW_SPIN_ROW(icon_scale_row), fallback_icon_scale_ * 100.0);
   g_signal_connect_data(
       icon_scale_row, "notify::value", G_CALLBACK(OnDoubleSpinRowValueChanged),
@@ -1130,13 +1122,10 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), icon_scale_row);
 
   GtkWidget* artist_images_row = adw_switch_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(artist_images_row), "Künstlerbilder laden");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(artist_images_row), _("Load Artist Images"));
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(artist_images_row),
-      "Fragt für Interpreten ohne eigenes Coverbild ein Foto bei der öffentlichen Deezer-API "
-      "(api.deezer.com) ab — das ist eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff. "
-      "Dabei wird jeweils der Interpretenname an Deezer übertragen. Es gelten Deezers eigene "
-      "Nutzungsbedingungen für diese API (siehe Link unten).");
+      _("Looks up a photo from the public Deezer API (api.deezer.com) for artists without a cover image — a real request over the internet, not a local Sonos query. The artist's name is sent to Deezer. Deezer's own terms of use for this API apply (see the link below)."));
   adw_switch_row_set_active(ADW_SWITCH_ROW(artist_images_row), load_artist_images_);
   g_signal_connect_data(
       artist_images_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
@@ -1145,9 +1134,9 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), artist_images_row);
 
   GtkWidget* deezer_terms_row = adw_action_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(deezer_terms_row), "Deezer-API und Nutzungsbedingungen");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(deezer_terms_row), _("Deezer API and Terms of Use"));
   adw_action_row_set_subtitle(ADW_ACTION_ROW(deezer_terms_row), "developers.deezer.com");
-  auto* deezer_link_button = Gtk::make_managed<Gtk::LinkButton>("https://developers.deezer.com/api", "Öffnen");
+  auto* deezer_link_button = Gtk::make_managed<Gtk::LinkButton>("https://developers.deezer.com/api", _("Open"));
   deezer_link_button->set_valign(Gtk::Align::CENTER);
   adw_action_row_add_suffix(ADW_ACTION_ROW(deezer_terms_row), GTK_WIDGET(deezer_link_button->gobj()));
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(library_group), deezer_terms_row);
@@ -1161,17 +1150,17 @@ void GnomosWindow::ShowSettingsDialog()
   // moment this dialog opened, from adw_action_row_set_subtitle() being
   // called on a row that was never an AdwActionRow to begin with.
   GtkWidget* refresh_index_row = adw_action_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(refresh_index_row), "Bibliothek neu einlesen");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(refresh_index_row), _("Rescan Library"));
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(refresh_index_row),
-      "Lässt Sonos die eingebundene lokale Freigabe neu einlesen — etwa nach dem Hinzufügen neuer Dateien");
+      _("Has Sonos rescan the connected local share — after adding new files, for example"));
   auto* refresh_index_button = Gtk::make_managed<Gtk::Button>();
   refresh_index_button->set_icon_name("view-refresh-symbolic");
   refresh_index_button->set_valign(Gtk::Align::CENTER);
   refresh_index_button->add_css_class("flat");
   refresh_index_button->signal_clicked().connect([this] {
     backend_->RefreshLibraryIndex();
-    ShowToast("Bibliotheks-Scan gestartet");
+    ShowToast(_("Library scan started"));
     StartLibraryIndexProgressPolling();
   });
   adw_action_row_add_suffix(ADW_ACTION_ROW(refresh_index_row), GTK_WIDGET(refresh_index_button->gobj()));
@@ -1181,15 +1170,13 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Genres ---
   GtkWidget* genre_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(genre_group), "Genres");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(genre_group), _("Genres"));
   adw_preferences_group_set_description(
       ADW_PREFERENCES_GROUP(genre_group),
-      "Jedes Zeichen hier trennt mehrere in einem Genre-Tag zusammengefasste Genres in der Genre-Ansicht "
-      "der Bibliothek auf, z. B. \";\" bei \"Rap; Metal; Hard-Core\" — mehrere Zeichen sind möglich (z. B. "
-      "\";/|\").");
+      _("Each character here splits several genres combined in one genre tag in the library's genre view, e.g. “;” for “Rap; Metal; Hard-Core” — several characters are possible (e.g. “;/|”)."));
 
   GtkWidget* genre_separators_row = adw_entry_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(genre_separators_row), "Trennzeichen");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(genre_separators_row), _("Separators"));
   gtk_editable_set_text(GTK_EDITABLE(genre_separators_row), backend_->GetGenreSeparators().c_str());
   g_signal_connect_data(
       genre_separators_row, "notify::text", G_CALLBACK(OnEntryRowTextChanged),
@@ -1199,12 +1186,10 @@ void GnomosWindow::ShowSettingsDialog()
   adw_preferences_group_add(ADW_PREFERENCES_GROUP(genre_group), genre_separators_row);
 
   GtkWidget* genre_first_only_row = adw_switch_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(genre_first_only_row), "Nur erstes Genre verwenden");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(genre_first_only_row), _("Use First Genre Only"));
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(genre_first_only_row),
-      "Zeigt nur das erste Genre vor dem ersten Trennzeichen an, statt alle aufzuteilen — hilfreich, wenn "
-      "Sonos einen langen, zusammengesetzten Genre-Tag selbst schon abschneidet und nachfolgende Genres "
-      "dadurch unvollständig ankommen (z. B. „Elec“ statt „Electronic“)");
+      _("Shows only the genre before the first separator instead of splitting them all — useful when Sonos itself already cuts off a long combined genre tag, so later genres arrive incomplete (e.g. “Elec” instead of “Electronic”)"));
   adw_switch_row_set_active(ADW_SWITCH_ROW(genre_first_only_row), backend_->GetGenreUseFirstOnly());
   g_signal_connect_data(
       genre_first_only_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),
@@ -1216,18 +1201,16 @@ void GnomosWindow::ShowSettingsDialog()
 
   // --- Radio ---
   GtkWidget* radio_group = adw_preferences_group_new();
-  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(radio_group), "Radio");
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(radio_group), _("Radio"));
   adw_preferences_group_set_description(
       ADW_PREFERENCES_GROUP(radio_group),
-      "Gilt zusätzlich zu einem eigenen Muster, das sich pro Sender über dessen Zahnrad-Symbol unter "
-      "„Radiosender“ einstellen lässt.");
+      _("Applies in addition to a custom pattern, which you can set per station with its gear icon under “Radio Stations”."));
 
   GtkWidget* spam_filter_row = adw_switch_row_new();
-  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(spam_filter_row), "Werbeinhalte automatisch erkennen");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(spam_filter_row), _("Detect Ads Automatically"));
   adw_action_row_set_subtitle(
       ADW_ACTION_ROW(spam_filter_row),
-      "Behandelt Inhalte mit mehr als zwei aufeinanderfolgenden Leerzeichen als Werbung/Füllinhalt — "
-      "betrifft Benachrichtigungen (MPRIS) und den Verlauf gleichermaßen.");
+      _("Treats content with more than two consecutive spaces as ads or filler — affects notifications (MPRIS) and the history alike."));
   adw_switch_row_set_active(ADW_SWITCH_ROW(spam_filter_row), backend_->GetRadioSpamWhitespaceFilterEnabled());
   g_signal_connect_data(
       spam_filter_row, "notify::active", G_CALLBACK(OnSwitchRowActiveChanged),

@@ -6,6 +6,7 @@ gnomos_sources = files(
   'gnomos-window-library.cpp',
   'gnomos-window-rooms.cpp',
   'gnomos-window-settings.cpp',
+  'i18n.cpp',
   'mini-player-window.cpp',
   'mpris-service.cpp',
   'zone-volume-service.cpp',

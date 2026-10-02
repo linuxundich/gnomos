@@ -1,7 +1,7 @@
 project(
   'gnomos',
   ['c', 'cpp'],
-  version: '0.25.0',
+  version: '0.26.0',
   license: 'GPL-3.0-or-later',
   default_options: [
     'cpp_std=c++17',
@@ -11,6 +11,7 @@ project(
 )
 
 gnome = import('gnome')
+i18n = import('i18n')
 
 application_id = 'de.linuxundich.Gnomos'
 
@@ -19,6 +20,8 @@ conf.set_quoted('PACKAGE_NAME', meson.project_name())
 conf.set_quoted('PACKAGE_VERSION', meson.project_version())
 conf.set_quoted('APPLICATION_ID', application_id)
 conf.set_quoted('SOURCE_ROOT', meson.project_source_root())
+conf.set_quoted('GETTEXT_PACKAGE', meson.project_name())
+conf.set_quoted('LOCALEDIR', get_option('prefix') / get_option('localedir'))
 config_h = configure_file(output: 'config.h', configuration: conf)
 # add_project_arguments() must run before any build target is declared
 # (i.e. before subdir('noson-meson'), which defines the noson static_library).
@@ -56,6 +59,7 @@ webp_dep = dependency('libwebp')
 
 subdir('data')
 subdir('src')
+subdir('po')
 
 gnome.post_install(
   gtk_update_icon_cache: true,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "noson-backend.h"
+#include "../i18n.h"
 
 #include <algorithm>
 #include <cctype>
@@ -449,7 +450,7 @@ void NosonBackend::PersistAndRegisterServiceCredentials(const std::string& type,
   catch (const Glib::Error&)
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
-    pending_error_ = "Verknüpfung wurde aktiviert, konnte aber nicht dauerhaft gespeichert werden.";
+    pending_error_ = _("The link was activated but couldn't be saved permanently.");
     error_dispatcher_.emit();
   }
 }
@@ -667,7 +668,7 @@ void NosonBackend::JoinRoomToCurrentZone(const std::string& room_player_uuid)
     if (!roomPlayer.JoinToGroup(coordinator_uuid))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Raum konnte nicht zur Gruppe hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the room to the group.");
       error_dispatcher_.emit();
     }
   });
@@ -688,7 +689,7 @@ void NosonBackend::JoinRoomToZone(const std::string& room_player_uuid, const std
     if (!roomPlayer.JoinToGroup(target_coordinator_uuid))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Raum konnte nicht gruppiert werden.";
+      pending_error_ = _("Couldn't group the room.");
       error_dispatcher_.emit();
     }
   });
@@ -709,7 +710,7 @@ void NosonBackend::RemoveRoomFromGroup(const std::string& room_player_uuid)
     if (!roomPlayer.BecomeStandalone())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Raum konnte nicht aus der Gruppe entfernt werden.";
+      pending_error_ = _("Couldn't remove the room from the group.");
       error_dispatcher_.emit();
     }
   });
@@ -857,7 +858,7 @@ void NosonBackend::SelectZone(const std::string& coordinator_uuid)
     if (!player || !player->IsValid())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Verbindung zum Sonos-Player fehlgeschlagen.";
+      pending_error_ = _("Couldn't connect to the Sonos player.");
       error_dispatcher_.emit();
       return;
     }
@@ -1191,7 +1192,7 @@ void NosonBackend::AddCurrentTrackToFavorites()
     if (!item || !system_->AddURIToFavorites(item, "", art_uri))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnte nicht zu Favoriten hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the track to favorites.");
       error_dispatcher_.emit();
       return;
     }
@@ -1215,7 +1216,7 @@ void NosonBackend::AddLibraryItemToFavorites(unsigned index)
     if (!item || !system_->AddURIToFavorites(item, "", art_uri))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Eintrag konnte nicht zu Favoriten hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the entry to favorites.");
       error_dispatcher_.emit();
       return;
     }
@@ -1274,7 +1275,7 @@ void NosonBackend::PlayLineIn()
     if (!player || !player->PlayLineIN())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Line-In wird von diesem Gerät nicht unterstützt oder konnte nicht gestartet werden.";
+      pending_error_ = _("Line-in isn't supported by this device or couldn't be started.");
       error_dispatcher_.emit();
     }
   });
@@ -1287,7 +1288,7 @@ void NosonBackend::PlayDigitalIn()
     if (!player || !player->PlayDigitalIN())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Digital-In wird von diesem Gerät nicht unterstützt oder konnte nicht gestartet werden.";
+      pending_error_ = _("Digital-in isn't supported by this device or couldn't be started.");
       error_dispatcher_.emit();
     }
   });
@@ -1300,7 +1301,7 @@ void NosonBackend::SetSleepTimer(unsigned seconds)
     if (!player || !player->ConfigureSleepTimer(seconds))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Sleep-Timer konnte nicht gesetzt werden.";
+      pending_error_ = _("Couldn't set the sleep timer.");
       error_dispatcher_.emit();
       return;
     }
@@ -1460,7 +1461,7 @@ void NosonBackend::SetNightmode(bool enabled)
     if (!player->SetNightmode(coord->GetUUID(), enabled ? 1 : 0))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Night Mode wird von diesem Gerät nicht unterstützt.";
+      pending_error_ = _("Night mode isn't supported by this device.");
       error_dispatcher_.emit();
     }
     RefreshSoundSettingsAsync();
@@ -1480,7 +1481,7 @@ void NosonBackend::SetOutputFixed(bool enabled)
     if (!player->SetOutputFixed(coord->GetUUID(), enabled ? 1 : 0))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Feste Lautstärke konnte nicht geändert werden.";
+      pending_error_ = _("Couldn't change fixed volume.");
       error_dispatcher_.emit();
     }
     // Same reasoning as SetLoudness()/SetNightmode(): refresh unconditionally
@@ -1502,7 +1503,7 @@ void NosonBackend::SetSubGain(int16_t value)
     if (!player->SetSubGain(coord->GetUUID(), value))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Sub-Pegel konnte nicht geändert werden.";
+      pending_error_ = _("Couldn't change the sub level.");
       error_dispatcher_.emit();
     }
     RefreshSoundSettingsAsync();
@@ -1518,7 +1519,7 @@ void NosonBackend::SetAutoplay(bool enabled)
     if (!player->SetAutoplay(enabled))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Automatische Wiedergabe konnte nicht geändert werden.";
+      pending_error_ = _("Couldn't change autoplay.");
       error_dispatcher_.emit();
     }
     RefreshSoundSettingsAsync();
@@ -1544,7 +1545,7 @@ void NosonBackend::SetUseAutoplayVolume(bool enabled)
     if (!player->SetUseAutoplayVolume(enabled ? 1 : 0))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Einstellung konnte nicht geändert werden.";
+      pending_error_ = _("Couldn't change the setting.");
       error_dispatcher_.emit();
     }
     RefreshSoundSettingsAsync();
@@ -1558,7 +1559,7 @@ void NosonBackend::SetLedState(bool enabled)
     if (!player || !player->SetLEDState(enabled))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Status-LED konnte nicht geändert werden.";
+      pending_error_ = _("Couldn't change the status light.");
       error_dispatcher_.emit();
     }
   });
@@ -1651,7 +1652,7 @@ void NosonBackend::RemoveQueueItem(unsigned index)
     if (!player->RemoveTrackFromQueue(object_id, update_id))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnte nicht aus der Warteschlange entfernt werden.";
+      pending_error_ = _("Couldn't remove the track from the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -1723,7 +1724,7 @@ void NosonBackend::RemoveQueueItems(std::vector<unsigned> indices)
     if (any_failed)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnten nicht aus der Warteschlange entfernt werden.";
+      pending_error_ = _("Couldn't remove the tracks from the queue.");
       error_dispatcher_.emit();
     }
     RefreshQueueAsync();
@@ -1739,7 +1740,7 @@ void NosonBackend::ClearQueue()
     if (!player->RemoveAllTracksFromQueue())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Warteschlange konnte nicht geleert werden.";
+      pending_error_ = _("Couldn't clear the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -1772,7 +1773,7 @@ void NosonBackend::SaveQueueAsPlaylist(const std::string& title)
     if (!player || !player->SaveQueue(title))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Warteschlange konnte nicht als Playlist gespeichert werden.";
+      pending_error_ = _("Couldn't save the queue as a playlist.");
       error_dispatcher_.emit();
     }
   });
@@ -1800,7 +1801,7 @@ void NosonBackend::ReorderQueueItem(unsigned from, unsigned to)
     if (!player->ReorderTracksInQueue(from + 1, 1, insert_before + 1, update_id))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Warteschlange konnte nicht umsortiert werden.";
+      pending_error_ = _("Couldn't reorder the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -1928,7 +1929,7 @@ void NosonBackend::PlayFavorite(unsigned index)
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Favorit konnte nicht abgespielt werden.";
+      pending_error_ = _("Couldn't play the favorite.");
       error_dispatcher_.emit();
     }
   });
@@ -1960,8 +1961,8 @@ void NosonBackend::AddFavoriteToQueue(unsigned index)
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = queueable ? "Favorit konnte nicht zur Warteschlange hinzugefügt werden."
-                                  : "Dieser Favorit kann nicht zur Warteschlange hinzugefügt werden.";
+      pending_error_ = queueable ? _("Couldn't add the favorite to the queue.")
+                                  : _("This favorite can't be added to the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -1996,8 +1997,8 @@ void NosonBackend::PlayFavoriteNext(unsigned index)
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = queueable ? "Favorit konnte nicht als nächster Titel eingefügt werden."
-                                  : "Dieser Favorit kann nicht als nächster Titel eingefügt werden.";
+      pending_error_ = queueable ? _("Couldn't add the favorite to play next.")
+                                  : _("This favorite can't be added to play next.");
       error_dispatcher_.emit();
       return;
     }
@@ -2018,7 +2019,7 @@ void NosonBackend::DeleteFavorite(unsigned index)
     if (!system_->DestroyFavorite(object_id))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Favorit konnte nicht gelöscht werden.";
+      pending_error_ = _("Couldn't remove the favorite.");
       error_dispatcher_.emit();
       return;
     }
@@ -2061,7 +2062,7 @@ void NosonBackend::AddAllFavoritesToQueue()
     if (queueable.empty() || player->AddMultipleURIsToQueue(queueable) == 0)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Favoriten konnten nicht zur Warteschlange hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the favorites to the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -2085,7 +2086,7 @@ void NosonBackend::PlayAllFavoritesAsync()
     if (!player->RemoveAllTracksFromQueue())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Warteschlange konnte nicht geleert werden.";
+      pending_error_ = _("Couldn't clear the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -2102,7 +2103,7 @@ void NosonBackend::PlayAllFavoritesAsync()
     if (added == 0 || !player->SeekTrack(1) || !player->Play())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Favoriten konnten nicht abgespielt werden.";
+      pending_error_ = _("Couldn't play the favorites.");
       error_dispatcher_.emit();
       return;
     }
@@ -2247,19 +2248,19 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       // Player::SaveQueue() (the "als Playlist speichern" queue action)
       // creates — that's the one most people mean by "my playlists".
       std::vector<LibraryEntry> roots = {
-          {"A:ALBUMARTIST", "Interpreten", "", true, "", false, "avatar-default-symbolic"},
-          {"A:ALBUM", "Alben", "", true, "", false, "media-optical-cd-symbolic"},
-          {"A:GENRE", "Genres", "", true, "", false, "folder-music-symbolic"},
+          {"A:ALBUMARTIST", _("Artists"), "", true, "", false, "avatar-default-symbolic"},
+          {"A:ALBUM", _("Albums"), "", true, "", false, "media-optical-cd-symbolic"},
+          {"A:GENRE", _("Genres"), "", true, "", false, "folder-music-symbolic"},
           // Same generic Browse() mechanism as every other "A:" root above
           // — no special-casing needed anywhere else (grid-eligibility,
           // icon lookup, etc. are all keyed off the object_id prefix or
           // the item's own subType(), neither of which singles out
           // ALBUMARTIST specifically over this).
-          {"A:COMPOSER", "Komponisten", "", true, "", false, "avatar-default-symbolic"},
-          {"A:TRACKS", "Titel", "", true, "", false, "audio-x-generic-symbolic"},
-          {"SQ:", "Playlisten", "", true, "", false, "media-playlist-consecutive-symbolic"},
-          {"A:PLAYLISTS", "Playlisten (lokale Freigabe)", "", true, "", false, "media-playlist-consecutive-symbolic"},
-          {"R:0/0", "Radiosender", "", true, "", false, "network-wireless-symbolic"},
+          {"A:COMPOSER", _("Composers"), "", true, "", false, "avatar-default-symbolic"},
+          {"A:TRACKS", _("Tracks"), "", true, "", false, "audio-x-generic-symbolic"},
+          {"SQ:", _("Playlists"), "", true, "", false, "media-playlist-consecutive-symbolic"},
+          {"A:PLAYLISTS", _("Playlists (Local Share)"), "", true, "", false, "media-playlist-consecutive-symbolic"},
+          {"R:0/0", _("Radio Stations"), "", true, "", false, "network-wireless-symbolic"},
       };
       // One root entry per service already linked on this household (e.g.
       // Spotify via bonob) — SMAPI::Init() pulls that service's existing
@@ -2282,7 +2283,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       }
       // GnomosWindow recognizes this exact object_id and opens the service
       // picker/link dialog instead of trying to browse into it.
-      roots.push_back({kLinkServiceSentinel, "Dienst verknüpfen…", "", true, "", false, "list-add-symbolic"});
+      roots.push_back({kLinkServiceSentinel, _("Link Service…"), "", true, "", false, "list-add-symbolic"});
 
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
@@ -2307,7 +2308,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       if (!svc || !smapi->Init(svc, "en-US"))
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        pending_error_ = "Dienst konnte nicht initialisiert werden.";
+        pending_error_ = _("Couldn't initialize the service.");
         error_dispatcher_.emit();
         return;
       }
@@ -2322,8 +2323,7 @@ void NosonBackend::BrowseLibraryAsync(const std::string& object_id)
       if (active_smapi_->AuthTokenExpired())
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        pending_error_ = "Anmeldung bei diesem Dienst ist abgelaufen oder unvollständig — bitte über "
-                          "\"Dienst verknüpfen\" erneut verknüpfen.";
+        pending_error_ = _("Your sign-in for this service has expired or is incomplete — please link it again via “Link Service”.");
         error_dispatcher_.emit();
         return;
       }
@@ -2491,7 +2491,7 @@ void NosonBackend::RefreshLibraryIndexAsync()
     if (!libraryDirectory.RefreshShareIndex())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Bibliothek konnte nicht aktualisiert werden.";
+      pending_error_ = _("Couldn't update the library.");
       error_dispatcher_.emit();
     }
   });
@@ -2583,7 +2583,7 @@ void NosonBackend::SearchActiveServiceAsync(const std::string& category, const s
     if (!any_page_ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Suche fehlgeschlagen.";
+      pending_error_ = _("Search failed.");
       error_dispatcher_.emit();
       return;
     }
@@ -2780,8 +2780,8 @@ void NosonBackend::BrowseActiveServiceLocked(const std::string& id)
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     pending_error_ = active_smapi_->AuthTokenExpired()
-                          ? "Anmeldung bei diesem Dienst ist abgelaufen — bitte über \"Dienst verknüpfen\" erneut verknüpfen."
-                          : "Dienst konnte nicht durchsucht werden.";
+                          ? _("Your sign-in for this service has expired — please link it again via “Link Service”.")
+                          : _("Couldn't browse the service.");
     error_dispatcher_.emit();
     return;
   }
@@ -2831,7 +2831,7 @@ void NosonBackend::BeginServiceLink(const std::string& service_id)
     if (!svc)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Dienst nicht gefunden.";
+      pending_error_ = _("Service not found.");
       error_dispatcher_.emit();
       return;
     }
@@ -2840,7 +2840,7 @@ void NosonBackend::BeginServiceLink(const std::string& service_id)
     if (!smapi->Init(svc, "en-US"))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Dienst konnte nicht initialisiert werden.";
+      pending_error_ = _("Couldn't initialize the service.");
       error_dispatcher_.emit();
       return;
     }
@@ -2855,7 +2855,7 @@ void NosonBackend::BeginServiceLink(const std::string& service_id)
     if (!ok || reg_url.empty())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Verknüpfung konnte nicht gestartet werden.";
+      pending_error_ = _("Couldn't start linking.");
       error_dispatcher_.emit();
       return;
     }
@@ -2883,14 +2883,14 @@ void NosonBackend::CompleteServiceLink()
     if (retry)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Verknüpfung noch nicht abgeschlossen — bitte im Browser bestätigen und erneut versuchen.";
+      pending_error_ = _("Linking isn't finished yet — confirm it in the browser and try again.");
       error_dispatcher_.emit();
       return;
     }
     if (auth.token.empty() && auth.key.empty())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Verknüpfung fehlgeschlagen.";
+      pending_error_ = _("Linking failed.");
       error_dispatcher_.emit();
       active_smapi_.reset();
       active_service_.reset();
@@ -2920,7 +2920,7 @@ void NosonBackend::CompleteServiceLink()
     if (!linked || !smapi->Init(linked, "en-US") || smapi->AuthTokenExpired())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Verknüpfung gespeichert, aber Dienst konnte nicht gestartet werden.";
+      pending_error_ = _("The link was saved, but the service couldn't be started.");
       error_dispatcher_.emit();
       return;
     }
@@ -2970,7 +2970,7 @@ void NosonBackend::PlayLibraryItem(unsigned index)
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnte nicht abgespielt werden.";
+      pending_error_ = _("Couldn't play the track.");
       error_dispatcher_.emit();
     }
   });
@@ -2996,8 +2996,8 @@ void NosonBackend::AddLibraryItemToQueue(unsigned index)
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = queueable ? "Titel konnte nicht zur Warteschlange hinzugefügt werden."
-                                  : "Dieser Titel kann nicht zur Warteschlange hinzugefügt werden.";
+      pending_error_ = queueable ? _("Couldn't add the track to the queue.")
+                                  : _("This track can't be added to the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -3026,8 +3026,8 @@ void NosonBackend::PlayLibraryItemNext(unsigned index)
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = queueable ? "Titel konnte nicht als nächster Titel eingefügt werden."
-                                  : "Dieser Titel kann nicht als nächster Titel eingefügt werden.";
+      pending_error_ = queueable ? _("Couldn't add the track to play next.")
+                                  : _("This track can't be added to play next.");
       error_dispatcher_.emit();
       return;
     }
@@ -3095,7 +3095,7 @@ void NosonBackend::AddTrackMatchesToQueue(const std::vector<unsigned>& indices)
     if (queueable.empty() || player->AddMultipleURIsToQueue(queueable) == 0)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnten nicht zur Warteschlange hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the tracks to the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -3126,7 +3126,7 @@ void NosonBackend::AddAllLibraryItemsToQueue()
     if (queueable.empty() || player->AddMultipleURIsToQueue(queueable) == 0)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnten nicht zur Warteschlange hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the tracks to the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -3154,7 +3154,7 @@ void NosonBackend::PlayAllLibraryItemsAsync()
     if (!player->RemoveAllTracksFromQueue())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Warteschlange konnte nicht geleert werden.";
+      pending_error_ = _("Couldn't clear the queue.");
       error_dispatcher_.emit();
       return;
     }
@@ -3169,7 +3169,7 @@ void NosonBackend::PlayAllLibraryItemsAsync()
     if (added == 0 || !player->SeekTrack(1) || !player->Play())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnten nicht abgespielt werden.";
+      pending_error_ = _("Couldn't play the tracks.");
       error_dispatcher_.emit();
       return;
     }
@@ -3190,7 +3190,7 @@ void NosonBackend::DeleteLibraryPlaylist(unsigned index)
     if (!system_->DestroySavedQueue(object_id))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Playlist konnte nicht gelöscht werden.";
+      pending_error_ = _("Couldn't delete the playlist.");
       error_dispatcher_.emit();
     }
     // Unconditional, success or not — same reasoning as the invalidation
@@ -3227,7 +3227,7 @@ void NosonBackend::DeleteLibraryRadioStation(unsigned index)
     if (!system_->DestroyRadio(object_id))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Radiosender konnte nicht gelöscht werden.";
+      pending_error_ = _("Couldn't delete the radio station.");
       error_dispatcher_.emit();
     }
     // Same "refresh either way" reasoning as DeleteLibraryPlaylist() — see
@@ -3296,8 +3296,8 @@ void NosonBackend::AddLibraryItemToPlaylist(unsigned library_index, const std::s
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = queueable ? "Titel konnte nicht zur Playlist hinzugefügt werden."
-                                  : "Dieser Titel kann nicht zu einer Playlist hinzugefügt werden.";
+      pending_error_ = queueable ? _("Couldn't add the track to the playlist.")
+                                  : _("This track can't be added to a playlist.");
       error_dispatcher_.emit();
     }
     else
@@ -3326,8 +3326,8 @@ void NosonBackend::CreatePlaylistAndAddLibraryItem(unsigned library_index, const
     if (!player || !queueable || !player->CreateSavedQueue(title))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = !queueable ? "Dieser Titel kann nicht zu einer Playlist hinzugefügt werden."
-                                   : "Playlist konnte nicht erstellt werden.";
+      pending_error_ = !queueable ? _("This track can't be added to a playlist.")
+                                   : _("Couldn't create the playlist.");
       error_dispatcher_.emit();
       return;
     }
@@ -3368,7 +3368,7 @@ void NosonBackend::CreatePlaylistAndAddLibraryItem(unsigned library_index, const
     if (new_playlist_id.empty())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Neu erstellte Playlist konnte nicht gefunden werden.";
+      pending_error_ = _("Couldn't find the newly created playlist.");
       error_dispatcher_.emit();
       return;
     }
@@ -3380,7 +3380,7 @@ void NosonBackend::CreatePlaylistAndAddLibraryItem(unsigned library_index, const
         player->AddURIToSavedQueue(new_playlist_id, item, item_browser.GetUpdateID()) == 0)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Titel konnte nicht zur neuen Playlist hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the track to the new playlist.");
       error_dispatcher_.emit();
       return;
     }
@@ -3409,7 +3409,7 @@ void NosonBackend::ReorderLibraryPlaylistTrack(const std::string& playlist_objec
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Playlist konnte nicht umsortiert werden.";
+      pending_error_ = _("Couldn't reorder the playlist.");
       error_dispatcher_.emit();
     }
     // Same reasoning as DeleteLibraryPlaylist()'s own comment — without
@@ -3427,7 +3427,7 @@ void NosonBackend::RefreshLibraryIndex()
     if (!system_->RefreshShareIndex())
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Bibliotheks-Scan konnte nicht gestartet werden.";
+      pending_error_ = _("Couldn't start the library scan.");
       error_dispatcher_.emit();
     }
   });
@@ -3465,7 +3465,7 @@ void NosonBackend::AddRadioStation(const std::string& title, const std::string& 
     if (!system_->CreateRadio(stream_url, title))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Radiosender konnte nicht hinzugefügt werden.";
+      pending_error_ = _("Couldn't add the radio station.");
       error_dispatcher_.emit();
     }
     else
@@ -3770,9 +3770,9 @@ std::vector<std::string> NosonBackend::GetAlarmSoundTitles() const
   std::lock_guard<std::mutex> lock(state_mutex_);
   std::vector<std::string> titles;
   titles.reserve(favorites_.size() + 1);
-  titles.push_back("Wecker-Ton");
+  titles.push_back(_("Alarm sound"));
   for (const FavoriteItem& fav : favorites_)
-    titles.push_back(fav.title.empty() ? "Unbenannter Favorit" : fav.title);
+    titles.push_back(fav.title.empty() ? _("Untitled Favorite") : fav.title);
   return titles;
 }
 
@@ -3792,7 +3792,7 @@ void NosonBackend::SetAlarmEnabled(const std::string& alarm_id, bool enabled)
         else
         {
           std::lock_guard<std::mutex> lock(state_mutex_);
-          pending_error_ = "Alarm konnte nicht aktualisiert werden.";
+          pending_error_ = _("Couldn't update the alarm.");
           error_dispatcher_.emit();
         }
         return;
@@ -3817,7 +3817,7 @@ void NosonBackend::SetAlarmIncludeLinkedZones(const std::string& alarm_id, bool 
         else
         {
           std::lock_guard<std::mutex> lock(state_mutex_);
-          pending_error_ = "Alarm konnte nicht aktualisiert werden.";
+          pending_error_ = _("Couldn't update the alarm.");
           error_dispatcher_.emit();
         }
         return;
@@ -3836,7 +3836,7 @@ void NosonBackend::DeleteAlarm(const std::string& alarm_id)
     else
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Alarm konnte nicht gelöscht werden.";
+      pending_error_ = _("Couldn't delete the alarm.");
       error_dispatcher_.emit();
     }
   });
@@ -3886,7 +3886,7 @@ void NosonBackend::PreviewAlarmSound(const std::string& room_uuid, unsigned soun
     if (!ok)
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Wecker-Ton konnte nicht getestet werden.";
+      pending_error_ = _("Couldn't preview the alarm sound.");
       error_dispatcher_.emit();
     }
   });
@@ -3962,7 +3962,7 @@ void NosonBackend::CreateAlarm(const std::string& room_uuid, int hour, int minut
     if (!system_->CreateAlarm(alarm))
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      pending_error_ = "Alarm konnte nicht erstellt werden.";
+      pending_error_ = _("Couldn't create the alarm.");
       error_dispatcher_.emit();
       return;
     }
@@ -4010,7 +4010,7 @@ void NosonBackend::UpdateAlarmSchedule(const std::string& alarm_id, const std::s
       else
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        pending_error_ = "Alarm konnte nicht aktualisiert werden.";
+        pending_error_ = _("Couldn't update the alarm.");
         error_dispatcher_.emit();
       }
       return;

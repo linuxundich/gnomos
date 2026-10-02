@@ -4,6 +4,7 @@
 // The class itself and its constructor live in gnomos-window.cpp.
 
 #include "gnomos-window.h"
+#include "i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -129,7 +130,7 @@ void GnomosWindow::RebuildLibraryNavEntries()
       // position — matches what clicking it from the actual library root
       // level would do, since that's exactly where this list comes from.
       library_stack_.clear();
-      library_stack_.push_back({"", "Bibliothek"});
+      library_stack_.push_back({"", _("Library")});
       library_stack_.push_back({object_id, title.empty() ? "—" : title});
       // Cleared and retitled synchronously, before switching the page
       // into view — see the plain "Bibliothek" row's own action above for
@@ -302,7 +303,8 @@ void GnomosWindow::StartLibraryIndexProgressPolling()
         if (*seen_in_progress)
         {
           std::string error = backend_->GetLibraryIndexLastError();
-          ShowToast(error.empty() ? "Bibliotheks-Scan abgeschlossen" : "Bibliotheks-Scan fehlgeschlagen: " + error);
+          ShowToast(error.empty() ? std::string(_("Library scan finished"))
+                                  : Format(_("Library scan failed: %s"), error.c_str()));
         }
         // Never observed running at all (too fast to catch between polls,
         // or the scan silently did nothing) — RefreshLibraryIndex()'s own
@@ -322,12 +324,12 @@ void GnomosWindow::ShowLinkServiceDialog()
   std::vector<LinkableService> services = backend_->GetLinkableServices();
   if (services.empty())
   {
-    ShowToast("Keine verknüpfbaren Dienste gefunden.");
+    ShowToast(_("No services available to link."));
     return;
   }
 
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Dienst verknüpfen");
+  dialog->set_title(_("Link Service"));
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -336,7 +338,7 @@ void GnomosWindow::ShowLinkServiceDialog()
   content->set_margin_start(18);
   content->set_margin_end(18);
 
-  auto* label = Gtk::make_managed<Gtk::Label>("Dienst");
+  auto* label = Gtk::make_managed<Gtk::Label>(_("Service"));
   label->set_halign(Gtk::Align::START);
   content->append(*label);
 
@@ -357,7 +359,7 @@ void GnomosWindow::ShowLinkServiceDialog()
   content->append(*dropdown);
 
   auto* info_label =
-      Gtk::make_managed<Gtk::Label>("Danach öffnet sich ein Link, den du in einem Browser abschließen musst.");
+      Gtk::make_managed<Gtk::Label>(_("A link will open next, which you finish in a browser."));
   info_label->set_wrap(true);
   info_label->set_halign(Gtk::Align::START);
   info_label->add_css_class("dimmed");
@@ -367,9 +369,9 @@ void GnomosWindow::ShowLinkServiceDialog()
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* start_button = Gtk::make_managed<Gtk::Button>("Verknüpfung starten");
+  auto* start_button = Gtk::make_managed<Gtk::Button>(_("Start Linking"));
   start_button->add_css_class("suggested-action");
   start_button->signal_clicked().connect([this, dialog, dropdown, services] {
     guint selected = dropdown->get_selected();
@@ -392,7 +394,7 @@ void GnomosWindow::ShowLinkServiceDialog()
 void GnomosWindow::ShowPlayStreamDialog()
 {
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Stream abspielen");
+  dialog->set_title(_("Play Stream"));
   dialog->set_default_size(380, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -402,15 +404,14 @@ void GnomosWindow::ShowPlayStreamDialog()
   content->set_margin_end(18);
 
   auto* disclosure_label = Gtk::make_managed<Gtk::Label>(
-      "Spielt eine Stream-Adresse einmalig ab, ohne sie zu speichern — für "
-      "einen dauerhaften Sender siehe „Radiosender hinzufügen“.");
+      _("Plays a stream address once without saving it — for a permanent station, see “Add Radio Station”."));
   disclosure_label->set_halign(Gtk::Align::START);
   disclosure_label->set_wrap(true);
   disclosure_label->add_css_class("caption");
   disclosure_label->add_css_class("dimmed");
   content->append(*disclosure_label);
 
-  auto* url_label = Gtk::make_managed<Gtk::Label>("Stream-Adresse");
+  auto* url_label = Gtk::make_managed<Gtk::Label>(_("Stream address"));
   url_label->set_halign(Gtk::Align::START);
   content->append(*url_label);
   auto* url_entry = Gtk::make_managed<Gtk::Entry>();
@@ -418,20 +419,20 @@ void GnomosWindow::ShowPlayStreamDialog()
   url_entry->set_activates_default(true);
   content->append(*url_entry);
 
-  auto* title_label = Gtk::make_managed<Gtk::Label>("Titel (optional)");
+  auto* title_label = Gtk::make_managed<Gtk::Label>(_("Title (optional)"));
   title_label->set_halign(Gtk::Align::START);
   content->append(*title_label);
   auto* title_entry = Gtk::make_managed<Gtk::Entry>();
-  title_entry->set_placeholder_text("Wird in der Wiedergabe angezeigt");
+  title_entry->set_placeholder_text(_("Shown while playing"));
   title_entry->set_activates_default(true);
   content->append(*title_entry);
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* play_button = Gtk::make_managed<Gtk::Button>("Abspielen");
+  auto* play_button = Gtk::make_managed<Gtk::Button>(_("Play"));
   play_button->add_css_class("suggested-action");
   auto do_play = [this, dialog, url_entry, title_entry] {
     Glib::ustring url = url_entry->get_text();
@@ -459,12 +460,12 @@ void GnomosWindow::ExportRadioFavorites()
   std::vector<ExportableRadioFavorite> favorites = backend_->GetExportableRadioFavorites();
   if (favorites.empty())
   {
-    ShowToast("Keine Radiosender-Favoriten zum Exportieren");
+    ShowToast(_("No radio station favorites to export"));
     return;
   }
 
   auto file_dialog = Gtk::FileDialog::create();
-  file_dialog->set_title("Radiosender-Favoriten exportieren");
+  file_dialog->set_title(_("Export Radio Station Favorites"));
   file_dialog->set_initial_name("gnomos-radiosender.json");
   file_dialog->save(*this, [this, file_dialog, favorites](Glib::RefPtr<Gio::AsyncResult>& result) {
     Glib::RefPtr<Gio::File> file;
@@ -506,11 +507,12 @@ void GnomosWindow::ExportRadioFavorites()
     {
       std::string new_etag;
       file->replace_contents(std::string(data, length), "", new_etag);
-      ShowToast(std::to_string(favorites.size()) + " Radiosender exportiert");
+      ShowToast(Format(ngettext("%zu radio station exported", "%zu radio stations exported", favorites.size()),
+                       favorites.size()));
     }
     catch (const Glib::Error&)
     {
-      ShowToast("Export fehlgeschlagen");
+      ShowToast(_("Export failed"));
     }
 
     g_free(data);
@@ -523,9 +525,9 @@ void GnomosWindow::ExportRadioFavorites()
 void GnomosWindow::ImportRadioFavorites()
 {
   auto file_dialog = Gtk::FileDialog::create();
-  file_dialog->set_title("Radiosender-Favoriten importieren");
+  file_dialog->set_title(_("Import Radio Station Favorites"));
   auto json_filter = Gtk::FileFilter::create();
-  json_filter->set_name("JSON-Dateien");
+  json_filter->set_name(_("JSON files"));
   json_filter->add_pattern("*.json");
   auto filters = Gio::ListStore<Gtk::FileFilter>::create();
   filters->append(json_filter);
@@ -547,7 +549,7 @@ void GnomosWindow::ImportRadioFavorites()
     gsize length = 0;
     if (!file->load_contents(contents, length))
     {
-      ShowToast("Datei konnte nicht gelesen werden");
+      ShowToast(_("Couldn't read the file"));
       return;
     }
     std::string body(contents, length);
@@ -560,7 +562,7 @@ void GnomosWindow::ImportRadioFavorites()
       if (error)
         g_error_free(error);
       g_object_unref(parser);
-      ShowToast("Datei ist kein gültiges Sicherungs-JSON");
+      ShowToast(_("The file isn't a valid backup JSON"));
       return;
     }
 
@@ -591,8 +593,9 @@ void GnomosWindow::ImportRadioFavorites()
     }
     g_object_unref(parser);
 
-    ShowToast(imported > 0 ? std::to_string(imported) + " Radiosender importiert"
-                           : "Keine Radiosender in dieser Datei gefunden");
+    ShowToast(imported > 0 ? Format(ngettext("%zu radio station imported", "%zu radio stations imported", imported),
+                                    static_cast<size_t>(imported))
+                           : std::string(_("No radio stations found in this file")));
   });
 }
 
@@ -779,9 +782,9 @@ std::vector<unsigned> MatchM3uEntries(const std::vector<M3uEntry>& parsed, const
 void GnomosWindow::ImportM3uPlaylist()
 {
   auto file_dialog = Gtk::FileDialog::create();
-  file_dialog->set_title("M3U/PLS-Playlist importieren");
+  file_dialog->set_title(_("Import M3U/PLS Playlist"));
   auto playlist_filter = Gtk::FileFilter::create();
-  playlist_filter->set_name("Playlist-Dateien");
+  playlist_filter->set_name(_("Playlist files"));
   playlist_filter->add_pattern("*.m3u");
   playlist_filter->add_pattern("*.m3u8");
   playlist_filter->add_pattern("*.pls");
@@ -805,7 +808,7 @@ void GnomosWindow::ImportM3uPlaylist()
     gsize length = 0;
     if (!file->load_contents(contents, length))
     {
-      ShowToast("Datei konnte nicht gelesen werden");
+      ShowToast(_("Couldn't read the file"));
       return;
     }
     std::string body(contents, length);
@@ -816,11 +819,11 @@ void GnomosWindow::ImportM3uPlaylist()
     std::vector<M3uEntry> parsed = is_pls ? ParsePls(body) : ParseM3u(body);
     if (parsed.empty())
     {
-      ShowToast("Keine Einträge in dieser Playlist-Datei gefunden");
+      ShowToast(_("No entries found in this playlist file"));
       return;
     }
 
-    ShowToast("Playlist wird abgeglichen …");
+    ShowToast(_("Matching playlist…"));
     // signal_tracks_for_matching_ready() is self-disconnecting — this
     // import is the only thing that ever triggers
     // FetchAllTracksForMatchingAsync(), so nothing else should react to a
@@ -833,12 +836,15 @@ void GnomosWindow::ImportM3uPlaylist()
       std::vector<unsigned> matched_indices = MatchM3uEntries(parsed, tracks);
       if (matched_indices.empty())
       {
-        ShowToast("Keine der " + std::to_string(parsed.size()) + " Titel in der Bibliothek gefunden");
+        ShowToast(Format(ngettext("The track wasn't found in the library", "None of the %zu tracks were found in the library",
+                                  parsed.size()),
+                         parsed.size()));
         return;
       }
       backend_->AddTrackMatchesToQueue(matched_indices);
-      ShowToast(std::to_string(matched_indices.size()) + " von " + std::to_string(parsed.size()) +
-                " Titeln zur Warteschlange hinzugefügt — als Playlist speichern über die Warteschlange möglich");
+      ShowToast(Format(ngettext("%zu of %zu track added to the queue — save it as a playlist from there",
+                                "%zu of %zu tracks added to the queue — save them as a playlist from there", parsed.size()),
+                       matched_indices.size(), parsed.size()));
     });
     backend_->FetchAllTracksForMatchingAsync();
   });
@@ -847,21 +853,22 @@ void GnomosWindow::ImportM3uPlaylist()
 void GnomosWindow::ShowDeleteFavoriteConfirmDialog(unsigned index)
 {
   std::vector<FavoriteItem> favorites = backend_->GetFavorites();
-  std::string title = index < favorites.size() && !favorites[index].title.empty() ? favorites[index].title
-                                                                                    : "diesen Favoriten";
-  ShowConfirmDialog("Favorit löschen?", "„" + title + "“ wirklich aus den Favoriten löschen?", "Löschen",
+  std::string body = index < favorites.size() && !favorites[index].title.empty()
+                         ? Format(_("Really remove “%s” from your favorites?"), favorites[index].title.c_str())
+                         : std::string(_("Really remove this favorite?"));
+  ShowConfirmDialog(_("Remove Favorite?"), body, _("Remove"),
                      [this, index] { backend_->DeleteFavorite(index); });
 }
 
 void GnomosWindow::ShowDeleteLibraryEntryConfirmDialog(unsigned index)
 {
   bool is_radio = library_stack_.back().first == "R:0/0";
-  std::string default_title = is_radio ? "diesen Radiosender" : "diese Playlist";
-  std::string title = index < current_library_entries_.size() && !current_library_entries_[index].title.empty()
-                           ? current_library_entries_[index].title
-                           : default_title;
-  std::string heading = is_radio ? "Radiosender löschen?" : "Playlist löschen?";
-  ShowConfirmDialog(heading, "„" + title + "“ wirklich löschen?", "Löschen", [this, index, is_radio] {
+  bool has_title = index < current_library_entries_.size() && !current_library_entries_[index].title.empty();
+  std::string body = has_title ? Format(_("Really delete “%s”?"), current_library_entries_[index].title.c_str())
+                     : is_radio ? std::string(_("Really delete this radio station?"))
+                                : std::string(_("Really delete this playlist?"));
+  std::string heading = is_radio ? _("Delete Radio Station?") : _("Delete Playlist?");
+  ShowConfirmDialog(heading, body, _("Delete"), [this, index, is_radio] {
     if (is_radio)
       backend_->DeleteLibraryRadioStation(index);
     else
@@ -891,7 +898,7 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
     std::vector<LibraryEntry> playlists = backend_->GetSavedPlaylists();
 
     auto* dialog = new DialogShell(*this);
-    dialog->set_title("Zu Playlist hinzufügen");
+    dialog->set_title(_("Add to Playlist"));
         dialog->set_default_size(360, -1);
 
     auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -900,7 +907,7 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
     content->set_margin_start(18);
     content->set_margin_end(18);
 
-    auto* label = Gtk::make_managed<Gtk::Label>("Playlist");
+    auto* label = Gtk::make_managed<Gtk::Label>(_("Playlist"));
     label->set_halign(Gtk::Align::START);
     content->append(*label);
 
@@ -913,9 +920,9 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
     // and refuse to open a dialog at all).
     std::vector<Glib::ustring> names;
     names.reserve(playlists.size() + 1);
-    names.push_back("Neue Playlist…");
+    names.push_back(_("New Playlist…"));
     for (const LibraryEntry& entry : playlists)
-      names.push_back(entry.title.empty() ? "Unbenannt" : entry.title);
+      names.push_back(entry.title.empty() ? _("Untitled") : entry.title);
     auto model = Gtk::StringList::create(names);
     auto* dropdown = Gtk::make_managed<Gtk::DropDown>(model);
     content->append(*dropdown);
@@ -925,17 +932,17 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
     // the dropdown selection changes, since it's still perfectly clear
     // from the placeholder alone which choice it belongs to.
     auto* new_playlist_entry = Gtk::make_managed<Gtk::Entry>();
-    new_playlist_entry->set_placeholder_text("Name für „Neue Playlist…“");
+    new_playlist_entry->set_placeholder_text(_("Name for “New Playlist…”"));
     new_playlist_entry->set_activates_default(true);
     content->append(*new_playlist_entry);
 
     auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
     button_box->set_halign(Gtk::Align::END);
     button_box->set_margin_top(6);
-    auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+    auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
     cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
     button_box->append(*cancel_button);
-    auto* confirm_button = Gtk::make_managed<Gtk::Button>("Hinzufügen");
+    auto* confirm_button = Gtk::make_managed<Gtk::Button>(_("Add"));
     confirm_button->add_css_class("suggested-action");
     confirm_button->signal_clicked().connect(
         [this, dialog, dropdown, new_playlist_entry, playlists, library_index] {
@@ -951,14 +958,14 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
               return;
             }
             backend_->CreatePlaylistAndAddLibraryItem(library_index, title);
-            ShowToast("Playlist erstellt und Titel hinzugefügt");
+            ShowToast(_("Playlist created and track added"));
           }
           else
           {
             if (selected - 1 >= playlists.size())
               return;
             backend_->AddLibraryItemToPlaylist(library_index, playlists[selected - 1].object_id);
-            ShowToast("Zu Playlist hinzugefügt");
+            ShowToast(_("Added to playlist"));
           }
           dialog->close();
         });
@@ -974,7 +981,7 @@ void GnomosWindow::ShowAddToPlaylistDialog(unsigned library_index)
 void GnomosWindow::ShowAddRadioStationDialog()
 {
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Radiosender hinzufügen");
+  dialog->set_title(_("Add Radio Station"));
   dialog->set_default_size(420, 560);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -984,8 +991,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
   content->set_margin_end(18);
 
   auto* disclosure_label = Gtk::make_managed<Gtk::Label>(
-      "Durchsucht das öffentliche Senderverzeichnis von radio-browser.info — "
-      "eine echte Abfrage über das Internet, kein lokaler Sonos-Zugriff.");
+      _("Searches the public station directory at radio-browser.info — a real request over the internet, not a local Sonos query."));
   disclosure_label->set_halign(Gtk::Align::START);
   disclosure_label->set_wrap(true);
   disclosure_label->add_css_class("caption");
@@ -994,18 +1000,18 @@ void GnomosWindow::ShowAddRadioStationDialog()
 
   auto* search_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   auto* search_entry = Gtk::make_managed<Gtk::Entry>();
-  search_entry->set_placeholder_text("Sendername… (leer = beliebteste Sender)");
+  search_entry->set_placeholder_text(_("Station name… (empty = most popular)"));
   search_entry->set_hexpand(true);
   search_row->append(*search_entry);
   // Populated once FetchCountries() resolves — "Alle Länder" (no filter) is
   // always index 0 regardless, so search can fire before the country list
   // itself has even loaded.
-  auto country_model = Gtk::StringList::create({"Alle Länder"});
+  auto country_model = Gtk::StringList::create({_("All Countries")});
   auto* country_dropdown = Gtk::make_managed<Gtk::DropDown>(country_model);
   search_row->append(*country_dropdown);
   // Same index-0-is-"no filter" convention as country_dropdown, populated
   // once FetchTags() resolves — see genres' own comment below.
-  auto genre_model = Gtk::StringList::create({"Alle Genres"});
+  auto genre_model = Gtk::StringList::create({_("All Genres")});
   auto* genre_dropdown = Gtk::make_managed<Gtk::DropDown>(genre_model);
   search_row->append(*genre_dropdown);
   auto* search_button = Gtk::make_managed<Gtk::Button>();
@@ -1049,7 +1055,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
     // re-browse — AddRadioStation() is queued first on the same serial
     // worker.
     backend_->BrowseLibraryAsync(library_stack_.back().first);
-    ShowToast("„" + station.name + "“ hinzugefügt");
+    ShowToast(Format(_("“%s” added"), station.name.c_str()));
   };
 
   auto run_search = [this, search_entry, country_dropdown, countrycodes, genre_dropdown, genre_tags, results,
@@ -1070,7 +1076,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
           *results = std::move(stations);
           if (results->empty())
           {
-            auto* placeholder = Gtk::make_managed<Gtk::Label>("Keine Sender gefunden.");
+            auto* placeholder = Gtk::make_managed<Gtk::Label>(_("No stations found."));
             placeholder->add_css_class("dimmed");
             placeholder->set_margin_top(12);
             placeholder->set_margin_bottom(12);
@@ -1095,7 +1101,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
             if (!station.codec.empty())
               subtitle += (subtitle.empty() ? "" : " · ") + station.codec;
             if (station.bitrate > 0)
-              subtitle += " · " + std::to_string(station.bitrate) + " kbps";
+              subtitle += " · " + Format(_("%u kbps"), static_cast<unsigned>(station.bitrate));
             if (!subtitle.empty())
             {
               auto* subtitle_label = Gtk::make_managed<Gtk::Label>(subtitle);
@@ -1111,7 +1117,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
             add_button->set_icon_name("list-add-symbolic");
             add_button->add_css_class("flat");
             add_button->set_valign(Gtk::Align::CENTER);
-            add_button->set_tooltip_text("Hinzufügen");
+            add_button->set_tooltip_text(_("Add"));
             add_button->signal_clicked().connect([add_station, station] { add_station(station); });
             row_box->append(*add_button);
 
@@ -1166,24 +1172,24 @@ void GnomosWindow::ShowAddRadioStationDialog()
     }
   });
 
-  auto* manual_expander = Gtk::make_managed<Gtk::Expander>("Manuell eingeben (Name und Stream-URL)");
+  auto* manual_expander = Gtk::make_managed<Gtk::Expander>(_("Enter Manually (Name and Stream URL)"));
   auto* manual_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 6);
   manual_box->set_margin_top(6);
 
-  auto* title_label = Gtk::make_managed<Gtk::Label>("Name");
+  auto* title_label = Gtk::make_managed<Gtk::Label>(_("Name"));
   title_label->set_halign(Gtk::Align::START);
   manual_box->append(*title_label);
   auto* title_entry = Gtk::make_managed<Gtk::Entry>();
   manual_box->append(*title_entry);
 
-  auto* url_label = Gtk::make_managed<Gtk::Label>("Stream-URL");
+  auto* url_label = Gtk::make_managed<Gtk::Label>(_("Stream URL"));
   url_label->set_halign(Gtk::Align::START);
   manual_box->append(*url_label);
   auto* url_entry = Gtk::make_managed<Gtk::Entry>();
   url_entry->set_placeholder_text("http://...");
   manual_box->append(*url_entry);
 
-  auto* manual_add_button = Gtk::make_managed<Gtk::Button>("Hinzufügen");
+  auto* manual_add_button = Gtk::make_managed<Gtk::Button>(_("Add"));
   manual_add_button->set_halign(Gtk::Align::END);
   manual_add_button->signal_clicked().connect([this, dialog, title_entry, url_entry] {
     std::string title = title_entry->get_text();
@@ -1199,7 +1205,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
   manual_expander->set_child(*manual_box);
   content->append(*manual_expander);
 
-  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
+  auto* close_button = Gtk::make_managed<Gtk::Button>(_("Close"));
   close_button->set_halign(Gtk::Align::END);
   close_button->set_margin_top(6);
   close_button->signal_clicked().connect([dialog] { dialog->close(); });
@@ -1230,7 +1236,7 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   RadioMprisSettings settings = backend_->GetRadioMprisSettings(stream_uri);
 
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Benachrichtigungen: " + (entry.title.empty() ? "Radiosender" : entry.title));
+  dialog->set_title(entry.title.empty() ? std::string(_("Notifications")) : Format(_("Notifications: %s"), entry.title.c_str()));
   dialog->set_default_size(420, -1);
 
 
@@ -1240,11 +1246,11 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   content->set_margin_start(18);
   content->set_margin_end(18);
 
-  auto* enabled_check = Gtk::make_managed<Gtk::CheckButton>("Titelwechsel für diesen Sender melden");
+  auto* enabled_check = Gtk::make_managed<Gtk::CheckButton>(_("Report track changes for this station"));
   enabled_check->set_active(settings.mpris_enabled);
   content->append(*enabled_check);
 
-  auto* regex_label = Gtk::make_managed<Gtk::Label>("Regex-Filter (optional)");
+  auto* regex_label = Gtk::make_managed<Gtk::Label>(_("Regex filter (optional)"));
   regex_label->set_halign(Gtk::Align::START);
   regex_label->set_margin_top(6);
   content->append(*regex_label);
@@ -1262,9 +1268,7 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   // MPRIS clients like GNOME Shell's media notification, and doesn't add
   // a spurious entry to "Verlauf" either.
   auto* help_label = Gtk::make_managed<Gtk::Label>(
-      "Nur Inhalte, die zu diesem Muster passen, werden an MPRIS und den "
-      "Verlauf übermittelt — Werbung und Senderkennungen dazwischen werden "
-      "ignoriert. Leer = alles wird übermittelt.");
+      _("Only content matching this pattern is passed on to MPRIS and the history — ads and station idents in between are ignored. Empty = everything is passed on."));
   help_label->set_halign(Gtk::Align::START);
   help_label->set_wrap(true);
   help_label->add_css_class("caption");
@@ -1274,9 +1278,9 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* save_button = Gtk::make_managed<Gtk::Button>("Speichern");
+  auto* save_button = Gtk::make_managed<Gtk::Button>(_("Save"));
   save_button->add_css_class("suggested-action");
   auto do_save = [this, dialog, enabled_check, regex_entry, stream_uri] {
     RadioMprisSettings new_settings;
@@ -1315,7 +1319,7 @@ void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std
   std::string local_object_id = search_scope_object_id.empty() ? library_stack_.back().first : search_scope_object_id;
 
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Suchen");
+  dialog->set_title(_("Search"));
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -1327,7 +1331,7 @@ void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std
   Gtk::DropDown* category_dropdown = nullptr;
   if (!local_search && categories.size() > 1)
   {
-    auto* category_label = Gtk::make_managed<Gtk::Label>("Kategorie");
+    auto* category_label = Gtk::make_managed<Gtk::Label>(_("Category"));
     category_label->set_halign(Gtk::Align::START);
     content->append(*category_label);
 
@@ -1340,7 +1344,7 @@ void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std
     content->append(*category_dropdown);
   }
 
-  auto* term_label = Gtk::make_managed<Gtk::Label>("Suchbegriff");
+  auto* term_label = Gtk::make_managed<Gtk::Label>(_("Search term"));
   term_label->set_halign(Gtk::Align::START);
   content->append(*term_label);
 
@@ -1353,9 +1357,9 @@ void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* search_button = Gtk::make_managed<Gtk::Button>("Suchen");
+  auto* search_button = Gtk::make_managed<Gtk::Button>(_("Search"));
   search_button->add_css_class("suggested-action");
   auto do_search = [this, dialog, entry, category_dropdown, categories, local_search, local_object_id] {
     Glib::ustring term = entry->get_text();
@@ -1389,7 +1393,7 @@ void GnomosWindow::ShowLibrarySearchDialog(const std::string& prefill, const std
 void GnomosWindow::OnServiceLinkReady(std::string url, std::string code)
 {
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Verknüpfung: " + pending_link_service_name_);
+  dialog->set_title(Format(_("Link %s"), pending_link_service_name_.c_str()));
   dialog->set_default_size(420, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -1399,8 +1403,7 @@ void GnomosWindow::OnServiceLinkReady(std::string url, std::string code)
   content->set_margin_end(18);
 
   auto* instructions = Gtk::make_managed<Gtk::Label>(
-      "Öffne den folgenden Link in einem Browser und schließe die Verknüpfung dort ab. Komm danach hierher "
-      "zurück und klick auf \"Fertig\".");
+      _("Open the following link in a browser and finish linking there. Then come back here and click “Done”."));
   instructions->set_wrap(true);
   instructions->set_halign(Gtk::Align::START);
   content->append(*instructions);
@@ -1411,7 +1414,7 @@ void GnomosWindow::OnServiceLinkReady(std::string url, std::string code)
 
   if (!code.empty())
   {
-    auto* code_label = Gtk::make_managed<Gtk::Label>("Code: " + code);
+    auto* code_label = Gtk::make_managed<Gtk::Label>(Format(_("Code: %s"), code.c_str()));
     code_label->set_halign(Gtk::Align::START);
     code_label->add_css_class("heading");
     content->append(*code_label);
@@ -1420,9 +1423,9 @@ void GnomosWindow::OnServiceLinkReady(std::string url, std::string code)
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([dialog] { dialog->close(); });
-  auto* done_button = Gtk::make_managed<Gtk::Button>("Fertig");
+  auto* done_button = Gtk::make_managed<Gtk::Button>(_("Done"));
   done_button->add_css_class("suggested-action");
   done_button->signal_clicked().connect([this, dialog] {
     if (!pending_link_service_id_.empty())

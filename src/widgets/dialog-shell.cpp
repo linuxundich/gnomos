@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "dialog-shell.h"
+#include "../i18n.h"
 
 #include <glibmm/main.h>
 

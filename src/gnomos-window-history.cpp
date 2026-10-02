@@ -4,6 +4,7 @@
 // The class itself and its constructor live in gnomos-window.cpp.
 
 #include "gnomos-window.h"
+#include "i18n.h"
 
 #include <algorithm>
 #include <array>
@@ -381,7 +382,7 @@ void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
   if (!notify_on_track_change_)
     return;
 
-  auto notification = Gio::Notification::create(now_playing.title.empty() ? "Unbekannter Titel" : now_playing.title);
+  auto notification = Gio::Notification::create(now_playing.title.empty() ? _("Unknown Track") : now_playing.title);
   std::string body = now_playing.artist;
   if (!now_playing.album.empty())
     body += (body.empty() ? "" : " — ") + now_playing.album;
@@ -454,10 +455,10 @@ void GnomosWindow::SendTrackChangeNotification(const NowPlaying& now_playing)
   // are app-scoped forwards to the window's own real actions — see
   // GnomosApplication::on_startup()'s own comment for why they have to be.
   notification->set_default_action("app.notification-raise");
-  notification->add_button(now_playing.state == TransportState::Playing ? "Pause" : "Wiedergabe",
+  notification->add_button(now_playing.state == TransportState::Playing ? _("Pause") : _("Play"),
                             "app.notification-play-pause");
   if (now_playing.can_go_next)
-    notification->add_button("Weiter", "app.notification-next");
+    notification->add_button(_("Next"), "app.notification-next");
 
   if (auto app = get_application())
     app->send_notification("now-playing", notification);
@@ -472,7 +473,7 @@ void GnomosWindow::OnNotificationArtReady(const std::string& uri)
 void GnomosWindow::ShowScenesDialog()
 {
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Szenen");
+  dialog->set_title(_("Scenes"));
   dialog->set_default_size(380, 480);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -482,15 +483,14 @@ void GnomosWindow::ShowScenesDialog()
   content->set_margin_end(18);
 
   auto* disclosure_label = Gtk::make_managed<Gtk::Label>(
-      "Speichert, welche Räume gerade miteinander gruppiert sind (und deren Lautstärke) als benannte Szene, "
-      "mit einem Klick wiederherstellbar.");
+      _("Saves which rooms are grouped together right now (and their volume) as a named scene you can restore with one click."));
   disclosure_label->set_halign(Gtk::Align::START);
   disclosure_label->set_wrap(true);
   disclosure_label->add_css_class("caption");
   disclosure_label->add_css_class("dimmed");
   content->append(*disclosure_label);
 
-  auto* save_button = Gtk::make_managed<Gtk::Button>("Aktuelle Gruppierung speichern…");
+  auto* save_button = Gtk::make_managed<Gtk::Button>(_("Save Current Grouping…"));
   save_button->signal_clicked().connect([this, dialog] {
     dialog->close();
     ShowSaveSceneDialog();
@@ -509,7 +509,7 @@ void GnomosWindow::ShowScenesDialog()
 
   if (scenes_.empty())
   {
-    auto* placeholder = Gtk::make_managed<Gtk::Label>("Noch keine Szenen gespeichert.");
+    auto* placeholder = Gtk::make_managed<Gtk::Label>(_("No scenes saved yet."));
     placeholder->add_css_class("dimmed");
     placeholder->set_margin_top(12);
     placeholder->set_margin_bottom(12);
@@ -537,10 +537,10 @@ void GnomosWindow::ShowScenesDialog()
       apply_button->set_icon_name("media-playback-start-symbolic");
       apply_button->add_css_class("flat");
       apply_button->set_valign(Gtk::Align::CENTER);
-      apply_button->set_tooltip_text("Anwenden");
+      apply_button->set_tooltip_text(_("Apply"));
       apply_button->signal_clicked().connect([this, dialog, name] {
         ApplyScene(name);
-        ShowToast("Szene „" + name + "“ angewendet");
+        ShowToast(Format(_("Scene “%s” applied"), name.c_str()));
         dialog->close();
       });
       row_box->append(*apply_button);
@@ -549,7 +549,7 @@ void GnomosWindow::ShowScenesDialog()
       delete_button->set_icon_name("user-trash-symbolic");
       delete_button->add_css_class("flat");
       delete_button->set_valign(Gtk::Align::CENTER);
-      delete_button->set_tooltip_text("Löschen");
+      delete_button->set_tooltip_text(_("Delete"));
       delete_button->signal_clicked().connect([this, dialog, name] {
         DeleteScene(name);
         dialog->close();
@@ -561,7 +561,7 @@ void GnomosWindow::ShowScenesDialog()
     }
   }
 
-  auto* close_button = Gtk::make_managed<Gtk::Button>("Schließen");
+  auto* close_button = Gtk::make_managed<Gtk::Button>(_("Close"));
   close_button->set_halign(Gtk::Align::END);
   close_button->set_margin_top(6);
   close_button->signal_clicked().connect([dialog] { dialog->close(); });
@@ -574,7 +574,7 @@ void GnomosWindow::ShowScenesDialog()
 void GnomosWindow::ShowSaveSceneDialog()
 {
   auto* dialog = new DialogShell(*this);
-  dialog->set_title("Szene speichern");
+  dialog->set_title(_("Save Scene"));
   dialog->set_default_size(360, -1);
 
   auto* content = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 12);
@@ -583,7 +583,7 @@ void GnomosWindow::ShowSaveSceneDialog()
   content->set_margin_start(18);
   content->set_margin_end(18);
 
-  auto* label = Gtk::make_managed<Gtk::Label>("Name der Szene");
+  auto* label = Gtk::make_managed<Gtk::Label>(_("Scene name"));
   label->set_halign(Gtk::Align::START);
   content->append(*label);
 
@@ -594,19 +594,19 @@ void GnomosWindow::ShowSaveSceneDialog()
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
   button_box->set_halign(Gtk::Align::END);
   button_box->set_margin_top(6);
-  auto* cancel_button = Gtk::make_managed<Gtk::Button>("Abbrechen");
+  auto* cancel_button = Gtk::make_managed<Gtk::Button>(_("Cancel"));
   cancel_button->signal_clicked().connect([this, dialog] {
     dialog->close();
     ShowScenesDialog();
   });
-  auto* save_button = Gtk::make_managed<Gtk::Button>("Speichern");
+  auto* save_button = Gtk::make_managed<Gtk::Button>(_("Save"));
   save_button->add_css_class("suggested-action");
   auto do_save = [this, dialog, entry] {
     Glib::ustring name = entry->get_text();
     if (!name.empty())
     {
       CaptureCurrentAsScene(name.raw());
-      ShowToast("Szene „" + name.raw() + "“ gespeichert");
+      ShowToast(Format(_("Scene “%s” saved"), name.c_str()));
     }
     dialog->close();
     ShowScenesDialog();

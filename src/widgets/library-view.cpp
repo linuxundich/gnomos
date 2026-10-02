@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "library-view.h"
+#include "../i18n.h"
 
 #include <algorithm>
 #include <cctype>
@@ -70,7 +71,7 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 
   back_button_.set_icon_name("go-previous-symbolic");
   back_button_.add_css_class("flat");
-  back_button_.set_tooltip_text("Zurück");
+  back_button_.set_tooltip_text(_("Back"));
   back_button_.signal_clicked().connect([this] { signal_back_requested_.emit(); });
   header->append(back_button_);
 
@@ -95,14 +96,14 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   // the search button so search stays the rightmost, always-present action.
   play_all_button_.set_icon_name("media-playback-start-symbolic");
   play_all_button_.add_css_class("flat");
-  play_all_button_.set_tooltip_text("Alle abspielen");
+  play_all_button_.set_tooltip_text(_("Play All"));
   play_all_button_.set_visible(false);
   play_all_button_.signal_clicked().connect([this] { signal_play_all_requested_.emit(); });
   header->append(play_all_button_);
 
   queue_all_button_.set_icon_name("list-add-symbolic");
   queue_all_button_.add_css_class("flat");
-  queue_all_button_.set_tooltip_text("Alle zur Warteschlange hinzufügen");
+  queue_all_button_.set_tooltip_text(_("Add All to Queue"));
   queue_all_button_.set_visible(false);
   queue_all_button_.signal_clicked().connect([this] { signal_queue_all_requested_.emit(); });
   header->append(queue_all_button_);
@@ -116,11 +117,11 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   view_mode_toggle_group_ = adw_toggle_group_new();
   AdwToggle* grid_toggle = adw_toggle_new();
   adw_toggle_set_icon_name(grid_toggle, "view-grid-symbolic");
-  adw_toggle_set_tooltip(grid_toggle, "Als Raster anzeigen");
+  adw_toggle_set_tooltip(grid_toggle, _("Show as Grid"));
   adw_toggle_group_add(ADW_TOGGLE_GROUP(view_mode_toggle_group_), grid_toggle);
   AdwToggle* list_toggle = adw_toggle_new();
   adw_toggle_set_icon_name(list_toggle, "view-list-symbolic");
-  adw_toggle_set_tooltip(list_toggle, "Als Liste anzeigen");
+  adw_toggle_set_tooltip(list_toggle, _("Show as List"));
   adw_toggle_group_add(ADW_TOGGLE_GROUP(view_mode_toggle_group_), list_toggle);
   gtk_widget_set_visible(view_mode_toggle_group_, false);
   // Guards against the programmatic adw_toggle_group_set_active() call in
@@ -145,14 +146,14 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   // queue_all_button_ above.
   add_button_.set_icon_name("list-add-symbolic");
   add_button_.add_css_class("flat");
-  add_button_.set_tooltip_text("Radiosender hinzufügen");
+  add_button_.set_tooltip_text(_("Add Radio Station"));
   add_button_.set_visible(false);
   add_button_.signal_clicked().connect([this] { signal_add_requested_.emit(); });
   header->append(add_button_);
 
   search_button_.set_icon_name("system-search-symbolic");
   search_button_.add_css_class("flat");
-  search_button_.set_tooltip_text("Im ganzen Dienst suchen");
+  search_button_.set_tooltip_text(_("Search Whole Service"));
   search_button_.signal_clicked().connect([this] { signal_search_requested_.emit(); });
   header->append(search_button_);
 
@@ -163,7 +164,7 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   // searches the whole library/service on the server). Replaces an earlier
   // A-Z jump index that was tried here first and reported back as not a
   // good fit — this mirrors FavoritesView's own proven filter field instead.
-  filter_entry_.set_placeholder_text("Filtern…");
+  filter_entry_.set_placeholder_text(_("Filter…"));
   filter_entry_.set_margin_start(12);
   filter_entry_.set_margin_end(12);
   filter_entry_.set_margin_bottom(6);
@@ -173,7 +174,7 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 
   placeholder_ = adw_status_page_new();
   adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "folder-music-symbolic");
-  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Keine Einträge gefunden");
+  adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), _("No Entries Found"));
 
   // Both placeholders are swapped in and out of list_box_, so each keeps
   // its own reference rather than living only as long as it's attached.
@@ -320,8 +321,8 @@ void LibraryView::ApplyFilter()
   }
 
   count_label_.set_text(indices.empty()      ? ""
-                         : indices.size() == 1 ? "1 Eintrag"
-                                                : std::to_string(indices.size()) + " Einträge");
+                                                : Format(ngettext("%zu entry", "%zu entries", indices.size()),
+                                                         indices.size()));
   count_label_.set_visible(!indices.empty());
 
   bool grid = grid_available_ && grid_active_;
@@ -374,7 +375,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
     auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     labels->set_hexpand(true);
     labels->set_valign(Gtk::Align::CENTER);
-    auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? "Unbenannt" : entry.title);
+    auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? _("Untitled") : entry.title);
     title->set_halign(Gtk::Align::START);
     title->set_ellipsize(Pango::EllipsizeMode::END);
     labels->append(*title);
@@ -399,7 +400,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       favorite_button->set_icon_name("non-starred-symbolic");
       favorite_button->add_css_class("flat");
       favorite_button->set_valign(Gtk::Align::CENTER);
-      favorite_button->set_tooltip_text("Zu Favoriten hinzufügen");
+      favorite_button->set_tooltip_text(_("Add to Favorites"));
       favorite_button->signal_clicked().connect([this, index] { signal_add_to_favorites_requested_.emit(index); });
       row_box->append(*favorite_button);
     }
@@ -414,7 +415,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       delete_button->set_icon_name("user-trash-symbolic");
       delete_button->add_css_class("flat");
       delete_button->set_valign(Gtk::Align::CENTER);
-      delete_button->set_tooltip_text("Löschen");
+      delete_button->set_tooltip_text(_("Delete"));
       delete_button->signal_clicked().connect([this, index] { signal_delete_requested_.emit(index); });
       row_box->append(*delete_button);
     }
@@ -430,7 +431,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       radio_settings_button->set_icon_name("emblem-system-symbolic");
       radio_settings_button->add_css_class("flat");
       radio_settings_button->set_valign(Gtk::Align::CENTER);
-      radio_settings_button->set_tooltip_text("Benachrichtigungen");
+      radio_settings_button->set_tooltip_text(_("Notifications"));
       radio_settings_button->signal_clicked().connect(
           [this, index] { signal_radio_settings_requested_.emit(index); });
       row_box->append(*radio_settings_button);
@@ -446,7 +447,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       up_button->set_icon_name("go-up-symbolic");
       up_button->add_css_class("flat");
       up_button->set_valign(Gtk::Align::CENTER);
-      up_button->set_tooltip_text("Nach oben verschieben");
+      up_button->set_tooltip_text(_("Move Up"));
       up_button->set_sensitive(index > 0);
       up_button->signal_clicked().connect([this, index] { signal_reorder_requested_.emit(index, index - 1); });
       row_box->append(*up_button);
@@ -455,7 +456,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       down_button->set_icon_name("go-down-symbolic");
       down_button->add_css_class("flat");
       down_button->set_valign(Gtk::Align::CENTER);
-      down_button->set_tooltip_text("Nach unten verschieben");
+      down_button->set_tooltip_text(_("Move Down"));
       down_button->set_sensitive(index + 1 < all_entries_.size());
       down_button->signal_clicked().connect([this, index] { signal_reorder_requested_.emit(index, index + 1); });
       row_box->append(*down_button);
@@ -481,7 +482,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
         add_button->set_icon_name("list-add-symbolic");
         add_button->add_css_class("flat");
         add_button->set_valign(Gtk::Align::CENTER);
-        add_button->set_tooltip_text("Zur Warteschlange hinzufügen");
+        add_button->set_tooltip_text(_("Add to Queue"));
         add_button->signal_clicked().connect([this, index] { signal_add_to_queue_requested_.emit(index); });
         row_box->append(*add_button);
 
@@ -489,7 +490,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
         play_next_button->set_icon_name("media-skip-forward-symbolic");
         play_next_button->add_css_class("flat");
         play_next_button->set_valign(Gtk::Align::CENTER);
-        play_next_button->set_tooltip_text("Als nächstes abspielen");
+        play_next_button->set_tooltip_text(_("Play Next"));
         play_next_button->signal_clicked().connect([this, index] { signal_play_next_requested_.emit(index); });
         row_box->append(*play_next_button);
       }
@@ -503,7 +504,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
         play_now_button->set_icon_name("media-playback-start-symbolic");
         play_now_button->add_css_class("flat");
         play_now_button->set_valign(Gtk::Align::CENTER);
-        play_now_button->set_tooltip_text("Jetzt abspielen");
+        play_now_button->set_tooltip_text(_("Play Now"));
         play_now_button->signal_clicked().connect([this, index] { signal_entry_activated_.emit(index); });
         row_box->append(*play_now_button);
       }
@@ -514,7 +515,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
         add_to_playlist_button->set_icon_name("bookmark-new-symbolic");
         add_to_playlist_button->add_css_class("flat");
         add_to_playlist_button->set_valign(Gtk::Align::CENTER);
-        add_to_playlist_button->set_tooltip_text("Zu Playlist hinzufügen");
+        add_to_playlist_button->set_tooltip_text(_("Add to Playlist"));
         add_to_playlist_button->signal_clicked().connect(
             [this, index] { signal_add_to_playlist_requested_.emit(index); });
         row_box->append(*add_to_playlist_button);
@@ -590,7 +591,7 @@ void LibraryView::BindGridTile(const Glib::RefPtr<Gtk::ListItem>& item)
   auto* title = static_cast<Gtk::Label*>(thumbnail->get_next_sibling());
   auto* subtitle = static_cast<Gtk::Label*>(title->get_next_sibling());
 
-  std::string title_text = entry.title.empty() ? "Unbenannt" : entry.title;
+  std::string title_text = entry.title.empty() ? _("Untitled") : entry.title;
   title->set_text(title_text);
   subtitle->set_text(entry.subtitle);
   subtitle->set_visible(!entry.subtitle.empty());

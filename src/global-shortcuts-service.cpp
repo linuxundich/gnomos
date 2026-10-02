@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "global-shortcuts-service.h"
+#include "i18n.h"
 
 #include <algorithm>
 
@@ -26,10 +27,10 @@ struct ShortcutSpec
   const char* description;
 };
 constexpr ShortcutSpec kShortcuts[] = {
-    {"play-pause", "Wiedergabe/Pause"},
-    {"next", "Nächster Titel"},
-    {"previous", "Vorheriger Titel"},
-    {"mute-everywhere", "Überall stummschalten"},
+    {"play-pause", N_("Play/Pause")},
+    {"next", N_("Next Track")},
+    {"previous", N_("Previous Track")},
+    {"mute-everywhere", N_("Mute Everywhere")},
 };
 
 // The request object path a portal call's Response will eventually arrive
@@ -195,7 +196,7 @@ void GlobalShortcutsService::BindShortcuts()
     g_variant_builder_open(&shortcuts_builder, G_VARIANT_TYPE("(sa{sv})"));
     g_variant_builder_add(&shortcuts_builder, "s", shortcut.id);
     g_variant_builder_open(&shortcuts_builder, G_VARIANT_TYPE("a{sv}"));
-    g_variant_builder_add(&shortcuts_builder, "{sv}", "description", g_variant_new_string(shortcut.description));
+    g_variant_builder_add(&shortcuts_builder, "{sv}", "description", g_variant_new_string(_(shortcut.description)));
     g_variant_builder_close(&shortcuts_builder);
     g_variant_builder_close(&shortcuts_builder);
   }
