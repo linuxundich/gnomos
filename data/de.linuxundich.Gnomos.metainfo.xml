@@ -22,6 +22,15 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.22.0" date="2026-10-02">
+      <description>
+        <p>Runs on the GNOME 51 platform. Large library grids appear
+        instantly, and entries without cover art get a generated cover
+        instead of a plain icon. Keyboard shortcuts work wherever the focus
+        is, with new ones for quitting, closing and the sidebar. Playback
+        buttons have tooltips and screen reader labels.</p>
+      </description>
+    </release>
     <release version="0.21.0" date="2026-10-01">
       <description>
         <p>New application icon following the GNOME guidelines, with a

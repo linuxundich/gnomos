@@ -42,9 +42,13 @@
 #include <gtkmm/expression.h>
 #include <gtkmm/filedialog.h>
 #include <gtkmm/filefilter.h>
+#include <gtkmm/flowbox.h>
+#include <gtkmm/gridview.h>
 #include <gtkmm/grid.h>
 #include <gtkmm/image.h>
 #include <gtkmm/linkbutton.h>
+#include <gtkmm/listview.h>
+#include <gtkmm/range.h>
 #include <gtkmm/revealer.h>
 #include <gtkmm/scale.h>
 #include <gtkmm/separator.h>
@@ -160,13 +164,7 @@ GnomosWindow::GnomosWindow()
   // it needs a real action to activate rather than a UI signal only
   // player_bar_'s own buttons emit). play-pause mirrors the same toggle
   // logic player_bar_'s own play/pause button already uses.
-  add_action("play-pause", [this] {
-    NowPlaying np = backend_->GetNowPlaying();
-    if (np.valid && np.state == TransportState::Playing)
-      backend_->PauseOrStop();
-    else
-      backend_->Play();
-  });
+  add_action("play-pause", sigc::mem_fun(*this, &GnomosWindow::TogglePlayPause));
   add_action("next", [this] { backend_->Next(); });
   add_action("previous", [this] { backend_->Previous(); });
   add_action("play-stream", sigc::mem_fun(*this, &GnomosWindow::ShowPlayStreamDialog));
@@ -187,6 +185,23 @@ GnomosWindow::GnomosWindow()
   // on (see OnCloseRequest()) — this is the one reachable way to actually
   // terminate Gnomos in that case.
   add_action("quit", sigc::mem_fun(*this, &GnomosWindow::QuitApplication));
+  // Targets of the accelerators GnomosApplication::on_startup() registers
+  // (Ctrl+W, Ctrl+F, F9, ...) — see its comment there.
+  add_action("close", [this] { close(); });
+  add_action("search-library", [this] { ShowLibrarySearchDialog(); });
+  add_action("jump-to-current", [this] {
+    adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), "queue");
+    queue_view_.ScrollToCurrent();
+  });
+  add_action("toggle-sidebar", [this] {
+    if (adw_overlay_split_view_get_collapsed(ADW_OVERLAY_SPLIT_VIEW(split_view_)))
+      sidebar_toggle_button_.set_active(!sidebar_toggle_button_.get_active());
+  });
+  add_action("toggle-now-playing", sigc::mem_fun(*this, &GnomosWindow::ShowTrackInfoDialog));
+  add_action("volume-up", [this] { StepVolume(+5); });
+  add_action("volume-down", [this] { StepVolume(-5); });
+  add_action("seek-forward", [this] { SeekRelative(+10); });
+  add_action("seek-backward", [this] { SeekRelative(-10); });
   primary_menu_ = Gio::Menu::create();
   primary_menu_->append("Stream abspielen…", "win.play-stream");
   primary_menu_->append("Überall stummschalten", "win.mute-everywhere");
@@ -355,7 +370,7 @@ GnomosWindow::GnomosWindow()
   sleep_box->set_margin_bottom(6);
   sleep_box->set_margin_start(6);
   sleep_box->set_margin_end(6);
-  sleep_timer_status_label_.add_css_class("dim-label");
+  sleep_timer_status_label_.add_css_class("dimmed");
   sleep_timer_status_label_.add_css_class("caption");
   sleep_box->append(sleep_timer_status_label_);
   sleep_box->append(*Gtk::make_managed<Gtk::Separator>());
@@ -398,7 +413,7 @@ GnomosWindow::GnomosWindow()
     auto* label = Gtk::make_managed<Gtk::Label>(text);
     label->set_halign(Gtk::Align::START);
     label->add_css_class("caption");
-    label->add_css_class("dim-label");
+    label->add_css_class("dimmed");
     sound_box->append(*label);
   };
 
@@ -569,7 +584,7 @@ GnomosWindow::GnomosWindow()
   auto* autoplay_volume_label = Gtk::make_managed<Gtk::Label>("Autoplay-Lautstärke");
   autoplay_volume_label->set_halign(Gtk::Align::START);
   autoplay_volume_label->add_css_class("caption");
-  autoplay_volume_label->add_css_class("dim-label");
+  autoplay_volume_label->add_css_class("dimmed");
   advanced_box->append(*autoplay_volume_label);
   autoplay_volume_scale_.set_range(0, 100);
   autoplay_volume_scale_.set_digits(0);
@@ -619,7 +634,7 @@ GnomosWindow::GnomosWindow()
   zones_placeholder_.set_text("Keine Sonos-Geräte gefunden.\nKlicke auf Aktualisieren.");
   zones_placeholder_.set_wrap(true);
   zones_placeholder_.set_justify(Gtk::Justification::CENTER);
-  zones_placeholder_.add_css_class("dim-label");
+  zones_placeholder_.add_css_class("dimmed");
   zones_placeholder_.set_margin_top(24);
   zones_placeholder_.set_margin_bottom(24);
   zones_placeholder_.set_margin_start(12);
@@ -652,6 +667,11 @@ GnomosWindow::GnomosWindow()
   zones_scroller_.set_max_content_height(480);
   zones_scroller_.set_propagate_natural_height(true);
   room_popover_.set_child(zones_scroller_);
+  // Opens towards the window's interior: room_button_ sits at the far left
+  // of the header bar, and a popover centered on it reached past the
+  // window's left edge.
+  room_popover_.set_halign(Gtk::Align::START);
+  zones_list_box_.add_css_class("room-list");
   // Live per-room now-playing status (see OnZonesChanged()'s own comment
   // on room_np) is only ever refreshed while this popover is actually
   // open — an immediate fetch on open, then a light repeating poll so it
@@ -716,7 +736,7 @@ GnomosWindow::GnomosWindow()
         // it last held (e.g. a deeply browsed album's own tracks) for
         // that entire round trip once the page is already visible,
         // flashing stale content. Confirmed live.
-        library_view_.Clear();
+        library_view_.ShowLoading();
         library_view_.SetLevelTitle("Bibliothek");
         backend_->BrowseLibraryAsync("");
         adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), page_name.c_str());
@@ -845,13 +865,7 @@ GnomosWindow::GnomosWindow()
     OnLibraryChanged();
   });
 
-  player_bar_.signal_play_pause().connect([this] {
-    NowPlaying np = backend_->GetNowPlaying();
-    if (np.valid && np.state == TransportState::Playing)
-      backend_->PauseOrStop();
-    else
-      backend_->Play();
-  });
+  player_bar_.signal_play_pause().connect(sigc::mem_fun(*this, &GnomosWindow::TogglePlayPause));
   player_bar_.signal_next().connect([this] { backend_->Next(); });
   player_bar_.signal_shuffle_clicked().connect([this] { backend_->ToggleShuffle(); });
   player_bar_.signal_repeat_clicked().connect([this] { backend_->ToggleRepeat(); });
@@ -954,7 +968,8 @@ GnomosWindow::GnomosWindow()
   backend_->signal_discovery_done().connect(sigc::mem_fun(*this, &GnomosWindow::OnDiscoveryDone));
   backend_->signal_busy_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnBusyChanged));
   backend_->signal_zones_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnZonesChanged));
-  backend_->signal_room_now_playing_changed().connect(sigc::mem_fun(*this, &GnomosWindow::OnZonesChanged));
+  backend_->signal_room_now_playing_changed().connect(
+      sigc::mem_fun(*this, &GnomosWindow::OnRoomNowPlayingChanged));
   backend_->signal_group_volumes_changed().connect([this] {
     if (grouping_popover_.get_visible())
       RebuildGroupingPopover();
@@ -1117,7 +1132,7 @@ void GnomosWindow::RebuildLibraryNavEntries()
       // Confirmed live: clicking "Interpreten" as the very first library
       // navigation of a session briefly showed the root "Bibliothek"
       // list, not the artist grid.
-      library_view_.Clear();
+      library_view_.ShowLoading();
       library_view_.SetLevelTitle(title.empty() ? "—" : title);
       backend_->BrowseLibraryAsync(object_id);
       adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), "library");
@@ -1351,6 +1366,7 @@ void GnomosWindow::OnZonesChanged()
 {
   current_zones_ = backend_->Zones();
 
+  zone_rows_.clear();
   while (Gtk::Widget* child = zones_list_box_.get_first_child())
     zones_list_box_.remove(*child);
 
@@ -1371,7 +1387,7 @@ void GnomosWindow::OnZonesChanged()
     // grouping popover and toggling each room's own switch there.
     auto* drag_handle = Gtk::make_managed<Gtk::Image>();
     drag_handle->set_from_icon_name("list-drag-handle-symbolic");
-    drag_handle->add_css_class("dim-label");
+    drag_handle->add_css_class("dimmed");
     row_box->append(*drag_handle);
 
     // Icon-prefixed row, matching Euphonica's nav-list style
@@ -1379,7 +1395,7 @@ void GnomosWindow::OnZonesChanged()
     // Artists, ...) are icon+label the same way.
     auto* room_icon = Gtk::make_managed<Gtk::Image>();
     room_icon->set_from_icon_name("audio-speakers-symbolic");
-    room_icon->add_css_class("dim-label");
+    room_icon->add_css_class("dimmed");
     row_box->append(*room_icon);
 
     // Name + a live now-playing subtitle stacked vertically — lets the
@@ -1398,48 +1414,37 @@ void GnomosWindow::OnZonesChanged()
     name_label->set_ellipsize(Pango::EllipsizeMode::END);
     text_box->append(*name_label);
 
-    RoomNowPlaying room_np = backend_->GetRoomNowPlaying(zone.coordinator_uuid);
-    if (room_np.valid)
-    {
-      std::string subtitle = room_np.state == TransportState::Playing   ? room_np.title
-                              : room_np.state == TransportState::Paused ? "Pausiert"
-                                                                         : "";
-      if (!subtitle.empty())
-      {
-        auto* subtitle_label = Gtk::make_managed<Gtk::Label>(subtitle);
-        subtitle_label->set_halign(Gtk::Align::START);
-        subtitle_label->set_ellipsize(Pango::EllipsizeMode::END);
-        subtitle_label->add_css_class("dim-label");
-        subtitle_label->add_css_class("caption");
-        text_box->append(*subtitle_label);
-      }
-    }
+    // Always created, shown only once there's something to say — keeps
+    // the widget around for UpdateZoneRowsNowPlaying() to update in place.
+    auto* subtitle_label = Gtk::make_managed<Gtk::Label>();
+    subtitle_label->set_halign(Gtk::Align::START);
+    subtitle_label->set_ellipsize(Pango::EllipsizeMode::END);
+    subtitle_label->add_css_class("dimmed");
+    subtitle_label->add_css_class("caption");
+    subtitle_label->set_visible(false);
+    text_box->append(*subtitle_label);
     row_box->append(*text_box);
 
     if (zone.is_gen1)
     {
       auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
-      badge->add_css_class("dim-label");
+      badge->add_css_class("dimmed");
       badge->add_css_class("caption");
       row_box->append(*badge);
     }
 
-    // Only once a live snapshot has actually arrived — no misleading
+    // Hidden until a live snapshot has actually arrived — no misleading
     // "nothing's playing" icon before the first RefreshAllRoomNowPlayingAsync()
     // tick has had a chance to complete.
-    if (room_np.valid)
-    {
-      auto* play_pause_button = Gtk::make_managed<Gtk::Button>();
-      bool playing = room_np.state == TransportState::Playing;
-      play_pause_button->set_icon_name(playing ? "media-playback-pause-symbolic" : "media-playback-start-symbolic");
-      play_pause_button->add_css_class("flat");
-      play_pause_button->set_valign(Gtk::Align::CENTER);
-      play_pause_button->set_tooltip_text(playing ? "Pause" : "Abspielen");
-      std::string coordinator_uuid = zone.coordinator_uuid;
-      play_pause_button->signal_clicked().connect(
-          [this, coordinator_uuid] { backend_->ToggleRoomPlayback(coordinator_uuid); });
-      row_box->append(*play_pause_button);
-    }
+    auto* play_pause_button = Gtk::make_managed<Gtk::Button>();
+    play_pause_button->add_css_class("flat");
+    play_pause_button->set_valign(Gtk::Align::CENTER);
+    play_pause_button->set_visible(false);
+    std::string coordinator_uuid = zone.coordinator_uuid;
+    play_pause_button->signal_clicked().connect(
+        [this, coordinator_uuid] { backend_->ToggleRoomPlayback(coordinator_uuid); });
+    row_box->append(*play_pause_button);
+    zone_rows_.push_back({zone.coordinator_uuid, subtitle_label, play_pause_button});
 
     auto* info_button = Gtk::make_managed<Gtk::Button>();
     info_button->set_icon_name("dialog-information-symbolic");
@@ -1523,6 +1528,8 @@ void GnomosWindow::OnZonesChanged()
     if (Gtk::ListBoxRow* row = zones_list_box_.get_row_at_index(select_index))
       zones_list_box_.select_row(*row);
   }
+  UpdateZoneRowsNowPlaying();
+
   // Covers the no-zones-at-all case: select_row() above (and the
   // OnZoneRowSelected() it triggers) never runs then, which would
   // otherwise leave room_button_'s label stuck on a stale room name.
@@ -1532,6 +1539,45 @@ void GnomosWindow::OnZonesChanged()
   // have happened while the grouping popover was open; keep it truthful.
   if (grouping_popover_.get_visible())
     RebuildGroupingPopover();
+}
+
+// Per-room now-playing snapshots arrive every 4 s while room_popover_ is
+// open. Rebuilding the whole list for each of them (as this used to) reset
+// hover and keyboard focus inside the open popover; now only the subtitle
+// and play/pause button of each row change, and a real topology change
+// still goes through the full OnZonesChanged() rebuild.
+void GnomosWindow::OnRoomNowPlayingChanged()
+{
+  std::vector<ZoneInfo> zones = backend_->Zones();
+  bool same_topology = zones.size() == current_zones_.size();
+  for (size_t i = 0; same_topology && i < zones.size(); ++i)
+    same_topology = zones[i].group_id == current_zones_[i].group_id &&
+                    zones[i].coordinator_uuid == current_zones_[i].coordinator_uuid &&
+                    zones[i].display_name == current_zones_[i].display_name;
+  if (same_topology)
+    UpdateZoneRowsNowPlaying();
+  else
+    OnZonesChanged();
+}
+
+void GnomosWindow::UpdateZoneRowsNowPlaying()
+{
+  for (const ZoneRowWidgets& row : zone_rows_)
+  {
+    RoomNowPlaying room_np = backend_->GetRoomNowPlaying(row.coordinator_uuid);
+    std::string subtitle;
+    if (room_np.valid)
+      subtitle = room_np.state == TransportState::Playing   ? room_np.title
+                 : room_np.state == TransportState::Paused ? "Pausiert"
+                                                            : "";
+    row.subtitle->set_text(subtitle);
+    row.subtitle->set_visible(!subtitle.empty());
+
+    bool playing = room_np.valid && room_np.state == TransportState::Playing;
+    row.play_pause->set_visible(room_np.valid);
+    row.play_pause->set_icon_name(playing ? "media-playback-pause-symbolic" : "media-playback-start-symbolic");
+    row.play_pause->set_tooltip_text(playing ? "Pause" : "Abspielen");
+  }
 }
 
 void GnomosWindow::OnPlayerReady()
@@ -2617,84 +2663,82 @@ void GnomosWindow::QuitApplication()
   close();
 }
 
+void GnomosWindow::TogglePlayPause()
+{
+  NowPlaying np = backend_->GetNowPlaying();
+  if (np.valid && np.state == TransportState::Playing)
+    backend_->PauseOrStop();
+  else
+    backend_->Play();
+}
+
+void GnomosWindow::StepVolume(int delta)
+{
+  VolumeInfo volume = backend_->GetVolume();
+  backend_->SetVolume(static_cast<uint8_t>(std::clamp(static_cast<int>(volume.volume) + delta, 0, 100)));
+}
+
+// No-op for radio (duration 0, nothing to seek within) and for anything not
+// currently playing.
+void GnomosWindow::SeekRelative(int seconds)
+{
+  NowPlaying np = backend_->GetNowPlaying();
+  if (!np.valid || np.duration == 0)
+    return;
+  long long new_position = static_cast<long long>(backend_->GetPosition()) + seconds;
+  new_position = std::clamp<long long>(new_position, 0, np.duration);
+  backend_->SeekAsync(static_cast<unsigned>(new_position));
+}
+
+namespace
+{
+// Up/Down on their own move the focus inside a list, grid or slider — only
+// outside of those do they fall through to the volume shortcut. Walks up
+// from the focused widget, since the focus usually sits on a row's child.
+bool FocusWantsArrowKeys(Gtk::Widget* focus)
+{
+  for (Gtk::Widget* w = focus; w != nullptr; w = w->get_parent())
+  {
+    if (dynamic_cast<Gtk::ListBox*>(w) || dynamic_cast<Gtk::FlowBox*>(w) || dynamic_cast<Gtk::ListView*>(w) ||
+        dynamic_cast<Gtk::GridView*>(w) || dynamic_cast<Gtk::Range*>(w) || dynamic_cast<Gtk::Popover*>(w))
+      return true;
+  }
+  return false;
+}
+}  // namespace
+
+// Only the bare single-key shortcuts live here — everything with a
+// modifier is a real accelerator (see GnomosApplication::on_startup()).
 bool GnomosWindow::OnKeyPressed(guint keyval, guint /*keycode*/, Gdk::ModifierType state)
 {
-  bool ctrl = (state & Gdk::ModifierType::CONTROL_MASK) == Gdk::ModifierType::CONTROL_MASK;
-  bool alt = (state & Gdk::ModifierType::ALT_MASK) == Gdk::ModifierType::ALT_MASK;
+  constexpr auto kModifiers =
+      Gdk::ModifierType::CONTROL_MASK | Gdk::ModifierType::ALT_MASK | Gdk::ModifierType::SUPER_MASK;
+  if ((state & kModifiers) != Gdk::ModifierType(0))
+    return false;
 
-  // Ctrl+, (Preferences) is a GNOME-wide convention that works everywhere,
-  // including while a text field has focus — same as every native GNOME
-  // app's own accelerator for it, so this one is checked before the
-  // Editable exclusion below.
-  if (ctrl && keyval == GDK_KEY_comma)
-  {
-    ShowSettingsDialog();
-    return true;
-  }
-
-  // Don't hijack the rest of these while the user is typing into a search
-  // box, the library search dialog's entry, a spin button, etc. —
-  // Gtk::Editable is the interface every text-entry-like widget
-  // implements, so this covers all of them without listing each widget
-  // type.
+  // Don't hijack these while the user is typing into a search box, the
+  // library search dialog's entry, a spin button, etc. — Gtk::Editable is
+  // the interface every text-entry-like widget implements, so this covers
+  // all of them without listing each widget type.
   Gtk::Widget* focus = get_focus();
   if (dynamic_cast<Gtk::Editable*>(focus) != nullptr)
     return false;
 
-  if (ctrl && keyval == GDK_KEY_f)
-  {
-    ShowLibrarySearchDialog();
-    return true;
-  }
-
-  if (ctrl && keyval == GDK_KEY_j)
-  {
-    adw_view_stack_set_visible_child_name(ADW_VIEW_STACK(view_stack_), "queue");
-    queue_view_.ScrollToCurrent();
-    return true;
-  }
-
-  // Alt+Left/Right seek — no-op for radio (duration 0, nothing to seek
-  // within) and for anything not currently playing.
-  if (alt && (keyval == GDK_KEY_Left || keyval == GDK_KEY_Right))
-  {
-    NowPlaying np = backend_->GetNowPlaying();
-    if (np.valid && np.duration > 0)
-    {
-      constexpr int kSeekStepSeconds = 10;
-      int offset = (keyval == GDK_KEY_Right) ? kSeekStepSeconds : -kSeekStepSeconds;
-      long long new_position = static_cast<long long>(backend_->GetPosition()) + offset;
-      new_position = std::clamp<long long>(new_position, 0, np.duration);
-      backend_->SeekAsync(static_cast<unsigned>(new_position));
-    }
-    return true;
-  }
-
   switch (keyval)
   {
-    case GDK_KEY_space:
-    {
-      NowPlaying np = backend_->GetNowPlaying();
-      if (np.valid && np.state == TransportState::Playing)
-        backend_->PauseOrStop();
-      else
-        backend_->Play();
-      return true;
-    }
+    case GDK_KEY_space: TogglePlayPause(); return true;
     case GDK_KEY_n: backend_->Next(); return true;
     case GDK_KEY_p: backend_->Previous(); return true;
     case GDK_KEY_Up:
-    {
-      VolumeInfo volume = backend_->GetVolume();
-      backend_->SetVolume(static_cast<uint8_t>(std::min(100, static_cast<int>(volume.volume) + 5)));
+      if (FocusWantsArrowKeys(focus))
+        return false;
+      StepVolume(+5);
       return true;
-    }
     case GDK_KEY_Down:
-    {
-      VolumeInfo volume = backend_->GetVolume();
-      backend_->SetVolume(static_cast<uint8_t>(std::max(0, static_cast<int>(volume.volume) - 5)));
+      if (FocusWantsArrowKeys(focus))
+        return false;
+      StepVolume(-5);
       return true;
-    }
     case GDK_KEY_m:
     {
       VolumeInfo volume = backend_->GetVolume();
@@ -2902,7 +2946,7 @@ void GnomosWindow::OnLibraryEntryActivated(unsigned index)
     // list while "Alben" itself is still loading) for the whole round
     // trip, flashing stale content. Confirmed live for this same
     // in-view navigation, not just the sidebar shortcuts.
-    library_view_.Clear();
+    library_view_.ShowLoading();
     library_view_.SetLevelTitle(library_stack_.back().second);
     backend_->BrowseLibraryAsync(entry.object_id);
   }
@@ -2920,7 +2964,7 @@ void GnomosWindow::OnLibraryBackRequested()
   // See OnLibraryEntryActivated()'s identical fix and comment — going
   // back is exactly the same "genuinely different level, async browse"
   // case, just in the other direction.
-  library_view_.Clear();
+  library_view_.ShowLoading();
   library_view_.SetLevelTitle(library_stack_.back().second);
   backend_->BrowseLibraryAsync(library_stack_.back().first);
 }
@@ -3035,7 +3079,7 @@ void GnomosWindow::RebuildGroupingPopover()
     if (room.is_gen1)
     {
       auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
-      badge->add_css_class("dim-label");
+      badge->add_css_class("dimmed");
       badge->add_css_class("caption");
       top_row->append(*badge);
     }
@@ -3160,7 +3204,7 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
     if (info.is_gen1)
     {
       auto* badge = Gtk::make_managed<Gtk::Label>("Gen 1");
-      badge->add_css_class("dim-label");
+      badge->add_css_class("dimmed");
       badge->add_css_class("caption");
       room_row->append(*badge);
     }
@@ -3187,7 +3231,7 @@ void GnomosWindow::ShowDeviceInfoDialog(std::string group_id, std::string zone_n
     {
       auto* label = Gtk::make_managed<Gtk::Label>(label_text);
       label->set_halign(Gtk::Align::START);
-      label->add_css_class("dim-label");
+      label->add_css_class("dimmed");
       grid->attach(*label, 0, row);
 
       auto* value = Gtk::make_managed<Gtk::Label>(value_text);
@@ -3629,19 +3673,27 @@ void GnomosWindow::ShowShortcutsDialog()
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Play/Pause", "space"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Nächster Titel", "n"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Vorheriger Titel", "p"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Lauter", "Up"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Leiser", "Down"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Lauter", "<Control>Up"));
+  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Leiser", "<Control>Down"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Stumm schalten", "m"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Zufallswiedergabe", "s"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("Wiederholen", "r"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("10 Sekunden vor", "<Alt>Right"));
   adw_shortcuts_section_add(section, adw_shortcuts_item_new("10 Sekunden zurück", "<Alt>Left"));
-  adw_shortcuts_section_add(section, adw_shortcuts_item_new("Zur aktuellen Wiedergabe springen", "<Control>j"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), section);
 
+  AdwShortcutsSection* navigation = adw_shortcuts_section_new("Ansicht");
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Wiedergabe-Ansicht ein-/ausblenden", "<Control>i"));
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Zur aktuellen Wiedergabe springen", "<Control>j"));
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Bibliothek durchsuchen", "<Control>f"));
+  adw_shortcuts_section_add(navigation, adw_shortcuts_item_new("Seitenleiste ein-/ausblenden", "F9"));
+  adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), navigation);
+
   AdwShortcutsSection* general = adw_shortcuts_section_new("Allgemein");
-  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Bibliothek durchsuchen", "<Control>f"));
   adw_shortcuts_section_add(general, adw_shortcuts_item_new("Einstellungen", "<Control>comma"));
+  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Tastenkürzel", "<Control>question"));
+  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Fenster schließen", "<Control>w"));
+  adw_shortcuts_section_add(general, adw_shortcuts_item_new("Gnomos beenden", "<Control>q"));
   adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), general);
 
   adw_dialog_present(dialog, GTK_WIDGET(gobj()));
@@ -3755,13 +3807,7 @@ void GnomosWindow::ShowMiniPlayerWindow()
       },
       false);
 
-  window->signal_play_pause().connect([this] {
-    NowPlaying np = backend_->GetNowPlaying();
-    if (np.valid && np.state == TransportState::Playing)
-      backend_->PauseOrStop();
-    else
-      backend_->Play();
-  });
+  window->signal_play_pause().connect(sigc::mem_fun(*this, &GnomosWindow::TogglePlayPause));
   window->signal_next().connect([this] { backend_->Next(); });
   window->signal_previous().connect([this] { backend_->Previous(); });
   window->signal_seek_requested().connect([this](unsigned seconds) { backend_->SeekAsync(seconds); });
@@ -4241,7 +4287,7 @@ void GnomosWindow::ShowLinkServiceDialog()
       Gtk::make_managed<Gtk::Label>("Danach öffnet sich ein Link, den du in einem Browser abschließen musst.");
   info_label->set_wrap(true);
   info_label->set_halign(Gtk::Align::START);
-  info_label->add_css_class("dim-label");
+  info_label->add_css_class("dimmed");
   info_label->add_css_class("caption");
   content->append(*info_label);
 
@@ -4339,7 +4385,7 @@ void GnomosWindow::ShowPlayStreamDialog()
   disclosure_label->set_halign(Gtk::Align::START);
   disclosure_label->set_wrap(true);
   disclosure_label->add_css_class("caption");
-  disclosure_label->add_css_class("dim-label");
+  disclosure_label->add_css_class("dimmed");
   content->append(*disclosure_label);
 
   auto* url_label = Gtk::make_managed<Gtk::Label>("Stream-Adresse");
@@ -4797,7 +4843,7 @@ void GnomosWindow::ShowScenesDialog()
   disclosure_label->set_halign(Gtk::Align::START);
   disclosure_label->set_wrap(true);
   disclosure_label->add_css_class("caption");
-  disclosure_label->add_css_class("dim-label");
+  disclosure_label->add_css_class("dimmed");
   content->append(*disclosure_label);
 
   auto* save_button = Gtk::make_managed<Gtk::Button>("Aktuelle Gruppierung speichern…");
@@ -4820,7 +4866,7 @@ void GnomosWindow::ShowScenesDialog()
   if (scenes_.empty())
   {
     auto* placeholder = Gtk::make_managed<Gtk::Label>("Noch keine Szenen gespeichert.");
-    placeholder->add_css_class("dim-label");
+    placeholder->add_css_class("dimmed");
     placeholder->set_margin_top(12);
     placeholder->set_margin_bottom(12);
     list_box->append(*placeholder);
@@ -5051,7 +5097,7 @@ void GnomosWindow::ShowTrackInfoDialog()
   {
     auto* artist = Gtk::make_managed<Gtk::Label>(np.artist);
     artist->set_wrap(true);
-    artist->add_css_class("dim-label");
+    artist->add_css_class("dimmed");
     content->append(*artist);
   }
 
@@ -5059,7 +5105,7 @@ void GnomosWindow::ShowTrackInfoDialog()
   {
     auto* album = Gtk::make_managed<Gtk::Label>(np.album);
     album->set_wrap(true);
-    album->add_css_class("dim-label");
+    album->add_css_class("dimmed");
     album->add_css_class("caption");
     content->append(*album);
   }
@@ -5355,7 +5401,7 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
   content->append(*related_scroller);
 
   auto* related_loading_placeholder = Gtk::make_managed<Gtk::Label>("Wird geladen …");
-  related_loading_placeholder->add_css_class("dim-label");
+  related_loading_placeholder->add_css_class("dimmed");
   related_loading_placeholder->set_margin_top(12);
   related_loading_placeholder->set_margin_bottom(12);
   related_list->append(*related_loading_placeholder);
@@ -5373,7 +5419,7 @@ void GnomosWindow::ShowArtistInfoDialog(const std::string& artist_name)
         if (related.empty())
         {
           auto* placeholder = Gtk::make_managed<Gtk::Label>("Keine ähnlichen Interpreten gefunden.");
-          placeholder->add_css_class("dim-label");
+          placeholder->add_css_class("dimmed");
           placeholder->set_margin_top(12);
           placeholder->set_margin_bottom(12);
           related_list->append(*placeholder);
@@ -5617,7 +5663,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
   disclosure_label->set_halign(Gtk::Align::START);
   disclosure_label->set_wrap(true);
   disclosure_label->add_css_class("caption");
-  disclosure_label->add_css_class("dim-label");
+  disclosure_label->add_css_class("dimmed");
   content->append(*disclosure_label);
 
   auto* search_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);
@@ -5699,7 +5745,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
           if (results->empty())
           {
             auto* placeholder = Gtk::make_managed<Gtk::Label>("Keine Sender gefunden.");
-            placeholder->add_css_class("dim-label");
+            placeholder->add_css_class("dimmed");
             placeholder->set_margin_top(12);
             placeholder->set_margin_bottom(12);
             results_list->append(*placeholder);
@@ -5729,7 +5775,7 @@ void GnomosWindow::ShowAddRadioStationDialog()
               auto* subtitle_label = Gtk::make_managed<Gtk::Label>(subtitle);
               subtitle_label->set_halign(Gtk::Align::START);
               subtitle_label->set_ellipsize(Pango::EllipsizeMode::END);
-              subtitle_label->add_css_class("dim-label");
+              subtitle_label->add_css_class("dimmed");
               subtitle_label->add_css_class("caption");
               labels->append(*subtitle_label);
             }
@@ -5911,7 +5957,7 @@ void GnomosWindow::ShowRadioMprisSettingsDialog(unsigned index)
   help_label->set_halign(Gtk::Align::START);
   help_label->set_wrap(true);
   help_label->add_css_class("caption");
-  help_label->add_css_class("dim-label");
+  help_label->add_css_class("dimmed");
   content->append(*help_label);
 
   auto* button_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 6);

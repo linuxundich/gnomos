@@ -12,6 +12,10 @@
 #include <glibmm/main.h>
 #include <gtkmm/adjustment.h>
 #include <gtkmm/image.h>
+#include <gtkmm/listitem.h>
+#include <gtkmm/noselection.h>
+#include <gtkmm/signallistitemfactory.h>
+#include <gtkmm/stringobject.h>
 #include <pangomm/layout.h>
 
 namespace gnomos
@@ -44,71 +48,12 @@ extern "C" void DeleteLibraryGuintCallback(gpointer data, GClosure*)
   delete static_cast<std::function<void(guint)>*>(data);
 }
 
-// Every attempt at constraining a grid tile's title/subtitle to a fixed
-// pixel width via the LABEL's own properties failed to hold: max_width_chars
-// is only an average-character estimate (a title with more wide glyphs
-// than that average — capitals, accents, "¿" — measured genuinely wider
-// than plainer text under the same limit); set_size_request() only raises
-// a widget's MINIMUM, it doesn't cap the NATURAL size a wrapping/ellipsizing
-// label reports for its own full text; GTK CSS has no max-width property
-// that affects layout at all. Since AdwWrapBox packs each line by its
-// tiles' own natural width, any one too-wide tile shrank how many fit in
-// its row, breaking column alignment with the rows above/below it — and
-// separately, left visibly uneven left/right padding for short entries.
-// Pre-computing the wrapped/truncated text ourselves and handing the
-// label an already-narrow string sidesteps the whole "what does this
-// label consider its own natural width" question — its natural width for
-// a string that's already at most kTileContentWidth wide is, definitionally,
-// at most kTileContentWidth.
-std::string TruncateToWidth(const Glib::RefPtr<Pango::Layout>& layout, const std::string& text, int width_px)
+// Albums and playlists get a generated cover when they have no art of
+// their own — see CoverThumbnail::SetGeneratedFallback(). Artists keep
+// their silhouette (or a real photo), categories their own symbol.
+bool WantsGeneratedCover(const LibraryEntry& entry)
 {
-  layout->set_width(-1);
-  layout->set_text(text);
-  int width = 0, height_unused = 0;
-  layout->get_pixel_size(width, height_unused);
-  if (width <= width_px)
-    return text;
-  Glib::ustring utext(text);
-  std::string::size_type lo = 0, hi = utext.size();
-  while (lo < hi)
-  {
-    std::string::size_type mid = (lo + hi + 1) / 2;
-    layout->set_text(utext.substr(0, mid) + "…");
-    layout->get_pixel_size(width, height_unused);
-    if (width <= width_px)
-      lo = mid;
-    else
-      hi = mid - 1;
-  }
-  return utext.substr(0, lo) + "…";
-}
-
-std::string WrapTitleToTwoLines(const Glib::RefPtr<Pango::Layout>& layout, const std::string& text, int width_px)
-{
-  layout->set_text(text);
-  layout->set_width(width_px * Pango::SCALE);
-  layout->set_wrap(Pango::WrapMode::WORD_CHAR);
-  if (layout->get_line_count() <= 1)
-    return text;
-  Glib::RefPtr<Pango::LayoutLine> first_line = layout->get_line(0);
-  auto split = static_cast<std::string::size_type>(first_line->get_start_index() + first_line->get_length());
-  std::string first = text.substr(0, split);
-  std::string rest = text.substr(split);
-  // The break lands right after the word-boundary space WORD_CHAR chose —
-  // strip it so the second line doesn't start with a leading blank.
-  while (!rest.empty() && rest.front() == ' ')
-    rest.erase(rest.begin());
-  // `rest` is everything AFTER the first wrapped line, not necessarily
-  // itself narrow enough to fit — for text needing a third Pango-computed
-  // line, that leftover crammed onto an unwrapped second line came out
-  // wider than width_px (confirmed live: a whole row's columns drifted
-  // out of alignment with the rows above/below it). Routing it back
-  // through TruncateToWidth() gives the second line the exact same
-  // pixel-measured guarantee the first line already gets from the split
-  // point above, rather than trusting the label's own wrap/ellipsize to
-  // catch what's left — which is the very thing this function exists to
-  // avoid relying on.
-  return first + "\n" + TruncateToWidth(layout, rest, width_px);
+  return entry.icon_name == "media-optical-cd-symbolic" || entry.icon_name == "media-playlist-consecutive-symbolic";
 }
 }  // namespace
 
@@ -129,11 +74,21 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   back_button_.signal_clicked().connect([this] { signal_back_requested_.emit(); });
   header->append(back_button_);
 
+  // Title with the entry count right below it, instead of the count on a
+  // row of its own under the filter field — one row less above the
+  // content, nothing hidden behind an extra click.
+  auto* title_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 0);
+  title_box->set_hexpand(true);
+  title_box->set_valign(Gtk::Align::CENTER);
   level_title_.set_halign(Gtk::Align::START);
-  level_title_.set_hexpand(true);
   level_title_.set_ellipsize(Pango::EllipsizeMode::END);
   level_title_.add_css_class("heading");
-  header->append(level_title_);
+  title_box->append(level_title_);
+  count_label_.add_css_class("dimmed");
+  count_label_.add_css_class("caption");
+  count_label_.set_halign(Gtk::Align::START);
+  title_box->append(count_label_);
+  header->append(*title_box);
 
   // Only ever shown for a fully-leaf level (e.g. an album's track list),
   // and only while no filter is active — see ApplyFilter(). Placed before
@@ -215,17 +170,21 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   filter_entry_.signal_search_changed().connect(sigc::mem_fun(*this, &LibraryView::ApplyFilter));
   append(filter_entry_);
 
-  count_label_.add_css_class("dim-label");
-  count_label_.add_css_class("caption");
-  count_label_.set_halign(Gtk::Align::START);
-  count_label_.set_margin_start(12);
-  count_label_.set_margin_bottom(4);
-  append(count_label_);
 
   placeholder_ = adw_status_page_new();
   adw_status_page_set_icon_name(ADW_STATUS_PAGE(placeholder_), "folder-music-symbolic");
   adw_status_page_set_title(ADW_STATUS_PAGE(placeholder_), "Keine Einträge gefunden");
 
+  // Both placeholders are swapped in and out of list_box_, so each keeps
+  // its own reference rather than living only as long as it's attached.
+  g_object_ref_sink(placeholder_);
+  loading_placeholder_ = adw_spinner_new();
+  g_object_ref_sink(loading_placeholder_);
+  gtk_widget_set_size_request(loading_placeholder_, 32, 32);
+  gtk_widget_set_halign(loading_placeholder_, GTK_ALIGN_CENTER);
+  gtk_widget_set_valign(loading_placeholder_, GTK_ALIGN_CENTER);
+  gtk_widget_set_margin_top(loading_placeholder_, 48);
+  gtk_widget_set_margin_bottom(loading_placeholder_, 48);
   list_box_.set_placeholder(*Glib::wrap(placeholder_));
   list_box_.set_selection_mode(Gtk::SelectionMode::NONE);
   list_box_.add_css_class("boxed-list");
@@ -249,42 +208,25 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   // Grid mode (Albums/Artists — see the header comment on SetEntries()),
   // styled after Euphonica's own Albums/Artists grid
   // (https://github.com/htkhiem/euphonica): square tiles that reflow with
-  // the available width, rather than a plain list. AdwWrapBox instead of
-  // GtkFlowBox — confirmed live that FlowBox's homogeneous mode, even with
-  // max-children-per-line raised, stretches every cell in a row to fill
-  // whatever width is left over once it's decided how many columns fit,
-  // ballooning tiles at wide window sizes; AdwWrapBox lays children out at
-  // their own natural size with no such hidden stretch, exactly what a
-  // "square tiles, more of them as the window widens" grid needs.
-  wrap_box_ = adw_wrap_box_new();
-  // Takes ownership independent of whichever container currently parents
-  // it — see wrap_box_'s own header comment for why this matters.
-  g_object_ref_sink(wrap_box_);
-  // Same value on every side and between rows/columns — Albums and
-  // Artists (and any other grid-eligible level, e.g. a bonob category)
-  // all render through this one wrap_box_, so there's nothing left to
-  // unify between them; trimmed down from 12 across the board, which
-  // read as more air than the tiles themselves needed.
-  adw_wrap_box_set_child_spacing(ADW_WRAP_BOX(wrap_box_), 8);
-  adw_wrap_box_set_line_spacing(ADW_WRAP_BOX(wrap_box_), 8);
-  // Unlike GtkFlowBox's own "homogeneous" (coupled to stretch-to-fill —
-  // see this block's header comment for why that was wrong here),
-  // AdwWrapBox keeps line_homogeneous and justify independent: this only
-  // equalizes tile sizes *within* each line to that line's own widest
-  // tile, with no leftover-space stretching (justify stays NONE below).
-  // Needed because a tile's own natural width isn't reliably uniform on
-  // its own — a title label with one long unbreakable word (e.g.
-  // "AnnenMayKantereit") reports a wider natural size than a short one —
-  // and without this, that row alone fit one fewer tile than the rows
-  // above/below it (reported live).
-  adw_wrap_box_set_line_homogeneous(ADW_WRAP_BOX(wrap_box_), true);
-  adw_wrap_box_set_justify(ADW_WRAP_BOX(wrap_box_), ADW_JUSTIFY_NONE);
-  adw_wrap_box_set_wrap_policy(ADW_WRAP_BOX(wrap_box_), ADW_WRAP_NATURAL);
-  gtk_widget_set_margin_top(wrap_box_, 8);
-  gtk_widget_set_margin_bottom(wrap_box_, 8);
-  gtk_widget_set_margin_start(wrap_box_, 8);
-  gtk_widget_set_margin_end(wrap_box_, 8);
-  gtk_widget_set_valign(wrap_box_, GTK_ALIGN_START);
+  // the available width. A Gtk::GridView rather than the AdwWrapBox it
+  // replaced: only the tiles on screen exist as widgets, recycled while
+  // scrolling, so a 1000-album level appears instantly — and each tile is
+  // a real, keyboard-focusable grid item rather than a Box with a click
+  // gesture. GridView also gives every column the same width by itself,
+  // which the wrap box needed pixel-measured, pre-truncated labels for.
+  grid_model_ = Gtk::StringList::create();
+  grid_view_.set_model(Gtk::NoSelection::create(grid_model_));
+  auto factory = Gtk::SignalListItemFactory::create();
+  factory->signal_setup().connect(sigc::mem_fun(*this, &LibraryView::SetupGridTile));
+  factory->signal_bind().connect(sigc::mem_fun(*this, &LibraryView::BindGridTile));
+  grid_view_.set_factory(factory);
+  grid_view_.set_min_columns(2);
+  grid_view_.set_max_columns(24);
+  grid_view_.set_single_click_activate(true);
+  grid_view_.add_css_class("library-grid");
+  grid_view_.signal_activate().connect([this](guint position) {
+    signal_entry_activated_.emit(static_cast<unsigned>(std::stoul(grid_model_->get_string(position).raw())));
+  });
 
   scroller_.set_child(list_box_);
   scroller_.set_vexpand(true);
@@ -308,7 +250,8 @@ LibraryView::LibraryView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
 
 LibraryView::~LibraryView()
 {
-  g_object_unref(wrap_box_);
+  g_object_unref(placeholder_);
+  g_object_unref(loading_placeholder_);
 }
 
 void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid_available, bool grid_active,
@@ -348,9 +291,21 @@ void LibraryView::SetEntries(const std::vector<LibraryEntry>& entries, bool grid
   ApplyFilter();
 }
 
+void LibraryView::ShowLoading()
+{
+  Clear();
+  count_label_.set_visible(false);
+  play_all_button_.set_visible(false);
+  queue_all_button_.set_visible(false);
+  gtk_widget_set_visible(view_mode_toggle_group_, false);
+  scroller_.set_child(list_box_);
+  list_box_.set_placeholder(*Glib::wrap(loading_placeholder_));
+}
+
 void LibraryView::ApplyFilter()
 {
   Clear();
+  list_box_.set_placeholder(*Glib::wrap(placeholder_));
 
   std::string term = filter_entry_.get_text();
   std::transform(term.begin(), term.end(), term.begin(), [](unsigned char c) { return std::tolower(c); });
@@ -367,11 +322,12 @@ void LibraryView::ApplyFilter()
   count_label_.set_text(indices.empty()      ? ""
                          : indices.size() == 1 ? "1 Eintrag"
                                                 : std::to_string(indices.size()) + " Einträge");
+  count_label_.set_visible(!indices.empty());
 
   bool grid = grid_available_ && grid_active_;
-  scroller_.set_child(grid ? *Glib::wrap(wrap_box_) : static_cast<Gtk::Widget&>(list_box_));
+  scroller_.set_child(grid ? static_cast<Gtk::Widget&>(grid_view_) : static_cast<Gtk::Widget&>(list_box_));
   if (grid)
-    BuildGrid(indices, load_artist_images_);
+    BuildGrid(indices);
   else
     BuildList(indices, show_favorite_action_, show_delete_action_, show_add_to_playlist_action_,
               show_reorder_action_ && term.empty(), show_queue_actions_, load_artist_images_,
@@ -403,6 +359,8 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>();
     thumbnail->SetFallbackIconName(entry.icon_name);
+    if (WantsGeneratedCover(entry))
+      thumbnail->SetGeneratedFallback(entry.title);
     // "avatar-default-symbolic" is exactly the icon IconNameForSubType()
     // (noson-backend.cpp) assigns for an artist (DigitalItem::SubType_person)
     // — the one entry type with no real art of its own to fall back to.
@@ -415,6 +373,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
 
     auto* labels = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 2);
     labels->set_hexpand(true);
+    labels->set_valign(Gtk::Align::CENTER);
     auto* title = Gtk::make_managed<Gtk::Label>(entry.title.empty() ? "Unbenannt" : entry.title);
     title->set_halign(Gtk::Align::START);
     title->set_ellipsize(Pango::EllipsizeMode::END);
@@ -424,7 +383,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
       auto* subtitle = Gtk::make_managed<Gtk::Label>(entry.subtitle);
       subtitle->set_halign(Gtk::Align::START);
       subtitle->set_ellipsize(Pango::EllipsizeMode::END);
-      subtitle->add_css_class("dim-label");
+      subtitle->add_css_class("dimmed");
       subtitle->add_css_class("caption");
       labels->append(*subtitle);
     }
@@ -506,7 +465,7 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
     {
       auto* chevron = Gtk::make_managed<Gtk::Image>();
       chevron->set_from_icon_name("go-next-symbolic");
-      chevron->add_css_class("dim-label");
+      chevron->add_css_class("dimmed");
       row_box->append(*chevron);
     }
     else
@@ -572,100 +531,84 @@ void LibraryView::BuildList(const std::vector<unsigned>& indices, bool show_favo
   }
 }
 
-void LibraryView::BuildGrid(const std::vector<unsigned>& indices, bool load_artist_images)
+void LibraryView::BuildGrid(const std::vector<unsigned>& indices)
 {
+  std::vector<Glib::ustring> items;
+  items.reserve(indices.size());
   for (unsigned index : indices)
+    items.push_back(std::to_string(index));
+  grid_model_->splice(0, grid_model_->get_n_items(), items);
+}
+
+void LibraryView::SetupGridTile(const Glib::RefPtr<Gtk::ListItem>& item)
+{
+  auto* tile = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
+  tile->add_css_class("library-tile");
+
+  auto* thumbnail = Gtk::make_managed<CoverThumbnail>(120);
+  thumbnail->set_halign(Gtk::Align::CENTER);
+  tile->append(*thumbnail);
+
+  // Two lines at most, both reserved (set_lines() alone only caps the
+  // height), so a row of one-line titles lines up with a row of two-line
+  // ones. width/max_width_chars keep a long title from widening its column.
+  auto* title = Gtk::make_managed<Gtk::Label>();
+  title->set_wrap(true);
+  title->set_wrap_mode(Pango::WrapMode::WORD_CHAR);
+  title->set_lines(2);
+  title->set_ellipsize(Pango::EllipsizeMode::END);
+  title->set_justify(Gtk::Justification::CENTER);
+  title->set_width_chars(14);
+  title->set_max_width_chars(14);
+  title->set_yalign(0);
+  title->add_css_class("library-tile-title");
+  tile->append(*title);
+
+  auto* subtitle = Gtk::make_managed<Gtk::Label>();
+  subtitle->set_ellipsize(Pango::EllipsizeMode::END);
+  subtitle->set_width_chars(14);
+  subtitle->set_max_width_chars(14);
+  subtitle->add_css_class("dimmed");
+  subtitle->add_css_class("caption");
+  tile->append(*subtitle);
+
+  item->set_child(*tile);
+}
+
+void LibraryView::BindGridTile(const Glib::RefPtr<Gtk::ListItem>& item)
+{
+  auto string_object = std::dynamic_pointer_cast<Gtk::StringObject>(item->get_item());
+  auto* tile = item->get_child();
+  if (!string_object || !tile)
+    return;
+  unsigned index = static_cast<unsigned>(std::stoul(string_object->get_string().raw()));
+  if (index >= all_entries_.size())
+    return;
+  const LibraryEntry& entry = all_entries_[index];
+
+  auto* thumbnail = static_cast<CoverThumbnail*>(tile->get_first_child());
+  auto* title = static_cast<Gtk::Label*>(thumbnail->get_next_sibling());
+  auto* subtitle = static_cast<Gtk::Label*>(title->get_next_sibling());
+
+  std::string title_text = entry.title.empty() ? "Unbenannt" : entry.title;
+  title->set_text(title_text);
+  subtitle->set_text(entry.subtitle);
+  subtitle->set_visible(!entry.subtitle.empty());
+  tile->set_tooltip_text(entry.subtitle.empty() ? title_text : title_text + "\n" + entry.subtitle);
+
+  thumbnail->SetFallbackIconName(entry.icon_name);
+  thumbnail->SetGeneratedFallback(WantsGeneratedCover(entry) ? title_text : "");
+  // See BuildList()'s identical check for why "avatar-default-symbolic"
+  // specifically is the signal to use here. A recycled tile may still show
+  // the previous entry's art, so it's reset to the fallback first.
+  if (load_artist_images_ && entry.icon_name == "avatar-default-symbolic" && entry.art_uri.empty())
   {
-    const LibraryEntry& entry = all_entries_[index];
-    auto* tile = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL, 4);
-    tile->set_size_request(120, -1);
-    // Uniform padding on every side — without it, only the *bottom* of a
-    // tile had breathing room (the gap before the next row), since nothing
-    // ever margined the top of the thumbnail itself (reported live: "kein
-    // padding oberhalb des Covers").
-    tile->set_margin_top(6);
-    tile->set_margin_bottom(6);
-    tile->set_margin_start(6);
-    tile->set_margin_end(6);
-
-    auto* thumbnail = Gtk::make_managed<CoverThumbnail>(120);
-    thumbnail->set_halign(Gtk::Align::CENTER);
-    thumbnail->SetFallbackIconName(entry.icon_name);
-    // See BuildList()'s identical check for why "avatar-default-symbolic"
-    // specifically is the signal to use here.
-    if (load_artist_images && entry.icon_name == "avatar-default-symbolic" && entry.art_uri.empty())
-      thumbnail->LoadArtistImage(entry.title);
-    else
-      thumbnail->SetArtUri(entry.art_uri);
-    tile->append(*thumbnail);
-    thumbnails_.push_back(thumbnail);
-
-    // See WrapTitleToTwoLines()/TruncateToWidth()'s own comment for why
-    // this is done to the actual text up front, rather than left to any
-    // of the label's own width-constraining properties.
-    constexpr int kTileContentWidth = 108;
-    Glib::RefPtr<Pango::Layout> measure_layout = tile->create_pango_layout("");
-
-    auto* title = Gtk::make_managed<Gtk::Label>(
-        WrapTitleToTwoLines(measure_layout, entry.title.empty() ? "Unbenannt" : entry.title, kTileContentWidth));
-    title->set_halign(Gtk::Align::CENTER);
-    title->set_justify(Gtk::Justification::CENTER);
-    // A safety net only, in case a single already-unbreakable word on the
-    // second line is itself still wider than kTileContentWidth — the
-    // ordinary case (two lines that already fit) never needs it.
-    title->set_ellipsize(Pango::EllipsizeMode::END);
-    title->set_lines(2);
-    tile->append(*title);
-
-    if (!entry.subtitle.empty())
-    {
-      auto* subtitle =
-          Gtk::make_managed<Gtk::Label>(TruncateToWidth(measure_layout, entry.subtitle, kTileContentWidth));
-      subtitle->set_halign(Gtk::Align::CENTER);
-      subtitle->set_justify(Gtk::Justification::CENTER);
-      subtitle->add_css_class("dim-label");
-      subtitle->add_css_class("caption");
-      tile->append(*subtitle);
-    }
-
-    // set_lines(2) only CAPS the title's height at two lines, it doesn't
-    // RESERVE it, so a one-line title (most of them) left its own row
-    // shorter than a neighbouring row with a two-line title (AdwWrapBox's
-    // line_homogeneous only equalizes height *within* one line). Padding
-    // the title's own box up to two-line height directly (tried first)
-    // pushed the subtitle down behind a visible blank line under every
-    // short title (reported live: "bei einem kurzen Namen... erst nach
-    // einer Leerzeile"). Measuring this tile's OWN actual title height and
-    // only making up the missing difference *after* the subtitle instead
-    // keeps title and subtitle sitting naturally together, with the
-    // padding landing as trailing space at the tile's bottom, not between
-    // its lines of text.
-    static int two_line_title_height = 0;
-    if (two_line_title_height == 0)
-    {
-      int width_unused = 0;
-      title->create_pango_layout("Ay\nAy")->get_pixel_size(width_unused, two_line_title_height);
-    }
-    int title_min_height = 0, title_nat_height = 0, baseline_unused = 0;
-    title->measure(Gtk::Orientation::VERTICAL, kTileContentWidth, title_min_height, title_nat_height,
-                   baseline_unused, baseline_unused);
-    int spacer_height = std::max(0, two_line_title_height - title_nat_height);
-    if (spacer_height > 0)
-    {
-      auto* spacer = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::VERTICAL);
-      spacer->set_size_request(-1, spacer_height);
-      tile->append(*spacer);
-    }
-
-    // AdwWrapBox takes plain widgets directly (no GtkFlowBoxChild-style
-    // wrapper needed) and has no activation signal of its own, so each
-    // tile gets its own click gesture — capturing `index` directly here
-    // sidesteps the whole "real index vs. display position" bug class
-    // BuildList()'s row-level GObject-data workaround exists for.
-    auto click = Gtk::GestureClick::create();
-    click->signal_released().connect([this, index](int, double, double) { signal_entry_activated_.emit(index); });
-    tile->add_controller(click);
-    adw_wrap_box_append(ADW_WRAP_BOX(wrap_box_), GTK_WIDGET(tile->gobj()));
+    thumbnail->SetArtUri("");
+    thumbnail->LoadArtistImage(entry.title);
+  }
+  else
+  {
+    thumbnail->SetArtUri(entry.art_uri);
   }
 }
 
@@ -688,7 +631,7 @@ void LibraryView::Clear()
 {
   while (Gtk::Widget* child = list_box_.get_first_child())
     list_box_.remove(*child);
-  adw_wrap_box_remove_all(ADW_WRAP_BOX(wrap_box_));
+  grid_model_->splice(0, grid_model_->get_n_items(), std::vector<Glib::ustring>{});
   thumbnails_.clear();
 }
 

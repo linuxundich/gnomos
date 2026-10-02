@@ -1,7 +1,7 @@
 project(
   'gnomos',
   ['c', 'cpp'],
-  version: '0.21.0',
+  version: '0.22.0',
   license: 'GPL-3.0-or-later',
   default_options: [
     'cpp_std=c++17',
@@ -33,7 +33,7 @@ subdir('noson-meson')
 
 # --- GTK4 / libadwaita / gtkmm4 stack ---
 gtkmm_dep = dependency('gtkmm-4.0', version: '>= 4.10')
-adwaita_dep = dependency('libadwaita-1', version: '>= 1.4')
+adwaita_dep = dependency('libadwaita-1', version: '>= 1.9')
 # Only for ArtistImageFetcher's own Deezer JSON responses (see its header
 # comment) — small, predictable-shape API responses, not worth hand-rolling
 # a parser for the way NosonBackend does for a handful of single XML tags

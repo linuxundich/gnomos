@@ -14,6 +14,7 @@
 #include <pangomm/layout.h>
 
 #include "art-cache.h"
+#include "playback-ui.h"
 
 namespace gnomos
 {
@@ -21,38 +22,6 @@ namespace gnomos
 namespace
 {
 
-const char* IconForState(TransportState state)
-{
-  return state == TransportState::Playing ? "media-playback-pause-symbolic"
-                                           : "media-playback-start-symbolic";
-}
-
-// Mirrors the system volume icon convention (low/medium/high thresholds at
-// roughly a third and two-thirds) instead of always showing "high" for any
-// unmuted level, which read as inaccurate at low volumes.
-const char* IconForVolume(uint8_t volume, bool muted)
-{
-  if (muted || volume == 0)
-    return "audio-volume-muted-symbolic";
-  if (volume < 34)
-    return "audio-volume-low-symbolic";
-  if (volume < 67)
-    return "audio-volume-medium-symbolic";
-  return "audio-volume-high-symbolic";
-}
-
-std::string FormatTime(unsigned seconds)
-{
-  unsigned h = seconds / 3600;
-  unsigned m = (seconds % 3600) / 60;
-  unsigned s = seconds % 60;
-  char buf[16];
-  if (h > 0)
-    std::snprintf(buf, sizeof(buf), "%u:%02u:%02u", h, m, s);
-  else
-    std::snprintf(buf, sizeof(buf), "%u:%02u", m, s);
-  return buf;
-}
 
 }  // namespace
 
@@ -61,9 +30,7 @@ PlayerBar::PlayerBar()
 {
   // "view" gives the bar its own slightly different background shade from
   // the content area above it; the separator is what actually reads as
-  // "docked to the bottom edge" (no custom CSS provider anywhere in this
-  // app — see ARCHITECTURE.md — so a plain Gtk::Separator does this job
-  // rather than a hand-rolled top border).
+  // "docked to the bottom edge".
   add_css_class("view");
   set_hexpand(true);
   set_vexpand(false);
@@ -83,11 +50,13 @@ PlayerBar::PlayerBar()
   seek_row->set_margin_start(16);
   seek_row->set_margin_end(16);
   elapsed_label_.add_css_class("caption");
-  elapsed_label_.add_css_class("dim-label");
+  elapsed_label_.add_css_class("dimmed");
   seek_row->append(elapsed_label_);
   position_scale_.set_range(0, 1);
   position_scale_.set_draw_value(false);
   position_scale_.set_hexpand(true);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(position_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL,
+                                 "Wiedergabeposition", -1);
   position_scale_.set_valign(Gtk::Align::CENTER);
   // Gtk::Range's own internal drag gesture claims the pointer sequence, so
   // a separately-added Gtk::GestureClick sibling never reliably sees a
@@ -113,7 +82,7 @@ PlayerBar::PlayerBar()
   });
   seek_row->append(position_scale_);
   duration_label_.add_css_class("caption");
-  duration_label_.add_css_class("dim-label");
+  duration_label_.add_css_class("dimmed");
   duration_button_.set_child(duration_label_);
   duration_button_.add_css_class("flat");
   duration_button_.set_valign(Gtk::Align::CENTER);
@@ -191,20 +160,20 @@ PlayerBar::PlayerBar()
 
   subtitle_label_.set_halign(Gtk::Align::START);
   subtitle_label_.set_ellipsize(Pango::EllipsizeMode::END);
-  subtitle_label_.add_css_class("dim-label");
+  subtitle_label_.add_css_class("dimmed");
   subtitle_label_.add_css_class("caption");
   text_box->append(subtitle_label_);
 
   next_track_label_.set_halign(Gtk::Align::START);
   next_track_label_.set_ellipsize(Pango::EllipsizeMode::END);
-  next_track_label_.add_css_class("dim-label");
+  next_track_label_.add_css_class("dimmed");
   next_track_label_.add_css_class("caption");
   next_track_label_.set_visible(false);
   text_box->append(next_track_label_);
 
   crossfade_label_.set_text("Crossfade aktiv");
   crossfade_label_.set_halign(Gtk::Align::START);
-  crossfade_label_.add_css_class("dim-label");
+  crossfade_label_.add_css_class("dimmed");
   crossfade_label_.add_css_class("caption");
   crossfade_label_.set_visible(false);
   text_box->append(crossfade_label_);
@@ -238,14 +207,16 @@ PlayerBar::PlayerBar()
   previous_button_.add_css_class("circular");
   previous_button_.set_size_request(36, 36);
   previous_button_.set_valign(Gtk::Align::CENTER);
+  SetButtonLabel(previous_button_, "Vorheriger Titel");
   previous_button_.signal_clicked().connect([this] { signal_previous_.emit(); });
   transport_row->append(previous_button_);
 
-  play_pause_button_.set_icon_name(IconForState(TransportState::Stopped));
+  play_pause_button_.set_icon_name(PlayPauseIconForState(TransportState::Stopped));
   play_pause_button_.add_css_class("circular");
   play_pause_button_.add_css_class("suggested-action");
   play_pause_button_.set_size_request(44, 44);
   play_pause_button_.set_valign(Gtk::Align::CENTER);
+  SetButtonLabel(play_pause_button_, PlayPauseLabelForState(TransportState::Stopped));
   play_pause_button_.signal_clicked().connect([this] { signal_play_pause_.emit(); });
   transport_row->append(play_pause_button_);
 
@@ -254,6 +225,7 @@ PlayerBar::PlayerBar()
   next_button_.add_css_class("circular");
   next_button_.set_size_request(36, 36);
   next_button_.set_valign(Gtk::Align::CENTER);
+  SetButtonLabel(next_button_, "Nächster Titel");
   next_button_.signal_clicked().connect([this] { signal_next_.emit(); });
   transport_row->append(next_button_);
 
@@ -286,6 +258,7 @@ PlayerBar::PlayerBar()
   mute_button_.add_css_class("circular");
   mute_button_.set_size_request(32, 32);
   mute_button_.set_valign(Gtk::Align::CENTER);
+  SetButtonLabel(mute_button_, "Stummschalten");
   mute_button_.signal_clicked().connect([this] {
     muted_ = !muted_;
     signal_mute_toggled_.emit(muted_);
@@ -302,6 +275,7 @@ PlayerBar::PlayerBar()
   // not the first, that sets how coarse one scroll notch feels.
   volume_scale_.set_increments(1, 2);
   volume_scale_.set_size_request(120, -1);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(volume_scale_.gobj()), GTK_ACCESSIBLE_PROPERTY_LABEL, "Lautstärke", -1);
   volume_scale_.set_valign(Gtk::Align::CENTER);
   volume_scale_.signal_value_changed().connect([this] {
     if (!suppress_volume_signal_)
@@ -320,7 +294,7 @@ void PlayerBar::Update(const NowPlaying& now_playing)
   {
     title_label_.set_text("Keine Wiedergabe");
     subtitle_label_.set_text("");
-    play_pause_button_.set_icon_name(IconForState(TransportState::Stopped));
+    play_pause_button_.set_icon_name(PlayPauseIconForState(TransportState::Stopped));
     if (position_row_)
       position_row_->set_visible(false);
     return;
@@ -347,7 +321,8 @@ void PlayerBar::Update(const NowPlaying& now_playing)
   subtitle_label_.set_text(subtitle);
   crossfade_label_.set_visible(now_playing.crossfade_enabled);
 
-  play_pause_button_.set_icon_name(IconForState(now_playing.state));
+  play_pause_button_.set_icon_name(PlayPauseIconForState(now_playing.state));
+  SetButtonLabel(play_pause_button_, PlayPauseLabelForState(now_playing.state));
   // set_active() only fires ToggleButton's own signal_toggled(), never the
   // inherited Button::signal_clicked() this widget actually connects to
   // (see the header comment on signal_shuffle_clicked()), so no suppress
@@ -494,6 +469,7 @@ void PlayerBar::UpdateVolume(const VolumeInfo& volume)
 
   muted_ = volume.muted;
   mute_button_.set_icon_name(IconForVolume(volume.volume, volume.muted));
+  SetButtonLabel(mute_button_, volume.muted ? "Ton einschalten" : "Stummschalten");
 }
 
 void PlayerBar::SetEnabled(bool enabled)

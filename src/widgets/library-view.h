@@ -5,9 +5,11 @@
 
 #include <gtkmm/box.h>
 #include <gtkmm/button.h>
-#include <gtkmm/gestureclick.h>
+#include <gtkmm/gridview.h>
 #include <gtkmm/label.h>
 #include <gtkmm/listbox.h>
+#include <gtkmm/listitem.h>
+#include <gtkmm/stringlist.h>
 #include <gtkmm/scrolledwindow.h>
 #include <gtkmm/searchentry.h>
 #include <sigc++/sigc++.h>
@@ -34,7 +36,7 @@ class LibraryView : public Gtk::Box
 {
 public:
   LibraryView();
-  // wrap_box_ needs its own explicit reference — see its own comment.
+  // Releases the two placeholders' own references (see the constructor).
   ~LibraryView() override;
 
   // grid_available: whether this level has any grid-eligible entries at
@@ -118,6 +120,10 @@ public:
   // is shown at all — true only while browsing "R:0/0" ("Radiosender").
   void SetAddVisible(bool visible);
   void Clear();
+  // Clear() plus a loading state — for the moment between navigating to a
+  // level and its (network) browse result arriving. The old count and
+  // view-mode toggle used to stay visible over an empty list meanwhile.
+  void ShowLoading();
 
   sigc::signal<void(unsigned)>& signal_entry_activated() { return signal_entry_activated_; }
   sigc::signal<void()>& signal_back_requested() { return signal_back_requested_; }
@@ -194,7 +200,12 @@ private:
   void BuildList(const std::vector<unsigned>& indices, bool show_favorite_action, bool show_delete_action,
                  bool show_add_to_playlist_action, bool show_reorder_action, bool show_queue_actions,
                  bool load_artist_images, bool show_radio_settings_action);
-  void BuildGrid(const std::vector<unsigned>& indices, bool load_artist_images);
+  // Grid mode only fills grid_model_ with the indices to show; the tiles
+  // themselves are created and recycled by grid_view_'s factory
+  // (SetupGridTile()/BindGridTile()) for whatever is on screen.
+  void BuildGrid(const std::vector<unsigned>& indices);
+  void SetupGridTile(const Glib::RefPtr<Gtk::ListItem>& item);
+  void BindGridTile(const Glib::RefPtr<Gtk::ListItem>& item);
   // Debounced handler for scroller_'s vertical adjustment "value-changed"
   // signal (see the constructor) — checks which of thumbnails_ are
   // actually within scroller_'s own viewport right now and bumps just
@@ -229,20 +240,18 @@ private:
   Gtk::SearchEntry filter_entry_;
   Gtk::ScrolledWindow scroller_;
   Gtk::ListBox list_box_;
-  // scroller_.set_child() repeatedly swaps between this and list_box_ as
-  // the active child (see ApplyFilter()) — unlike list_box_, a genuine
-  // gtkmm member whose C++ object lifetime doesn't depend on GTK's own
-  // parent/child ref-counting, this raw GtkWidget* is only kept alive by
-  // whichever container currently parents it. Without the extra
-  // g_object_ref_sink() the constructor takes (released in the
-  // destructor), switching to list mode and back left this pointer
-  // dangling — confirmed live as a real crash ("invalid unclassed pointer
-  // in cast to 'AdwWrapBox'") the moment Clear() next touched it.
-  GtkWidget* wrap_box_ = nullptr;
+  // Grid mode: a virtualized Gtk::GridView instead of the AdwWrapBox it
+  // replaced, which created a full widget per entry up front (6.7 s for the
+  // local library's 1060 albums — see ARCHITECTURE.md). The model holds
+  // nothing but each shown entry's index into all_entries_, as a string.
+  Gtk::GridView grid_view_;
+  Glib::RefPtr<Gtk::StringList> grid_model_;
   // AdwStatusPage, not a plain dim-label Label — the GNOME-native way to
   // show an empty state (icon + title), same reasoning as every other
   // list-backed view widget's own placeholder_.
   GtkWidget* placeholder_ = nullptr;
+  // list_box_'s placeholder while ShowLoading() is in effect.
+  GtkWidget* loading_placeholder_ = nullptr;
   // Every CoverThumbnail BuildList()/BuildGrid() created for the current
   // (unfiltered-position-indexed — irrelevant here, this is only ever
   // walked for visibility, not indexed into) level, cleared and

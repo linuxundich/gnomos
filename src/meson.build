@@ -21,6 +21,7 @@ gnomos_sources = files(
   'widgets/library-view.cpp',
   'widgets/listenbrainz-scrobbler.cpp',
   'widgets/lyrics-fetcher.cpp',
+  'widgets/playback-ui.cpp',
   'widgets/player-bar.cpp',
   'widgets/queue-view.cpp',
   'widgets/radio-browser-service.cpp',
@@ -29,6 +30,7 @@ gnomos_sources = files(
 executable(
   'gnomos',
   gnomos_sources,
+  gnomos_resources,
   config_h,
   include_directories: config_inc,
   dependencies: [gtkmm_dep, adwaita_dep, noson_dep, json_glib_dep, soup_dep, webp_dep],

@@ -26,7 +26,7 @@ QueueView::QueueView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   toolbar->set_margin_top(6);
   toolbar->set_margin_start(12);
   toolbar->set_margin_end(12);
-  count_label_.add_css_class("dim-label");
+  count_label_.add_css_class("dimmed");
   count_label_.add_css_class("caption");
   count_label_.set_hexpand(true);
   count_label_.set_halign(Gtk::Align::START);
@@ -117,7 +117,7 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
 
     auto* drag_handle = Gtk::make_managed<Gtk::Image>();
     drag_handle->set_from_icon_name("list-drag-handle-symbolic");
-    drag_handle->add_css_class("dim-label");
+    drag_handle->add_css_class("dimmed");
     row_box->append(*drag_handle);
 
     auto* now_playing_icon = Gtk::make_managed<Gtk::Image>();
@@ -128,6 +128,8 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
     now_playing_icons_.push_back(now_playing_icon);
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>();
+    // Seeded by album, so a whole art-less album shares one color.
+    thumbnail->SetGeneratedFallback(!item.album.empty() ? item.album : item.title);
     thumbnail->SetArtUri(item.art_uri);
     row_box->append(*thumbnail);
 
@@ -147,7 +149,7 @@ void QueueView::SetItems(const std::vector<QueueItem>& items)
       auto* artist = Gtk::make_managed<Gtk::Label>(subtitle);
       artist->set_halign(Gtk::Align::START);
       artist->set_ellipsize(Pango::EllipsizeMode::END);
-      artist->add_css_class("dim-label");
+      artist->add_css_class("dimmed");
       artist->add_css_class("caption");
       labels->append(*artist);
     }

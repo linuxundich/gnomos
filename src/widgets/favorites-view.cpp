@@ -109,6 +109,8 @@ void FavoritesView::ApplyFilter()
     row_box->set_margin_end(6);
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>();
+    // Favorites are often stations and playlists without art of their own.
+    thumbnail->SetGeneratedFallback(item.title.empty() ? "?" : item.title);
     thumbnail->SetArtUri(item.art_uri);
     row_box->append(*thumbnail);
 
@@ -125,7 +127,7 @@ void FavoritesView::ApplyFilter()
       auto* subtitle = Gtk::make_managed<Gtk::Label>(item.subtitle);
       subtitle->set_halign(Gtk::Align::START);
       subtitle->set_ellipsize(Pango::EllipsizeMode::END);
-      subtitle->add_css_class("dim-label");
+      subtitle->add_css_class("dimmed");
       subtitle->add_css_class("caption");
       box->append(*subtitle);
     }

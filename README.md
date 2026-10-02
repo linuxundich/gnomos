@@ -34,7 +34,7 @@ tools needed. Download the `.flatpak` file from the latest release, then:
 flatpak install --user gnomos-*.flatpak
 ```
 
-This needs the `org.gnome.Platform` 50 runtime, which Flatpak will offer to
+This needs the `org.gnome.Platform` 51 runtime, which Flatpak will offer to
 install automatically from Flathub if it isn't already present. Updates
 aren't delivered automatically this way (there's no hosted repo behind
 it, just the bundle file) — check the Releases page for newer versions.
@@ -147,7 +147,10 @@ apps, and I wanted a modern client I could keep running on my own hardware.
 - A "Gen 1" badge identifying original first-generation hardware in a room
 - Light/dark appearance override, adjustable cover art cache size
 - Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
-  and repeat
+  and repeat, plus Ctrl+F (search), Ctrl+J (current track), F9 (sidebar),
+  Ctrl+W/Ctrl+Q; the full list is under "Tastenkürzel" (Ctrl+?)
+- A fast, virtualized cover grid for large libraries, and generated
+  covers (a gradient with the initials) for anything without art
 - A section sidebar (Warteschlange, Favoriten, Alarme, Verlauf, Bibliothek)
   in the style of noson-app's own navigation, plus a compact room/zone
   picker in the header bar; the library's own root categories (Interpreten,
@@ -172,7 +175,7 @@ Gnomos isn't packaged anywhere yet, so building from source is currently
 the only way to run it.
 
 Dependencies: `meson`, `ninja`, a C++17 compiler, `pkgconf`, `openssl`,
-`zlib`, `gtkmm-4.0` (>= 4.10), `libadwaita-1` (>= 1.4), `json-glib-1.0`,
+`zlib`, `gtkmm-4.0` (>= 4.10), `libadwaita-1` (>= 1.9), `json-glib-1.0`,
 `libsoup-3.0` and `libwebp`. On Arch Linux:
 
 ```sh
@@ -195,7 +198,7 @@ install it separately. If you already cloned without that flag, run
 `git submodule update --init` to fetch it afterwards.
 
 A Flatpak manifest exists under `build-aux/flatpak/` and has been verified
-end to end (builds, installs, and runs against `org.gnome.Platform`//50).
+end to end (builds, installs, and runs against `org.gnome.Platform`//51).
 See [Download](#download) above for prebuilt bundles, published on
 GitHub Releases but not tracked as closely as every single commit — to
 build and install it yourself instead:

@@ -2022,3 +2022,65 @@ both directions (confirmed via the real backend, not a mock); the
 position label and seek bar tick forward live; closing and reopening the
 window correctly tears down and recreates the C++ object with no crash
 and no stale state.
+
+## UI overhaul, 0.22–0.26 (October 2026)
+
+A planned series of releases following an analysis of the UI against
+GNOME 50/51 and other network music players (Sonos app, Roon, Spotify,
+Plexamp, Amberol, Euphonica, Shortwave). One rule carried over from the
+reverted HIG pass above: **nothing that is one click today becomes two
+clicks.** The header bar keeps every button it has.
+
+### 0.22: GNOME 51, accelerators, room popover
+
+- **Runtime 51.** `meson.build` asks for libadwaita 1.9 — the real floor
+  since `AdwSidebar` — and anything newer than that (libadwaita 1.10,
+  GTK 4.24) goes behind `ADW_CHECK_VERSION`/`GTK_CHECK_VERSION`, so the
+  build still works on a GNOME 50 host.
+- **Own stylesheet.** `data/style.css`, compiled in as a GResource and
+  loaded by `GnomosApplication::on_startup()` at APPLICATION priority.
+  Until now the app deliberately had no CSS of its own; the visual work
+  planned for the next releases (cover-derived colors, the Now Playing
+  sheet) can't be done with Adwaita's stock classes alone. One file for
+  every variant: dark and high contrast are `@media` blocks, as
+  libadwaita 1.9 recommends. Colors use Adwaita's CSS variables.
+- **Accelerators.** Every shortcut with a modifier is a `win.` action with
+  an accelerator registered in `on_startup()`. `OnKeyPressed()` keeps only
+  the bare keys (Space, n, p, m, s, r, Up/Down), which have to stay off
+  while a text field is focused — an accelerator can't express that.
+  Up/Down additionally pass through when the focus is inside a ListBox,
+  FlowBox, ListView/GridView, Range or Popover (`FocusWantsArrowKeys()`),
+  so keyboard navigation in lists works again; Ctrl+Up/Down change the
+  volume from anywhere.
+- **Room popover.** `halign = START`, so it opens towards the window
+  instead of centered on a button at the window's left edge.
+  `signal_room_now_playing_changed` now goes to `OnRoomNowPlayingChanged()`,
+  which only rewrites each row's subtitle and play button
+  (`zone_rows_`) and falls back to the full `OnZonesChanged()` rebuild
+  only when the zone topology itself changed.
+- **Shared playback helpers** (`widgets/playback-ui.{h,cpp}`): `FormatTime`,
+  the play/pause icon and label, the volume icon, and `SetButtonLabel()`
+  (tooltip plus accessible label in one call) — previously copied between
+  `PlayerBar` and `MiniPlayerWindow`.
+
+### 0.22 (continued): virtualized grid, generated covers
+
+- **`LibraryView` grid → `Gtk::GridView`.** The model is a `Gtk::StringList`
+  of indices into `all_entries_`; `SetupGridTile()`/`BindGridTile()` build
+  and rebind tiles for what's on screen. Filtering only splices the
+  model. This replaces both the AdwWrapBox (6.7 s for 1060 albums, see
+  above) and the pixel-measured `TruncateToWidth()`/`WrapTitleToTwoLines()`
+  helpers — GridView gives every column the same width, so plain
+  `width_chars`/`lines(2)` labels line up. `OnScrollSettled()`'s
+  prioritization is no longer needed for the grid: only bound tiles fetch
+  art, and a recycled tile's `SetArtUri()` cancels its predecessor's load.
+  The list mode is still a `Gtk::ListBox`.
+- **`LibraryView::ShowLoading()`** replaces the bare `Clear()` the window
+  calls before a browse: spinner placeholder, no stale count or toggle.
+- **Generated covers** (`CoverThumbnail::SetGeneratedFallback()`): a
+  gradient whose hue comes from a hash of the name, initials rendered with
+  Pango, drawn by Cairo straight into a `Gdk::MemoryTexture` (ARGB32 is
+  premultiplied BGRA in memory, which is GDK's `B8G8R8A8_PREMULTIPLIED`).
+  Cached per name and size. Used for albums and playlists in the library
+  and for every favorite/queue/history entry; artists and categories keep
+  their symbolic icons.

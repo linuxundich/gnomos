@@ -25,7 +25,7 @@ AlarmsView::AlarmsView() : Gtk::Box(Gtk::Orientation::VERTICAL, 0)
   next_alarm_label_.set_halign(Gtk::Align::START);
   next_alarm_label_.set_hexpand(true);
   next_alarm_label_.set_ellipsize(Pango::EllipsizeMode::END);
-  next_alarm_label_.add_css_class("dim-label");
+  next_alarm_label_.add_css_class("dimmed");
   next_alarm_label_.set_visible(false);
   toolbar->append(next_alarm_label_);
   add_button_.set_icon_name("list-add-symbolic");
@@ -87,7 +87,7 @@ void AlarmsView::SetItems(const std::vector<AlarmInfo>& items)
       auto* recurrence_label = Gtk::make_managed<Gtk::Label>(alarm.recurrence);
       recurrence_label->set_halign(Gtk::Align::START);
       recurrence_label->set_ellipsize(Pango::EllipsizeMode::END);
-      recurrence_label->add_css_class("dim-label");
+      recurrence_label->add_css_class("dimmed");
       recurrence_label->add_css_class("caption");
       labels->append(*recurrence_label);
     }

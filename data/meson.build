@@ -32,3 +32,10 @@ endforeach
 # NOTE: translations (i18n.merge_file() + po/) are not wired up yet — see
 # README.md roadmap. The .desktop/.metainfo files below are installed as
 # plain, untranslated data files for now.
+
+# Stylesheet (and any future UI assets), compiled into the executable.
+gnomos_resources = gnome.compile_resources(
+  'gnomos-resources',
+  'gnomos.gresource.xml',
+  c_name: 'gnomos',
+)

@@ -8,6 +8,46 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [0.22.0] - 2026-10-02
+
+### Added
+- Generated covers: albums, playlists, favorites, queue and history
+  entries without art of their own show a colored gradient with their
+  initials instead of a large symbolic icon. The colors follow from the
+  name, so the same album always looks the same.
+- The library shows a spinner while a level loads, instead of the previous
+  level's entry count above an empty list.
+
+### Changed
+- The library grid is a virtualized `GtkGridView`: only the tiles on
+  screen exist, so the local library's 1060 albums appear at once instead
+  of after several seconds. Tiles are real grid items now, reachable and
+  activatable with the keyboard, and lift slightly on hover.
+- The library's entry count sits under the level title instead of on a
+  row of its own.
+- Built against the GNOME 51 runtime (GTK 4.24, libadwaita 1.10). The
+  build now asks for libadwaita 1.9 or newer, which it has silently needed
+  since the sidebar moved to `AdwSidebar`.
+- Keyboard shortcuts with a modifier are real accelerators now and work
+  wherever the focus is. New: Ctrl+Q quits, Ctrl+W closes the window, F9
+  toggles the sidebar on narrow windows, Ctrl+? opens the shortcut list,
+  Ctrl+I shows the current track. Volume moved to Ctrl+Up/Down; plain
+  Up/Down still change the volume, but no longer while a list, grid or
+  slider has the focus, where they used to steal the arrow keys from
+  keyboard navigation.
+- The room popover opens towards the window instead of centered on the
+  room button, which pushed it past the window's left edge.
+- An open room popover no longer rebuilds its whole list every four
+  seconds; only each room's now-playing line and play button update.
+- Replaced the deprecated `.dim-label` style class with `.dimmed`.
+- Gnomos now ships its own stylesheet (`data/style.css`, compiled in as a
+  GResource), the base for the visual work in the next releases.
+
+### Fixed
+- Previous, play/pause, next and mute in the player bar and the mini
+  player had no tooltip and nothing a screen reader could announce. The
+  position and volume sliders are labeled now too.
+
 ## [0.21.0] - 2026-10-01
 
 ### Changed

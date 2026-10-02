@@ -2,6 +2,12 @@
 
 #include "cover-thumbnail.h"
 
+#include <cmath>
+#include <map>
+
+#include <cairomm/context.h>
+#include <cairomm/surface.h>
+#include <gdkmm/memorytexture.h>
 #include <gdkmm/texture.h>
 #include <glibmm/bytes.h>
 #include <glibmm/error.h>
@@ -11,15 +17,123 @@
 #include "art-decode-pool.h"
 #include "artist-image-fetcher.h"
 #include "http-fetch.h"
+#include <pangomm/layout.h>
 
 namespace gnomos
 {
 
 double CoverThumbnail::s_fallback_icon_scale = 1.0;
 
+namespace
+{
+
+// Up to two initials: the first letter or digit of the first two words
+// ("21st Century Breakdown" -> "2C", "Adele" -> "A", "#Beste" -> "B").
+std::string InitialsFor(const std::string& text)
+{
+  Glib::ustring utext(text);
+  Glib::ustring initials;
+  bool at_word_start = true;
+  for (gunichar c : utext)
+  {
+    if (g_unichar_isalnum(c))
+    {
+      if (at_word_start)
+      {
+        initials += Glib::Unicode::toupper(c);
+        if (initials.size() == 2)
+          break;
+      }
+      at_word_start = false;
+    }
+    else if (g_unichar_isspace(c))
+    {
+      at_word_start = true;
+    }
+  }
+  return initials.empty() ? "♪" : initials.raw();
+}
+
+void HslToRgb(double h, double s, double l, double& r, double& g, double& b)
+{
+  auto channel = [&](double n) {
+    double k = std::fmod(n + h / 30.0, 12.0);
+    double a = s * std::min(l, 1.0 - l);
+    return l - a * std::max(-1.0, std::min({k - 3.0, 9.0 - k, 1.0}));
+  };
+  r = channel(0);
+  g = channel(8);
+  b = channel(4);
+}
+
+// Renders (and caches) the generated cover for seed_text. Cairo draws into
+// an ARGB32 image surface, which is premultiplied BGRA in memory on the
+// little-endian machines Flathub builds for — exactly GDK's
+// B8G8R8A8_PREMULTIPLIED, so the pixels go into the texture as they are.
+Glib::RefPtr<Gdk::Texture> GeneratedCover(const std::string& seed_text, int size)
+{
+  static std::map<std::string, Glib::RefPtr<Gdk::Texture>> cache;
+  std::string key = std::to_string(size) + ":" + seed_text;
+  if (auto it = cache.find(key); it != cache.end())
+    return it->second;
+  // Generated covers are cheap to redraw; a plain size cap keeps a long
+  // session's map from growing without bound.
+  if (cache.size() > 4000)
+    cache.clear();
+
+  guint hash = g_str_hash(seed_text.c_str());
+  // Spread similar strings across the color wheel — g_str_hash() alone
+  // keeps neighbors close in its low bits.
+  guint mixed = hash * 2654435761u;
+  double hue = (mixed >> 16) % 360;
+  double r1, g1, b1, r2, g2, b2;
+  HslToRgb(hue, 0.55, 0.52, r1, g1, b1);
+  HslToRgb(std::fmod(hue + 40 + (hash >> 9) % 30, 360.0), 0.60, 0.32, r2, g2, b2);
+
+  auto surface = Cairo::ImageSurface::create(Cairo::Surface::Format::ARGB32, size, size);
+  auto cr = Cairo::Context::create(surface);
+  auto gradient = Cairo::LinearGradient::create(0, 0, size, size);
+  gradient->add_color_stop_rgb(0, r1, g1, b1);
+  gradient->add_color_stop_rgb(1, r2, g2, b2);
+  cr->set_source(gradient);
+  cr->paint();
+
+  // A soft ring in the lower right corner — a hint of a record, so the
+  // tile still reads as "music" and not as a plain color swatch.
+  cr->set_source_rgba(1, 1, 1, 0.10);
+  cr->set_line_width(size * 0.06);
+  cr->arc(size * 0.86, size * 0.86, size * 0.42, 0, 2 * M_PI);
+  cr->stroke();
+
+  auto layout = Pango::Layout::create(cr);
+  Pango::FontDescription font("Adwaita Sans, Cantarell, sans-serif");
+  font.set_weight(Pango::Weight::HEAVY);
+  font.set_absolute_size(size * 0.34 * Pango::SCALE);
+  layout->set_font_description(font);
+  layout->set_text(InitialsFor(seed_text));
+  int text_w = 0, text_h = 0;
+  layout->get_pixel_size(text_w, text_h);
+  cr->move_to((size - text_w) / 2.0, (size - text_h) / 2.0);
+  cr->set_source_rgba(1, 1, 1, 0.92);
+  layout->show_in_cairo_context(cr);
+  surface->flush();
+
+  int stride = surface->get_stride();
+  auto bytes = Glib::Bytes::create(surface->get_data(), static_cast<gsize>(stride) * size);
+  auto texture = Gdk::MemoryTexture::create(size, size, Gdk::MemoryTexture::Format::B8G8R8A8_PREMULTIPLIED, bytes,
+                                            static_cast<gsize>(stride));
+  cache.emplace(key, texture);
+  return texture;
+}
+
+}  // namespace
+
 CoverThumbnail::CoverThumbnail(int pixel_size) : pixel_size_(pixel_size)
 {
   add_css_class("card");
+  add_css_class("cover-thumbnail");
+  // Clips a generated cover (and real art) to the card's rounded corners.
+  set_overflow(Gtk::Overflow::HIDDEN);
   ShowFallback();
 }
 
@@ -37,6 +151,12 @@ void CoverThumbnail::SetFallbackIconScale(double scale)
 
 void CoverThumbnail::ShowFallback()
 {
+  if (!generated_seed_.empty())
+  {
+    set_pixel_size(pixel_size_);
+    set(GeneratedCover(generated_seed_, pixel_size_ * get_scale_factor()));
+    return;
+  }
   set_pixel_size(static_cast<int>(pixel_size_ * s_fallback_icon_scale));
   set_from_icon_name(fallback_icon_name_);
 }
@@ -44,6 +164,15 @@ void CoverThumbnail::ShowFallback()
 void CoverThumbnail::SetFallbackIconName(const std::string& icon_name)
 {
   fallback_icon_name_ = icon_name.empty() ? "audio-x-generic-symbolic" : icon_name;
+  if (current_uri_.empty())
+    ShowFallback();
+}
+
+void CoverThumbnail::SetGeneratedFallback(const std::string& seed_text)
+{
+  if (seed_text == generated_seed_)
+    return;
+  generated_seed_ = seed_text;
   if (current_uri_.empty())
     ShowFallback();
 }

@@ -8,34 +8,11 @@
 #include <gtkmm/box.h>
 #include <pangomm/layout.h>
 
+#include "widgets/playback-ui.h"
+
 namespace gnomos
 {
 
-namespace
-{
-
-const char* IconForState(TransportState state)
-{
-  return state == TransportState::Playing ? "media-playback-pause-symbolic" : "media-playback-start-symbolic";
-}
-
-// Same formatting PlayerBar's own (anonymous-namespace, not shared across
-// translation units) FormatTime() uses — small enough that a shared header
-// for just this isn't worth it.
-std::string FormatTime(unsigned seconds)
-{
-  unsigned h = seconds / 3600;
-  unsigned m = (seconds % 3600) / 60;
-  unsigned s = seconds % 60;
-  char buf[16];
-  if (h > 0)
-    std::snprintf(buf, sizeof(buf), "%u:%02u:%02u", h, m, s);
-  else
-    std::snprintf(buf, sizeof(buf), "%u:%02u", m, s);
-  return buf;
-}
-
-}  // namespace
 
 MiniPlayerWindow::MiniPlayerWindow()
 {
@@ -61,14 +38,14 @@ MiniPlayerWindow::MiniPlayerWindow()
   subtitle_label_.set_halign(Gtk::Align::CENTER);
   subtitle_label_.set_justify(Gtk::Justification::CENTER);
   subtitle_label_.set_ellipsize(Pango::EllipsizeMode::END);
-  subtitle_label_.add_css_class("dim-label");
+  subtitle_label_.add_css_class("dimmed");
   subtitle_label_.add_css_class("caption");
   content->append(subtitle_label_);
 
   auto* seek_row = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
   seek_row->set_margin_top(6);
   elapsed_label_.add_css_class("caption");
-  elapsed_label_.add_css_class("dim-label");
+  elapsed_label_.add_css_class("dimmed");
   seek_row->append(elapsed_label_);
   position_scale_.set_range(0, 1);
   position_scale_.set_draw_value(false);
@@ -93,7 +70,7 @@ MiniPlayerWindow::MiniPlayerWindow()
   });
   seek_row->append(position_scale_);
   duration_label_.add_css_class("caption");
-  duration_label_.add_css_class("dim-label");
+  duration_label_.add_css_class("dimmed");
   seek_row->append(duration_label_);
   seek_row->set_visible(false);
   seek_row_ = seek_row;
@@ -112,14 +89,16 @@ MiniPlayerWindow::MiniPlayerWindow()
   previous_button_.add_css_class("circular");
   previous_button_.set_size_request(36, 36);
   previous_button_.set_valign(Gtk::Align::CENTER);
+  SetButtonLabel(previous_button_, "Vorheriger Titel");
   previous_button_.signal_clicked().connect([this] { signal_previous_.emit(); });
   transport_row->append(previous_button_);
 
-  play_pause_button_.set_icon_name(IconForState(TransportState::Stopped));
+  play_pause_button_.set_icon_name(PlayPauseIconForState(TransportState::Stopped));
   play_pause_button_.add_css_class("circular");
   play_pause_button_.add_css_class("suggested-action");
   play_pause_button_.set_size_request(48, 48);
   play_pause_button_.set_valign(Gtk::Align::CENTER);
+  SetButtonLabel(play_pause_button_, PlayPauseLabelForState(TransportState::Stopped));
   play_pause_button_.signal_clicked().connect([this] { signal_play_pause_.emit(); });
   transport_row->append(play_pause_button_);
 
@@ -128,6 +107,7 @@ MiniPlayerWindow::MiniPlayerWindow()
   next_button_.add_css_class("circular");
   next_button_.set_size_request(36, 36);
   next_button_.set_valign(Gtk::Align::CENTER);
+  SetButtonLabel(next_button_, "Nächster Titel");
   next_button_.signal_clicked().connect([this] { signal_next_.emit(); });
   transport_row->append(next_button_);
 
@@ -144,7 +124,7 @@ void MiniPlayerWindow::Update(const NowPlaying& now_playing)
   {
     title_label_.set_text("Keine Wiedergabe");
     subtitle_label_.set_text("");
-    play_pause_button_.set_icon_name(IconForState(TransportState::Stopped));
+    play_pause_button_.set_icon_name(PlayPauseIconForState(TransportState::Stopped));
     seek_row_->set_visible(false);
     art_.SetArtUri("");
     return;
@@ -156,7 +136,8 @@ void MiniPlayerWindow::Update(const NowPlaying& now_playing)
     subtitle += (subtitle.empty() ? "" : " — ") + now_playing.album;
   subtitle_label_.set_text(subtitle);
 
-  play_pause_button_.set_icon_name(IconForState(now_playing.state));
+  play_pause_button_.set_icon_name(PlayPauseIconForState(now_playing.state));
+  SetButtonLabel(play_pause_button_, PlayPauseLabelForState(now_playing.state));
   // Same device-reported-capability gating PlayerBar's own transport
   // buttons use — some radio stations don't support Next/Previous at all.
   next_button_.set_sensitive(now_playing.can_go_next);

@@ -36,6 +36,12 @@ public:
   // since SetArtUri() only re-renders the fallback for an already-empty
   // uri if the uri actually *changes* — see its own early-return check).
   void SetFallbackIconName(const std::string& icon_name);
+  // Non-empty: instead of a symbolic icon, the fallback is a generated
+  // cover — a two-tone gradient whose hue is derived from seed_text (so
+  // the same album always gets the same colors) with its initials on top.
+  // Meant for albums and playlists, whose fallback icon used to dominate a
+  // grid with missing art. Empty switches back to the plain icon.
+  void SetGeneratedFallback(const std::string& seed_text);
   // Resolves artist_name to a real photo via ArtistImageFetcher (Deezer —
   // see its own header for the opt-in/privacy reasoning), then loads it
   // the same way SetArtUri() would once resolved. Call this *instead of*
@@ -90,6 +96,7 @@ private:
   // the widget to shrink an arbitrarily-sized source image on its own.
   int pixel_size_ = 40;
   std::string fallback_icon_name_ = "audio-x-generic-symbolic";
+  std::string generated_seed_;
   std::string current_uri_;
   // Set by LoadArtistImage(), cleared once SetArtUri() actually runs (the
   // lookup resolved, one way or another) — lets PrioritizeLoad() reach

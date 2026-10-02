@@ -58,6 +58,7 @@ void HistoryView::SetItems(const std::vector<HistoryEntry>& items)
     row_box->set_margin_end(6);
 
     auto* thumbnail = Gtk::make_managed<CoverThumbnail>();
+    thumbnail->SetGeneratedFallback(!entry.album.empty() ? entry.album : entry.title);
     thumbnail->SetArtUri(entry.art_uri);
     row_box->append(*thumbnail);
 
@@ -77,7 +78,7 @@ void HistoryView::SetItems(const std::vector<HistoryEntry>& items)
       auto* subtitle = Gtk::make_managed<Gtk::Label>(subtitle_text);
       subtitle->set_halign(Gtk::Align::START);
       subtitle->set_ellipsize(Pango::EllipsizeMode::END);
-      subtitle->add_css_class("dim-label");
+      subtitle->add_css_class("dimmed");
       subtitle->add_css_class("caption");
       labels->append(*subtitle);
     }

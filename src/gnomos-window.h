@@ -296,6 +296,13 @@ private:
   // before it does).
   void LoadSplitFractions();
   bool OnKeyPressed(guint keyval, guint keycode, Gdk::ModifierType state);
+  // Shared by the player bar, the mini player, the "win.play-pause" action
+  // and the Space shortcut.
+  void TogglePlayPause();
+  void OnRoomNowPlayingChanged();
+  void UpdateZoneRowsNowPlaying();
+  void StepVolume(int delta);
+  void SeekRelative(int seconds);
 
   void ShowToast(const std::string& message);
   // Polls NosonBackend::CheckLibraryIndexProgressAsync() every 2s after a
@@ -638,6 +645,16 @@ private:
   GtkWidget* view_stack_ = nullptr;
 
   std::vector<ZoneInfo> current_zones_;
+  // The parts of each room row that change with that room's playback —
+  // see OnRoomNowPlayingChanged(). Pointers into zones_list_box_'s rows,
+  // cleared together with them in OnZonesChanged().
+  struct ZoneRowWidgets
+  {
+    std::string coordinator_uuid;
+    Gtk::Label* subtitle = nullptr;
+    Gtk::Button* play_pause = nullptr;
+  };
+  std::vector<ZoneRowWidgets> zone_rows_;
   std::string selected_group_id_;
   // Loaded once at startup from state.ini; consumed (matched against, then
   // cleared regardless of outcome) the first time OnZonesChanged() sees a

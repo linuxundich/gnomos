@@ -7,7 +7,9 @@
 #include <gdkmm/display.h>
 #include <glibmm/fileutils.h>
 #include <glibmm/miscutils.h>
+#include <gtkmm/cssprovider.h>
 #include <gtkmm/icontheme.h>
+#include <gtkmm/stylecontext.h>
 
 #include "config.h"
 
@@ -42,6 +44,34 @@ void GnomosApplication::on_startup()
   std::string icon_dir = Glib::build_filename(SOURCE_ROOT, "data", "icons");
   if (Glib::file_test(icon_dir, Glib::FileTest::IS_DIR))
     Gtk::IconTheme::get_for_display(Gdk::Display::get_default())->add_search_path(icon_dir);
+
+  // data/style.css, compiled in as a GResource. GnomosApplication is a
+  // plain Gtk::Application rather than an AdwApplication (no gtkmm binding,
+  // see ARCHITECTURE.md), so libadwaita's automatic style.css loading
+  // doesn't apply — this does the same thing by hand. APPLICATION priority
+  // sits above the Adwaita theme, below user CSS.
+  auto css = Gtk::CssProvider::create();
+  css->load_from_resource("/de/linuxundich/Gnomos/style.css");
+  Gtk::StyleContext::add_provider_for_display(Gdk::Display::get_default(), css,
+                                              GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+  // Keyboard shortcuts with a modifier are real accelerators on their
+  // window actions — they work regardless of which widget has focus and
+  // show up next to their menu items. The bare single-key ones (Space, n,
+  // p, ...) stay in GnomosWindow::OnKeyPressed(), which can skip them
+  // while a text field has focus; an accelerator can't.
+  set_accels_for_action("win.settings", {"<Control>comma"});
+  set_accels_for_action("win.shortcuts", {"<Control>question"});
+  set_accels_for_action("win.quit", {"<Control>q"});
+  set_accels_for_action("win.close", {"<Control>w"});
+  set_accels_for_action("win.search-library", {"<Control>f"});
+  set_accels_for_action("win.jump-to-current", {"<Control>j"});
+  set_accels_for_action("win.toggle-sidebar", {"F9"});
+  set_accels_for_action("win.toggle-now-playing", {"<Control>i"});
+  set_accels_for_action("win.volume-up", {"<Control>Up"});
+  set_accels_for_action("win.volume-down", {"<Control>Down"});
+  set_accels_for_action("win.seek-forward", {"<Alt>Right"});
+  set_accels_for_action("win.seek-backward", {"<Alt>Left"});
 
   // The track-change notification's buttons/default action (see
   // GnomosWindow::SendTrackChangeNotification()) can only ever reach

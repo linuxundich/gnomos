@@ -1,0 +1,49 @@
+/* Gnomos' own stylesheet, compiled into the binary as a GResource and
+ * loaded by GnomosApplication::on_startup(). One file for every variant:
+ * dark and high-contrast tweaks go into @media blocks (libadwaita 1.9
+ * deprecated the separate style-dark.css/style-hc.css files).
+ *
+ * Colors come from libadwaita's named CSS variables wherever possible, so
+ * accent color, dark mode and high contrast keep working without extra
+ * rules here. */
+
+/* Room popover: a little more air than navigation-sidebar's default rows. */
+.room-list row {
+  border-radius: 9px;
+}
+
+/* Library grid (Gtk::GridView in LibraryView). */
+gridview.library-grid {
+  padding: 6px;
+}
+
+gridview.library-grid > child {
+  padding: 8px 4px;
+  border-radius: 12px;
+}
+
+.library-tile-title {
+  font-weight: 600;
+  /* Two lines reserved, see LibraryView::SetupGridTile(). */
+  min-height: 2.6em;
+}
+
+/* Generated and real covers alike: rounded corners, a soft lift. */
+.cover-thumbnail.card {
+  border-radius: 8px;
+}
+
+gridview.library-grid > child:hover .cover-thumbnail {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px alpha(black, 0.22);
+}
+
+.cover-thumbnail {
+  transition: transform 180ms ease-out, box-shadow 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cover-thumbnail {
+    transition: none;
+  }
+}
