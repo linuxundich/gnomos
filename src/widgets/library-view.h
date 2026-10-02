@@ -201,6 +201,7 @@ private:
   // Both views share entries_model_ (indices into all_entries_ as strings)
   // and build/recycle their rows through these factory callbacks.
   void SetupListRow(const Glib::RefPtr<Gtk::ListItem>& item);
+  std::string GeneratedSeed(const LibraryEntry& entry) const;
   void BindListRow(const Glib::RefPtr<Gtk::ListItem>& item);
   void SetupGridTile(const Glib::RefPtr<Gtk::ListItem>& item);
   void BindGridTile(const Glib::RefPtr<Gtk::ListItem>& item);

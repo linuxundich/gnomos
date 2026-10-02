@@ -22,6 +22,12 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.28.2" date="2026-10-02">
+      <description>
+        <p>Tracks without their own cover show the album's cover, or a
+        generated one, instead of a plain note symbol. New screenshots.</p>
+      </description>
+    </release>
     <release version="0.28.1" date="2026-10-02">
       <description>
         <p>The end of the sidebar and of every page no longer hides behind

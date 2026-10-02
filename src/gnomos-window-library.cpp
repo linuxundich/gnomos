@@ -178,6 +178,16 @@ void GnomosWindow::OnFavoritesChanged()
 void GnomosWindow::OnLibraryChanged()
 {
   current_library_entries_ = backend_->GetLibraryEntries();
+  // Display only: a track without art of its own shows the cover of the
+  // album (or playlist) it was opened from. Indices stay as the backend
+  // has them, so nothing that acts on an entry is affected.
+  if (auto art = library_container_art_.find(library_stack_.back().first);
+      art != library_container_art_.end() && !art->second.empty())
+  {
+    for (LibraryEntry& entry : current_library_entries_)
+      if (!entry.is_container && entry.art_uri.empty())
+        entry.art_uri = art->second;
+  }
 
   // Grid view (cover-art tiles, like Euphonica's own Albums/Artists grid —
   // https://github.com/htkhiem/euphonica) is available whenever any entry
@@ -243,6 +253,10 @@ void GnomosWindow::OnLibraryEntryActivated(unsigned index)
   else if (entry.is_container)
   {
     library_stack_.push_back({entry.object_id, entry.title.empty() ? "—" : entry.title});
+    // Tracks inside an album often come without art of their own while
+    // the album has some — remembered here and lent to them in
+    // OnLibraryChanged().
+    library_container_art_[entry.object_id] = entry.art_uri;
     // Cleared and retitled synchronously, before the (async, real
     // network round-trip) browse — same fix and reasoning as the nav
     // sidebar's own library shortcuts: library_view_ otherwise keeps

@@ -2294,3 +2294,13 @@ bar with no way to scroll them clear. The content (the breakpoint bin)
 now gets a bottom margin equal to the sheet's `bottom-bar-height`,
 updated on `notify::bottom-bar-height` — the property libadwaita provides
 for exactly this.
+
+### 0.28.2: covers for tracks
+
+Browsing into a container records its `art_uri` in
+`GnomosWindow::library_container_art_` (object_id → art). `OnLibraryChanged()`
+lends it to every leaf entry of that level that has no art of its own —
+in the window's copy of the entries only, so the backend's indices are
+untouched. `LibraryView`'s `WantsGeneratedCover()` now also covers plain
+tracks (no specific icon); their seed is the subtitle (artist/album), so
+one album's tracks share a color while the full track list still varies.

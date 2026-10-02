@@ -8,7 +8,13 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
-## [Unreleased]
+## [0.28.2] - 2026-10-02
+
+### Fixed
+- Tracks without art of their own no longer show a large black note in
+  the library: they show the cover of the album or playlist they were
+  opened from, and anything still without art gets a generated cover
+  (tracks of one album share its color).
 
 ### Changed
 - New README screenshots: Now Playing, queue, album grid, room picker,

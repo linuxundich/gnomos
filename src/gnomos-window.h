@@ -2,6 +2,7 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 #include <vector>
@@ -654,6 +655,9 @@ private:
   // (object_id, display title) from root to current level; back() is the
   // level currently shown. Root is {"", "Bibliothek"}.
   std::vector<std::pair<std::string, std::string>> library_stack_;
+  // object_id -> art_uri of every container browsed into, so its tracks
+  // can borrow the cover — see OnLibraryChanged().
+  std::map<std::string, std::string> library_container_art_;
   std::vector<LibraryEntry> current_library_entries_;
   // The root level's own entries specifically (a copy of
   // current_library_entries_ taken whenever library_stack_.size() == 1) —

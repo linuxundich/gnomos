@@ -50,11 +50,14 @@ extern "C" void DeleteLibraryGuintCallback(gpointer data, GClosure*)
 }
 
 // Albums and playlists get a generated cover when they have no art of
-// their own — see CoverThumbnail::SetGeneratedFallback(). Artists keep
-// their silhouette (or a real photo), categories their own symbol.
+// their own — see CoverThumbnail::SetGeneratedFallback() — and so do
+// plain tracks (no specific icon of their own), which would otherwise show
+// a large note glyph. Artists keep their silhouette (or a real photo),
+// categories their own symbol.
 bool WantsGeneratedCover(const LibraryEntry& entry)
 {
-  return entry.icon_name == "media-optical-cd-symbolic" || entry.icon_name == "media-playlist-consecutive-symbolic";
+  return entry.icon_name == "media-optical-cd-symbolic" || entry.icon_name == "media-playlist-consecutive-symbolic" ||
+         (!entry.is_container && entry.icon_name.empty());
 }
 }  // namespace
 
@@ -381,6 +384,18 @@ Gtk::Button* MakeRowButton(Gtk::Box& row, const char* icon, const char* tooltip)
 }
 }  // namespace
 
+// Containers are colored by their own name; tracks by their subtitle
+// (artist, or artist and album), so the tracks of one album share a color
+// while a list of all tracks still varies.
+std::string LibraryView::GeneratedSeed(const LibraryEntry& entry) const
+{
+  if (!entry.is_container && !entry.subtitle.empty())
+    return entry.subtitle;
+  if (!entry.is_container && !level_title_.get_text().empty())
+    return level_title_.get_text();
+  return entry.title.empty() ? "?" : entry.title;
+}
+
 void LibraryView::SetupListRow(const Glib::RefPtr<Gtk::ListItem>& item)
 {
   auto* row_box = Gtk::make_managed<Gtk::Box>(Gtk::Orientation::HORIZONTAL, 8);
@@ -458,7 +473,7 @@ void LibraryView::BindListRow(const Glib::RefPtr<Gtk::ListItem>& item)
   row->subtitle->set_visible(!entry.subtitle.empty());
 
   row->thumbnail->SetFallbackIconName(entry.icon_name);
-  row->thumbnail->SetGeneratedFallback(WantsGeneratedCover(entry) ? entry.title : "");
+  row->thumbnail->SetGeneratedFallback(WantsGeneratedCover(entry) ? GeneratedSeed(entry) : "");
   // "avatar-default-symbolic" is exactly the icon IconNameForSubType()
   // (noson-backend.cpp) assigns for an artist — the one entry type with no
   // real art of its own to fall back to. A recycled row may still show the
@@ -550,7 +565,7 @@ void LibraryView::BindGridTile(const Glib::RefPtr<Gtk::ListItem>& item)
   tile->set_tooltip_text(entry.subtitle.empty() ? title_text : title_text + "\n" + entry.subtitle);
 
   thumbnail->SetFallbackIconName(entry.icon_name);
-  thumbnail->SetGeneratedFallback(WantsGeneratedCover(entry) ? title_text : "");
+  thumbnail->SetGeneratedFallback(WantsGeneratedCover(entry) ? GeneratedSeed(entry) : "");
   // See BindListRow()'s identical check for why "avatar-default-symbolic"
   // specifically is the signal to use here. A recycled tile may still show
   // the previous entry's art, so it's reset to the fallback first.
