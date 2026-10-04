@@ -2,284 +2,89 @@
   <img src="data/icons/hicolor/128x128/apps/de.linuxundich.Gnomos.png" alt="Gnomos icon" width="128" height="128">
 </p>
 
-# Gnomos
+<h1 align="center">Gnomos</h1>
 
-Gnomos is a GTK4/libadwaita application for controlling Sonos speakers from
-the GNOME desktop. It talks directly to your Sonos system over the local
-network — discovery, playback, volume, grouping, queue, favorites, alarms —
-and pays particular attention to first-generation hardware (ZP80, ZP90,
-ZP100, ZP120, CR100) that Sonos's own current apps have dropped support for.
-
-## Screenshots
+<p align="center"><strong>Your Sonos speakers, at home on the GNOME desktop.</strong></p>
 
 <p align="center">
-  <img src="screenshots/gnomos-now-playing.png" alt="The Now Playing view: a large cover on a blurred background in the cover's colors, playback controls and the upcoming queue" width="100%">
+  Play music, group rooms and set the volume in every room from a native GTK&nbsp;4 and libadwaita app.
+  Gnomos talks to your speakers directly over your home network. No Sonos account and no cloud service needed.
 </p>
 
-The Now Playing view slides up from the player bar: a large cover on a
-blurred background in the cover's own colors, the controls, quick links to
-the artist and album, and the upcoming queue — or time-synced lyrics, if
-you turn on LRCLIB lyrics.
-
 <p align="center">
-  <img src="screenshots/gnomos-queue.png" alt="The queue with the section sidebar and the player bar" width="49%">
-  <img src="screenshots/gnomos-albums.png" alt="The local library's albums as a cover grid" width="49%">
+  <a href="https://github.com/linuxundich/gnomos/releases/latest"><strong>Download Flatpak</strong></a>
+  &nbsp;·&nbsp; Flathub: planned &nbsp;·&nbsp;
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Left: the queue, with the section sidebar, a "playing" indicator on the
-current track and the player bar. Right: the local library's albums as a
-cover grid — 1060 albums, shown instantly.
-
 <p align="center">
-  <img src="screenshots/gnomos-rooms.png" alt="The room picker with the rooms' current playback" width="49%">
-  <img src="screenshots/gnomos-preferences.png" alt="The two-column preferences with a sidebar of categories" width="49%">
+  <img src="screenshots/gnomos-now-playing.png" alt="Gnomos Now Playing view with a large cover, controls and the upcoming queue" width="100%">
 </p>
 
-Left: the room picker shows what's playing where and plays or pauses any
-room directly. Right: the preferences, with a sidebar of categories and a
-search that finds them by what's inside.
+## What it does
+
+### Now Playing, with lyrics
+
+Click the player bar and the current track fills the window: a large cover on a background in its own colors, what plays next, and time-synced lyrics. Click a line to jump to that part of the song. Prefer vinyl? The cover can spin as a record.
 
 <p align="center">
-  <img src="screenshots/gnomos-dark-record-player.png" alt="Dark mode with the optional record player look" width="66%">
+  <img src="screenshots/gnomos-dark-record-player.png" alt="Dark mode with the record player look and synced lyrics" width="80%">
+</p>
+
+### Every room in one place
+
+The room picker shows what plays where. Drag a room onto another to group them, set each room's volume, or start and pause any room with one click.
+
+### Your whole music collection
+
+Browse the music share on your network, your Sonos favorites and playlists, internet radio and the services you linked to Sonos, such as Spotify. Even large libraries open instantly as a cover grid.
+
+<p align="center">
+  <img src="screenshots/gnomos-rooms.png" alt="The room picker with the playback of each room" width="49%">
+  <img src="screenshots/gnomos-albums.png" alt="Albums of the local library as a cover grid" width="49%">
+</p>
+
+### Part of your GNOME desktop
+
+Media keys, the lock screen and the media player in Quick Settings work right away. An optional Shell extension adds a volume slider for every room to Quick Settings. A poster-style mini player, dark mode and desktop notifications are built in.
+
+<p align="center">
+  <img src="screenshots/gnomos-queue.png" alt="The queue with the sidebar and the player bar" width="66%">
   <img src="screenshots/gnomos-mini-player.png" alt="The poster-style mini player" width="31%">
 </p>
 
-Left: dark mode, with the optional record player look — the cover turns
-into a record that spins while the music plays. Right: the mini player,
-a small poster whose controls fade in on hover.
+### A second life for older speakers
 
-The album covers in the screenshots come from the author's own music
-library and belong to their respective artists and labels.
+Gnomos works with any Sonos system on your network and keeps first-generation players going, the ZP80, ZP90, ZP100, ZP120 and CR100, which the current Sonos apps no longer support.
 
-## Download
+## How it works
 
-Prebuilt Flatpak bundles are published on the
-[Releases page](https://github.com/linuxundich/gnomos/releases) — no build
-tools needed. Download the `.flatpak` file from the latest release, then:
+1. Gnomos finds your Sonos speakers on the local network by itself.
+2. It plays everything Sonos can reach: your music share, radio stations and linked services.
+3. Everything else stays at home. Lyrics from LRCLIB and artist photos from Deezer are the only online lookups, and both stay off until you turn them on.
+
+Under the hood Gnomos uses [libnoson](https://github.com/janbar/noson), the library behind [noson-app](https://github.com/janbar/noson-app).
+
+## Install
+
+> [!NOTE]
+> A release on Flathub is planned. For now, install the Flatpak bundle from the Releases page.
+
+1. Download `gnomos-<version>-x86_64.flatpak` from the [latest release](https://github.com/linuxundich/gnomos/releases/latest).
+2. Install it:
 
 ```sh
 flatpak install --user gnomos-*.flatpak
 ```
 
-This needs the `org.gnome.Platform` 51 runtime, which Flatpak will offer to
-install automatically from Flathub if it isn't already present. Updates
-aren't delivered automatically this way (there's no hosted repo behind
-it, just the bundle file) — check the Releases page for newer versions.
-See [Building](#building) below to build from source instead, including
-the companion GNOME Shell extension, which isn't part of the Flatpak
-bundle and is always a separate, manual install either way.
+Flatpak fetches the GNOME 51 runtime from Flathub if it is missing. Bundles don't update themselves, so check the Releases page for new versions.
 
-### Upgrading from 0.20.x or earlier
+Optional: the [GNOME Shell extension](gnome-shell-extension/gnomos-volume@linuxundich.de/README.md) for room volumes in Quick Settings. To build Gnomos yourself, see [docs/BUILDING.md](docs/BUILDING.md).
 
-Version 0.21.0 changed the application ID from `de.christophlangner.Gnomos`
-to `de.linuxundich.Gnomos`, so the new bundle installs as a separate app
-next to the old one rather than updating it. To keep your linked services,
-scenes and settings, quit the old Gnomos and copy its data over before the
-first start of the new one, then remove the old app:
+## More
 
-```sh
-cp -a ~/.var/app/de.christophlangner.Gnomos ~/.var/app/de.linuxundich.Gnomos
-flatpak uninstall --user de.christophlangner.Gnomos
-```
+- [All features](docs/FEATURES.md) · [Changelog](CHANGELOG.md) · [Architecture notes](ARCHITECTURE.md)
+- [Translate Gnomos](docs/TRANSLATING.md) into your language (English and German included)
+- Found a bug or tested other Sonos hardware? [Open an issue](https://github.com/linuxundich/gnomos/issues)
 
-The Shell extension was renamed as well, to `gnomos-volume@linuxundich.de`:
-remove the old `gnomos-volume@christophlangner.de` and install the new one
-as described in its [README](gnome-shell-extension/gnomos-volume@linuxundich.de/README.md).
-
-## About
-
-Gnomos is built on top of [libnoson](https://github.com/janbar/noson), the
-C++ library originally written for [noson-app](https://github.com/janbar/noson-app),
-a Qt/QML Sonos controller for Linux, BSD and other Unix-like systems. If
-you're looking for a mature, actively maintained Sonos client and don't mind
-a Qt-based UI, noson-app is very much worth using — it already does
-everything Gnomos does and more.
-
-Gnomos exists because I wanted a native GNOME application instead: something
-built with GTK4 and libadwaita that looks and behaves like the rest of my
-desktop, rather than a Qt/QML app running alongside it. Since noson-app's
-own libnoson backend already does the hard work of actually talking to
-Sonos hardware, writing a new frontend on top of it seemed like a
-reasonable way to give noson new legs as a proper GNOME citizen, without
-starting from zero on the UPnP/SOAP side. Gnomos does not modify or fork
-libnoson; it links against it as a git submodule and uses its public API.
-
-The first-generation focus comes from the same motivation: those speakers
-are still fully functional, just no longer supported by Sonos's current
-apps, and I wanted a modern client I could keep running on my own hardware.
-
-## Features
-
-- Discovery of Sonos zones on the local network, with a header-bar
-  spinner showing whenever the app is actually waiting on a response
-  from the Sonos system
-- Playback controls, volume and mute — aware of multi-room groups, not just
-  a single speaker
-- Shuffle and repeat, including repeat-one, with both greyed out on
-  sources that don't support them (radio, line-in)
-- Zone grouping and ungrouping (including a one-click "disband group"),
-  with a per-room volume slider
-- A bottom Now Playing bar with cover art and a wide seek bar, tinted in
-  the colors of the current cover
-- A Now Playing view that slides up from the bar (click it, or Ctrl+I): a
-  large cover on a blurred, cover-colored background, the controls, quick
-  links to search the library for the artist or album, the upcoming queue,
-  and lyrics from LRCLIB (opt-in) — time-synced where LRCLIB has them, with
-  the current line highlighted and clickable lines to jump there. An
-  optional record-player look turns the cover into a spinning record
-- Little touches: animated "playing" bars for the current track and
-  playing rooms, a sleep timer ring around the play button, a sunrise
-  greeting for a ringing alarm, rooms sliding into a group
-- A poster-style mini player: the cover fills a small square window, the
-  controls fade in on hover
-- Queue management: reordering, removing tracks, saving as a Sonos playlist
-- Favorites, with search, "add to favorites" from anywhere in the library,
-  and "play all"/"add all to queue" for the whole list
-- Alarms: create, edit, duplicate, enable/disable, delete, with a sound
-  preview and a "next alarm" indicator
-- A play history tab (tracked locally, since Sonos doesn't keep one), with
-  a quick "search the library" action per entry
-- Local music library browsing, with a toggle between list and cover art
-  grid for Albums/Artists and similar (local and third-party services
-  alike), consistent GNOME iconography per category (artist/album/genre/
-  playlist) — while a linked service's own root-menu categories (Albums,
-  Random, Favourites, Top Rated, ...) keep that service's own icon
-  instead — a live filter for narrowing down a long list as you type,
-  "play all"/"add all to queue" for a track listing, adding a custom
-  internet radio station (searched for by name/country against
-  radio-browser.info's public directory, complete with a thumbnail where
-  available, with manual name+URL entry as a fallback) and deleting one,
-  deleting a saved Sonos playlist, adding a track to an existing saved
-  playlist and reordering its tracks, and a cache (art compressed to WebP
-  on disk) so revisiting a level doesn't refetch it over the network
-  every time
-- Album tiles show the artist name beneath the title, in the grid and the
-  list view alike
-- An ID3 genre tag with several genres packed into one string (e.g.
-  "Rap; Metal; Hard-Core") is split into separate entries in the Genres
-  view, with the separator character(s) configurable in Settings →
-  Genres
-- Optional real artist photos in the library, looked up by name against
-  Deezer's public API — off by default, since it's the one thing in this
-  app that leaves the local Sonos household (Settings → Bibliothek)
-- Fixed volume / line-out mode and sub gain, alongside bass, treble,
-  loudness, night mode and line-in autoplay (with its own target volume),
-  for a device feeding a receiver or amp with its own volume control, or a
-  paired Sonos Sub
-- A "Bibliothek neu einlesen" action in Settings, for rescanning an
-  indexed local music share after adding files to it
-- A "Geräteinfo" dialog per room (IP, MAC, software version, model),
-  reached from the room picker's popover
-- Third-party services (Spotify, bonob and other SMAPI-based services)
-  through Sonos's own account-linking flow
-- MPRIS2 integration, so GNOME's media keys, the Quick Settings player
-  widget and the lock screen all work with Gnomos like any other player,
-  including setting shuffle/repeat from there
-- An optional companion GNOME Shell extension
-  (`gnome-shell-extension/gnomos-volume@linuxundich.de`, installed
-  separately) that adds the current zone's volume as its own slider in the
-  system volume Quick Settings menu, with an expandable list reaching
-  every other room too — an independent volume slider and click-to-mute
-  icon per room
-- A "Gen 1" badge identifying original first-generation hardware in a room
-- Light/dark appearance override, adjustable cover art cache size
-- Keyboard shortcuts for play/pause, next/previous, volume, mute, shuffle
-  and repeat, plus Ctrl+F (search), Ctrl+J (current track), F9 (sidebar),
-  Ctrl+W/Ctrl+Q; the full list is under "Keyboard Shortcuts" (Ctrl+?)
-- A fast, virtualized cover grid for large libraries, and generated
-  covers (a gradient with the initials) for anything without art
-- A section sidebar (Queue, Favorites, Alarms, History, Library)
-  in the style of noson-app's own navigation, plus a compact room/zone
-  picker in the header bar; the library's own root categories (Artists,
-  Albums, Genres, Radio Stations, linked services, ...) are listed right there
-  as sub-items, for jumping straight to one without browsing in first
-- A responsive window: the section sidebar tucks away behind a toggle
-  button once the window gets narrow, and both the window's and the
-  sidebar's size are remembered across restarts
-- Optional desktop notifications on track change
-- Translatable (gettext): English and German included, following the
-  desktop language
-
-## Hardware support
-
-Gnomos should work with any Sonos system reachable on your local network,
-old or new. The "Gen 1" badge specifically flags ZP80, ZP90, ZP100, ZP120
-and CR100 devices, since those are the ones this project is really written
-for — everything else is a byproduct of controlling a Sonos system in
-general.
-
-## Building
-
-Gnomos isn't packaged anywhere yet, so building from source is currently
-the only way to run it.
-
-Dependencies: `meson`, `ninja`, a C++17 compiler, `pkgconf`, `openssl`,
-`zlib`, `gtkmm-4.0` (>= 4.10), `libadwaita-1` (>= 1.9), `json-glib-1.0`,
-`libsoup-3.0` and `libwebp`. On Arch Linux:
-
-```sh
-sudo pacman -S meson ninja gcc pkgconf openssl zlib gtkmm-4.0 libadwaita json-glib libsoup3 libwebp
-```
-
-Then:
-
-```sh
-git clone --recurse-submodules https://github.com/linuxundich/gnomos.git
-cd gnomos
-meson setup build
-ninja -C build
-./build/src/gnomos
-```
-
-libnoson is a git submodule under `noson/` (`--recurse-submodules` above
-fetches it too) and is built together with Gnomos; you don't need to
-install it separately. If you already cloned without that flag, run
-`git submodule update --init` to fetch it afterwards.
-
-A Flatpak manifest exists under `build-aux/flatpak/` and has been verified
-end to end (builds, installs, and runs against `org.gnome.Platform`//51).
-See [Download](#download) above for prebuilt bundles, published on
-GitHub Releases but not tracked as closely as every single commit — to
-build and install it yourself instead:
-
-```sh
-cd build-aux/flatpak
-flatpak-builder --user --install --force-clean --repo=.flatpak-repo .flatpak-build de.linuxundich.Gnomos.json
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the manifest's version
-pins.
-
-The companion GNOME Shell extension
-(`gnome-shell-extension/gnomos-volume@linuxundich.de/`) is a separate,
-optional install — see its own [README](gnome-shell-extension/gnomos-volume@linuxundich.de/README.md)
-for how to add it.
-
-## Translations
-
-The interface is written in English and translated with gettext; German
-is included in `po/de.po`. To add a language, add its code to
-`po/LINGUAS`, create the `.po` file from `po/gnomos.pot`
-(`msginit -i po/gnomos.pot -o po/xx.po -l xx`) and translate it. After
-changing strings in the code, `ninja -C _build gnomos-pot` and
-`ninja -C _build gnomos-update-po` refresh the template and the
-translations. To try a translation without installing:
-`GNOMOS_LOCALEDIR=_build/po _build/src/gnomos`.
-
-## Status
-
-This is a personal project, developed and tested against the author's own
-first-generation Sonos household. It works well there, but hasn't seen
-broad testing across different Sonos setups. Bug reports, especially from
-different Sonos hardware generations, are welcome via the issue tracker.
-
-For implementation notes, design decisions, and a log of bugs found during
-hardware testing, see [ARCHITECTURE.md](ARCHITECTURE.md). For the version
-history, see [CHANGELOG.md](CHANGELOG.md).
-
-## License
-
-GPL-3.0-or-later — see [LICENSE](LICENSE). libnoson is GPL-3.0-or-later as
-well, and Gnomos links it statically, so the combined work is bound to
-those terms. Every source file under `src/` carries an
-`SPDX-License-Identifier: GPL-3.0-or-later` header.
+Gnomos is free software under the [GPL-3.0-or-later](LICENSE). It is a personal project, tested on the author's own first-generation Sonos household. Album covers in the screenshots belong to their artists and labels.

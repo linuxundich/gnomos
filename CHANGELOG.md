@@ -8,6 +8,14 @@ This project does not yet follow strict Semantic Versioning guarantees
 general idea holds: a new minor version (0.x.0) marks a significant chunk of
 work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
+## [Unreleased]
+
+### Changed
+- The README is now a short product page: what Gnomos looks like, what it
+  does, how it works and how to install it. The full feature list moved to
+  `docs/FEATURES.md`, build instructions to `docs/BUILDING.md` and the
+  translation guide to `docs/TRANSLATING.md`.
+
 ## [0.28.4] - 2026-10-02
 
 ### Fixed
