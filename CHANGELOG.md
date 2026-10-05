@@ -10,6 +10,17 @@ work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
 ## [Unreleased]
 
+## [0.28.5] - 2026-10-05
+
+### Fixed
+- After two quick skips (Next, Next), Gnomos could keep showing the track
+  in between — title, cover, duration and lyrics — for the rest of the
+  actually playing track. Right after a skip, the speaker's position info
+  can still describe the previous track; 0.28.4 took that as a correction
+  of the change notification and kept it. A disagreement now has to show
+  up twice in a row before it counts, and a correction is dropped again as
+  soon as the position info agrees with the notification.
+
 ### Changed
 - The README is now a short product page: what Gnomos looks like, what it
   does, how it works and how to install it. The full feature list moved to

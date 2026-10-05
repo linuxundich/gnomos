@@ -4203,16 +4203,45 @@ void NosonBackend::RefreshNowPlayingLocked()
 
 bool NosonBackend::ApplyPositionInfoLocked(const std::string& track_key, const NSROOT::ElementList& vars)
 {
-  if (!player_ || !now_playing_.valid || !now_playing_.playing_from_queue || verified_track_.track_key == track_key)
+  if (!player_ || !now_playing_.valid || !now_playing_.playing_from_queue)
     return false;
   // Queue tracks only: a radio stream's TrackURI legitimately differs from
   // the event's view of it, and its metadata is handled separately anyway.
   NSROOT::AVTProperty prop = player_->GetTransportProperty();
   std::string uri = vars.GetValue("TrackURI");
   unsigned track = 0;
-  if (std::sscanf(vars.GetValue("Track").c_str(), "%u", &track) != 1 || track == 0 || uri.empty() ||
-      (uri == prop.CurrentTrackURI && track == prop.CurrentTrack))
+  if (std::sscanf(vars.GetValue("Track").c_str(), "%u", &track) != 1 || track == 0 || uri.empty())
     return false;
+  const bool agrees_with_event = uri == prop.CurrentTrackURI && track == prop.CurrentTrack;
+  if (verified_track_.track_key == track_key)
+  {
+    if (uri == verified_track_.uri && track == verified_track_.track)
+      return false;
+    if (agrees_with_event)
+    {
+      // GetPositionInfo() can lag as well (right after a Next it may still
+      // report the previous track): once it agrees with the event, the
+      // event was right after all, so the correction is dropped again.
+      verified_track_ = VerifiedTrack();
+      pending_verify_ = PendingVerify();
+      RefreshNowPlayingLocked();
+      return true;
+    }
+  }
+  else if (agrees_with_event)
+  {
+    pending_verify_ = PendingVerify();
+    return false;
+  }
+  // A single disagreeing reply is not enough: it may be the lagging one.
+  // Only the same disagreement twice in a row (the next position tick at
+  // the latest) replaces the event's track.
+  if (pending_verify_.track_key != track_key || pending_verify_.uri != uri || pending_verify_.track != track)
+  {
+    pending_verify_ = {track_key, uri, track};
+    return false;
+  }
+  pending_verify_ = PendingVerify();
   NSROOT::DIDLParser didl(vars.GetValue("TrackMetaData").c_str());
   if (!didl.IsValid() || didl.GetItems().empty())
     return false;
@@ -4228,6 +4257,8 @@ bool NosonBackend::ApplyPositionInfoLocked(const std::string& track_key, const N
   if (std::sscanf(vars.GetValue("TrackDuration").c_str(), "%u:%u:%u", &hh, &hm, &hs) == 3)
     verified.duration = hh * 3600 + hm * 60 + hs;
   verified.queue_index = track - 1;
+  verified.uri = uri;
+  verified.track = track;
   verified_track_ = std::move(verified);
 
   now_playing_.title = verified_track_.title;

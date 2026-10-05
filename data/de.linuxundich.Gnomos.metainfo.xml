@@ -22,6 +22,13 @@
   </replaces>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.28.5" date="2026-10-05">
+      <description>
+        <p>After two quick skips, the player bar, Now Playing and the lyrics
+        show the track that is actually playing instead of the one in
+        between.</p>
+      </description>
+    </release>
     <release version="0.28.4" date="2026-10-02">
       <description>
         <p>After "Play All" replaces a room's queue, the player bar, Now

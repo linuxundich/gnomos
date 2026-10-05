@@ -2331,3 +2331,17 @@ metadata in `verified_track_` keyed to the event's track key and emits
 `now_playing_dispatcher_`. Later events with the same key (pause, resume,
 TRANSITIONING) reuse it; a reply that started before a newer event is
 discarded.
+
+### 0.28.5: GetPositionInfo can lag, too
+
+Right after a Next, `GetPositionInfo` may still describe the previous
+track while the event already names the new one. 0.28.4 took such a reply
+as a correction, keyed it to the new track key and never checked that key
+again, so the in-between track stuck until the next real change (seen live:
+Next, Next 1.7 s apart showed track 2 while track 3 played). Now
+`ApplyPositionInfoLocked()` keeps a first disagreeing reply in
+`pending_verify_` and applies it only when the next reply (at the latest
+the 1 s tick) disagrees in the same way; a key with a correction is
+re-checked on every reply, and once a reply agrees with the event again,
+`verified_track_` is cleared and `RefreshNowPlayingLocked()` restores the
+event's metadata.

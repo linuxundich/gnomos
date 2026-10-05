@@ -825,8 +825,22 @@ private:
     std::string title, artist, album, art_uri;
     unsigned duration = 0;
     unsigned queue_index = 0;
+    // GetPositionInfo()'s Track/TrackURI behind this correction, to notice
+    // when a later reply no longer matches it.
+    std::string uri;
+    unsigned track = 0;
   };
   VerifiedTrack verified_track_;
+  // First GetPositionInfo() reply that disagreed with the event, waiting
+  // for a second, identical one before it becomes verified_track_ (a
+  // reply right after a Next can still describe the previous track).
+  struct PendingVerify
+  {
+    std::string track_key;
+    std::string uri;
+    unsigned track = 0;
+  };
+  PendingVerify pending_verify_;
   // Set by RefreshNowPlayingLocked() on a track change, so
   // HandlePlayerEvent() follows up (for queue playback) with a GetPositionInfo() check right
   // away instead of waiting for the next position tick.
