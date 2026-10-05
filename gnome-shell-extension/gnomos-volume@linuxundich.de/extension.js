@@ -2,6 +2,7 @@
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
@@ -10,6 +11,22 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as QuickSettings from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+
+// The extension has a single string of its own, so it follows the
+// session language with a small table instead of shipping a gettext
+// catalog. Room names come from Sonos and are never translated.
+const OTHER_ROOMS = {de: 'Andere Räume'};
+
+function otherRoomsLabel() {
+  for (const lang of GLib.get_language_names()) {
+    const label = OTHER_ROOMS[lang.split(/[_.@]/)[0]];
+    if (label)
+      return label;
+    if (lang.startsWith('en') || lang === 'C')
+      break;
+  }
+  return 'Other Rooms';
+}
 
 // Companion to Gnomos's own ZoneVolumeService (src/zone-volume-service.cpp)
 // — that class exposes the currently selected Sonos zone's volume as a
@@ -240,7 +257,7 @@ class GnomosZoneSlider extends QuickSettings.QuickSlider {
     // property sync (which fires on every volume tick, not just when the
     // room list itself actually changes).
     this._roomItems = new Map();
-    this.menu.setHeader('network-wireless-symbolic', 'Andere Räume');
+    this.menu.setHeader('network-wireless-symbolic', otherRoomsLabel());
     // Refreshes on open, the same "meant to be called while the popover is
     // open" pattern NosonBackend::RefreshGroupVolumesAsync() already
     // documents for the in-app grouping popover — Rooms would otherwise

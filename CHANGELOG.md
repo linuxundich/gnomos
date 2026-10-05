@@ -10,6 +10,12 @@ work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
 ## [Unreleased]
 
+### Fixed
+- The Quick Settings extension `gnomos-volume` titled its room list
+  “Andere Räume” in every language. It now says “Other Rooms” and only
+  uses the German title in a German session. Takes effect after logging in
+  again.
+
 ## [0.28.5] - 2026-10-05
 
 ### Fixed
