@@ -14,6 +14,7 @@ work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 - The Quick Settings extension `gnomos-volume` declares support for
   GNOME 51. No code changes were needed; GNOME Shell 51 had only marked it
   as out of date and refused to load it.
+- The README links to the project page on linuxundich.de.
 
 ### Fixed
 - The Quick Settings extension `gnomos-volume` titled its room list
