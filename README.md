@@ -104,6 +104,15 @@ flatpak install --user gnomos-*.flatpak
 
 Flatpak fetches the GNOME 51 runtime from Flathub if it is missing. Bundles don't update themselves, so check the Releases page for new versions.
 
+### Debian package
+
+Gnomos needs libadwaita 1.9 or newer, so the `.deb` targets Debian testing (forky) or newer; Debian 13 (trixie) ships libadwaita 1.7 and is too old. Build it with Podman:
+
+```sh
+build-aux/deb/build.sh
+sudo apt install ./build-aux/deb/out/gnomos_*.deb ./build-aux/deb/out/gnome-shell-extension-gnomos-volume_*.deb
+```
+
 Optional: the [GNOME Shell extension](gnome-shell-extension/gnomos-volume@linuxundich.de/README.md) for room volumes in Quick Settings. To build Gnomos yourself, see [docs/BUILDING.md](docs/BUILDING.md).
 
 ## On the blog

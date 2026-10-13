@@ -18,3 +18,4 @@ noson-app/
 
 # Claude Code session state
 .claude/
+build-aux/deb/out/

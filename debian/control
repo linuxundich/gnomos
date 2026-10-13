@@ -1,0 +1,37 @@
+Source: gnomos
+Section: sound
+Priority: optional
+Maintainer: Christoph Langner <mail@christoph-langner.de>
+Build-Depends: debhelper-compat (= 13),
+ meson (>= 0.60.0),
+ g++,
+ pkgconf,
+ gettext,
+ desktop-file-utils,
+ appstream,
+ libglib2.0-dev-bin,
+ libgtkmm-4.0-dev (>= 4.10),
+ libadwaita-1-dev (>= 1.9),
+ libjson-glib-dev,
+ libsoup-3.0-dev,
+ libwebp-dev,
+ libssl-dev,
+ zlib1g-dev
+Standards-Version: 4.7.0
+Homepage: https://github.com/linuxundich/gnomos
+Rules-Requires-Root: no
+
+Package: gnomos
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: gnome-shell-extension-gnomos-volume
+Description: Sonos client for GNOME
+ Gnomos controls Sonos speakers from the GNOME desktop: browse and play
+ music, manage the queue, groups, alarms and speaker settings.
+
+Package: gnome-shell-extension-gnomos-volume
+Architecture: all
+Depends: gnome-shell (>= 45), ${misc:Depends}
+Description: Quick Settings volume control for Gnomos
+ GNOME Shell extension that adds Sonos room volume sliders to Quick
+ Settings. Works together with the Gnomos application.

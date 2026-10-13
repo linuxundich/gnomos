@@ -10,6 +10,12 @@ work, patch versions (0.x.y) are smaller additions and fixes on top of it.
 
 ## [Unreleased]
 
+### Added
+- Debian packaging (`debian/`, `build-aux/deb/build.sh`): builds `gnomos` and
+  `gnome-shell-extension-gnomos-volume` for Debian testing in a Podman
+  container. Debian 13 is not supported, it ships libadwaita 1.7 and Gnomos
+  needs 1.9 (`AdwSidebar`).
+
 ### Changed
 - The Quick Settings extension `gnomos-volume` declares support for
   GNOME 51. No code changes were needed; GNOME Shell 51 had only marked it
