@@ -4,7 +4,7 @@
 
 <h1 align="center">Gnomos</h1>
 
-<p align="center"><strong>Your Sonos speakers, at home on the GNOME desktop.</strong></p>
+<p align="center"><strong>A Sonos controller for Linux, at home on the GNOME desktop.</strong></p>
 
 <p align="center">
   Play music, group rooms and set the volume in every room from a native GTK&nbsp;4 and libadwaita app.
